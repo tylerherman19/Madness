@@ -1,0 +1,276 @@
+@import "tailwindcss";
+
+:root {
+  /* Core brand palette — unchanged identity */
+  --cream: #f0ede8;
+  --dark: #000000;
+  --green: #1e5218;
+  --red: #c0392b;
+  --border: #d5d0c8;
+  --muted: #8a8580;
+
+  /* New: surfaces & depth for an elevated, product-like feel */
+  --surface: #fbfaf8;          /* card background, slightly lighter than cream */
+  --surface-sunken: #e9e5df;   /* insets, track backgrounds */
+  --border-strong: #c4bdb2;
+  --green-tint: #e6ede2;       /* soft green wash for alive rows/pills */
+  --red-tint: #f3e2df;         /* soft red wash for eliminated/pills */
+  --dark-2: #232323;           /* raised dark (header cards) */
+
+  --shadow-sm: 0 1px 2px rgba(26, 22, 16, 0.06), 0 1px 3px rgba(26, 22, 16, 0.05);
+  --shadow-md: 0 2px 4px rgba(26, 22, 16, 0.05), 0 6px 16px rgba(26, 22, 16, 0.08);
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+
+  /* --- Editorial layer ---------------------------------------------------
+     Anton stays the poster voice (masthead, hero, big figures). Analysis is
+     set in a serif so a computed sentence reads as reporting rather than as
+     another UI label. Georgia ships everywhere, so no extra webfont. */
+  --font-serif: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+
+  /* Ink steps for text. Data marks never carry text color and vice versa. */
+  --ink: #100e0c;
+  --ink-2: #4a4540;
+
+  /* Chart furniture — deliberately recessive against the cream page. */
+  --grid: #e0dad1;
+  --axis: #bdb5a9;
+
+  /* Sequential ramp, one hue (the brand red), light -> dark. Used for "how
+     spent is this team" only; never for identity. */
+  --burn-0: #efe9e1;
+  --burn-1: #eed7d0;
+  --burn-2: #e0b0a4;
+  --burn-3: #cd8375;
+  --burn-4: #b4574a;
+  --burn-5: #8f2e21;
+}
+
+body {
+  background: var(--cream);
+  color: var(--dark);
+  font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-anton), Impact, 'Arial Narrow', sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* Tabular numbers everywhere numbers matter, without per-element utility spam */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Reusable elevated card surface */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Small section eyebrow label — replaces the repeated inline uppercase spans */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Focus ring that matches the brand instead of the browser default blue */
+.field {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field:focus {
+  outline: none;
+  border-color: var(--dark);
+  box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.12);
+}
+
+/* Primary button — sharp brand red, now with subtle depth + motion */
+.btn-primary {
+  background: var(--red);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.08s ease, filter 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-primary:hover { filter: brightness(1.06); box-shadow: var(--shadow-md); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary:disabled { opacity: 0.55; box-shadow: none; }
+
+/* Status pills */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.pill-alive { background: var(--green-tint); color: var(--green); }
+.pill-out { background: var(--red-tint); color: var(--red); }
+
+.pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+/* Team color chip — small rounded token carrying the team's brand color */
+.team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+}
+.team-chip-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+/* Subtle row hover for tables */
+.row-hover { transition: background 0.12s; }
+
+/* Continuous auto-scrolling ticker (score bar) */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.ticker-track {
+  animation: ticker-scroll linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track { animation: none; }
+}
+.row-hover:hover { background: var(--surface); }
+
+/* --- Editorial modules ---------------------------------------------------
+   Every analysis block is a small article: kicker, a sentence stating the
+   finding, a chart, and a method note. The sentence is generated server-side
+   from the same data the chart draws, so the two can never disagree. */
+
+.kicker {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.lede {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 21px;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  max-width: 34ch;
+}
+@media (min-width: 640px) {
+  .lede { font-size: 25px; max-width: 46ch; }
+}
+.lede strong { font-weight: 700; }
+
+.deck {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 68ch;
+}
+
+.method {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 9px;
+  margin-top: 16px;
+}
+
+/* Full-bleed hairline that separates one story from the next, the way a
+   print page rules between items. */
+.story-rule {
+  border: 0;
+  border-top: 1px solid var(--border-strong);
+  margin: 0;
+}
+
+/* Numbers read as figures, not as headings: tabular, tight, ink-colored. */
+.figure-num {
+  font-family: var(--font-anton), Impact, 'Arial Narrow', sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 0.86;
+  letter-spacing: 0.01em;
+}
+
+/* CSS-only hover readout. The dashboard is a cached server render, so the
+   tooltip layer carries no JS. */
+.hint { position: relative; }
+.hint > .hint-body {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%) translateY(3px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  background: var(--dark);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 6px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+  z-index: 20;
+  box-shadow: var(--shadow-md);
+}
+.hint:hover > .hint-body,
+.hint:focus-visible > .hint-body {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hint > .hint-body { transition: none; }
+}
+
+/* Bar marks: 4px rounded end at the data side, square against the baseline. */
+.bar-track {
+  background: var(--surface-sunken);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+}
+
+/* Burn-map cell — a 32-team small multiple. */
+.burn-cell {
+  border-radius: 5px;
+  padding: 6px 2px 5px;
+  text-align: center;
+  border: 1px solid rgba(16, 14, 12, 0.06);
+}

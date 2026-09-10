@@ -1,0 +1,168 @@
+import Link from 'next/link'
+import LogoMark from '@/app/components/LogoMark'
+import { getDb } from '@/lib/testMode'
+import { teamColor } from '@/lib/teamColors'
+import { fetchEspnScoreboard, eventCompetitors } from '@/lib/espn'
+
+export const revalidate = 3600
+
+const TOTAL_WEEKS = 18
+const WEEKS_AHEAD = 4
+
+interface ScheduleGame {
+  homeAbbr: string
+  awayAbbr: string
+  kickoff: string // ISO UTC
+}
+
+interface ScheduleWeek {
+  weekNumber: number
+  games: ScheduleGame[]
+}
+
+async function fetchWeekGames(season: number, week: number): Promise<ScheduleGame[]> {
+  try {
+    const events = await fetchEspnScoreboard(season, week, 3600)
+    if (!events) return []
+
+    const games: ScheduleGame[] = []
+    for (const event of events) {
+      const teams = eventCompetitors(event)
+      if (!teams) continue
+
+      games.push({
+        homeAbbr: teams.home.team.abbreviation,
+        awayAbbr: teams.away.team.abbreviation,
+        kickoff: event.date,
+      })
+    }
+    games.sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
+    return games
+  } catch {
+    return []
+  }
+}
+
+async function getScheduleData(): Promise<{ weeks: ScheduleWeek[]; season: number; activeWeek: number | null }> {
+  let activeWeek: number | null = null
+  let season = 2026
+  try {
+    const supabase = await getDb()
+    const { data: week } = await supabase
+      .from('weeks')
+      .select('week_number, season_year')
+      .eq('is_active', true)
+      .single()
+    if (week) {
+      activeWeek = week.week_number
+      season = week.season_year
+    }
+  } catch { /* pool not started yet */ }
+
+  const maxWeek = TOTAL_WEEKS
+  const startWeek = activeWeek ? Math.min(activeWeek + 1, maxWeek) : 1
+  const endWeek = Math.min(startWeek + WEEKS_AHEAD - 1, maxWeek)
+
+  const weekNumbers: number[] = []
+  for (let w = startWeek; w <= endWeek; w++) weekNumbers.push(w)
+
+  const results = await Promise.all(weekNumbers.map((w) => fetchWeekGames(season, w)))
+  const weeks: ScheduleWeek[] = weekNumbers.map((weekNumber, i) => ({ weekNumber, games: results[i] }))
+  return { weeks, season, activeWeek }
+}
+
+function formatKickoff(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  })
+}
+
+export default async function SchedulePage() {
+  const { weeks, season, activeWeek } = await getScheduleData()
+  const hasAnyGames = weeks.some((w) => w.games.length > 0)
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
+      <header style={{ background: 'var(--dark)' }}>
+        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
+            <LogoMark size={64} />
+            NFL SURVIVOR
+          </Link>
+          <nav className="flex items-center gap-6">
+            <Link href="/" className="text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors">Standings</Link>
+            <Link href="/login" className="text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors">Log In</Link>
+            <Link
+              href="/pick"
+              className="btn-primary font-display text-sm tracking-wider px-4 py-2"
+            >
+              SUBMIT PICK
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-10">
+        <div className="pb-2">
+          <h1 className="font-display text-6xl sm:text-7xl leading-none" style={{ color: 'var(--dark)' }}>
+            UPCOMING SCHEDULE
+          </h1>
+          <p className="mt-2 eyebrow">
+            {season} Season{activeWeek ? ` · Currently Week ${activeWeek}` : ''}
+          </p>
+          <p className="mt-3 text-sm" style={{ color: 'var(--muted)' }}>
+            Plan ahead — you can only use each team once.
+          </p>
+        </div>
+
+        {!hasAnyGames ? (
+          <div className="py-20 text-center">
+            <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>SCHEDULE NOT AVAILABLE YET</p>
+            <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>Check back once the league releases upcoming weeks.</p>
+          </div>
+        ) : (
+          weeks.map(({ weekNumber, games }) =>
+            games.length === 0 ? null : (
+              <section key={weekNumber} className="pt-9">
+                <p className="eyebrow mb-3">Week {weekNumber}</p>
+                <div className="card overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ background: 'var(--surface-sunken)' }}>
+                        <th className="py-2.5 pl-4 text-left eyebrow">Matchup</th>
+                        <th className="py-2.5 pr-4 text-right eyebrow hidden sm:table-cell">Kickoff (CT)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {games.map((g) => (
+                        <tr key={`${g.awayAbbr}@${g.homeAbbr}`} className="row-hover border-t" style={{ borderColor: 'var(--border)' }}>
+                          <td className="py-3 pl-4">
+                            <div className="flex items-center gap-2">
+                              <span className="team-chip-swatch" style={{ background: teamColor(g.awayAbbr).primary }}>{g.awayAbbr.slice(0, 3)}</span>
+                              <span className="font-bold" style={{ color: 'var(--dark)' }}>{g.awayAbbr}</span>
+                              <span className="text-xs" style={{ color: 'var(--muted)' }}>@</span>
+                              <span className="team-chip-swatch" style={{ background: teamColor(g.homeAbbr).primary }}>{g.homeAbbr.slice(0, 3)}</span>
+                              <span className="font-bold" style={{ color: 'var(--dark)' }}>{g.homeAbbr}</span>
+                            </div>
+                            <span className="block sm:hidden text-xs mt-1" style={{ color: 'var(--muted)' }}>{formatKickoff(g.kickoff)}</span>
+                          </td>
+                          <td className="py-3 pr-4 text-right text-xs hidden sm:table-cell tnum" style={{ color: 'var(--muted)' }}>{formatKickoff(g.kickoff)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )
+          )
+        )}
+      </main>
+    </div>
+  )
+}

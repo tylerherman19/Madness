@@ -1,0 +1,127 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getDb } from '@/lib/testMode'
+import { requireAdmin, escapeIlike } from '@/lib/api'
+import { generatePin, hashPin } from '@/lib/pin'
+import { sendWelcomeEmail, sleep, SEND_DELAY_MS } from '@/lib/email'
+import { logAudit } from '@/lib/audit'
+
+// bcrypt cost-12 hash (~250ms) plus a Resend call, serially, per row — allow
+// enough runtime that a full-size batch can't be killed mid-row by a platform
+// timeout (which would leave a player created with a PIN nobody ever received).
+export const maxDuration = 300
+const MAX_ROWS = 100
+
+interface CSVRow {
+  full_name: string
+  phone: string
+  email: string
+  venmo_handle: string
+  paid: boolean
+}
+
+function parseCSV(csv: string): CSVRow[] {
+  const lines = csv.trim().split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length < 2) return []
+
+  // Skip header row
+  const rows = lines.slice(1)
+  return rows.map((line) => {
+    // Simple CSV parse (handles unquoted fields)
+    const cols = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
+    const [full_name = '', phone = '', email = '', venmo_handle = '', paidStr = ''] = cols
+    const paid =
+      paidStr.toLowerCase() === 'yes' ||
+      paidStr.toLowerCase() === 'true' ||
+      paidStr === '1'
+    return { full_name, phone, email: email.toLowerCase(), venmo_handle, paid }
+  }).filter((r) => r.full_name && r.email)
+}
+
+export async function POST(req: NextRequest) {
+  const unauthorized = await requireAdmin()
+  if (unauthorized) return unauthorized
+
+  try {
+    const { csv } = await req.json()
+    if (!csv) return NextResponse.json({ error: 'No CSV provided' }, { status: 400 })
+
+    const rows = parseCSV(csv)
+    if (rows.length === 0) {
+      return NextResponse.json({ error: 'No valid rows found. Check CSV format.' }, { status: 400 })
+    }
+    if (rows.length > MAX_ROWS) {
+      return NextResponse.json(
+        { error: `Too many rows (${rows.length} > ${MAX_ROWS}). Split the CSV into smaller batches.` },
+        { status: 400 }
+      )
+    }
+
+    const supabase = await getDb()
+
+    let count = 0
+    let skipped = 0
+    const errors: string[] = []
+
+    for (const row of rows) {
+      try {
+        // Check if player already exists — never overwrite their PIN or send a new welcome email
+        const { data: existing } = await supabase
+          .from('players')
+          .select('id')
+          .ilike('email', escapeIlike(row.email))
+          .single()
+
+        if (existing) {
+          skipped++
+          continue
+        }
+
+        const pin = generatePin()
+        const pin_hash = await hashPin(pin)
+
+        const { error } = await supabase.from('players').insert({
+          full_name: row.full_name,
+          phone: row.phone || null,
+          email: row.email,
+          venmo_handle: row.venmo_handle || null,
+          paid: row.paid,
+          status: 'alive',
+          pin_hash,
+        })
+
+        if (error) {
+          errors.push(`${row.full_name}: ${error.message}`)
+          continue
+        }
+
+        // A dropped welcome email means a player who never receives their PIN
+        // — surface it to the admin instead of reporting silent success.
+        const emailResult = await sendWelcomeEmail(row.email, row.full_name, pin)
+        if (!emailResult.ok) {
+          errors.push(`${row.full_name}: created, but welcome email failed — regenerate their PIN to resend it`)
+        }
+        count++
+        await sleep(SEND_DELAY_MS)
+      } catch {
+        errors.push(`${row.full_name}: unexpected error`)
+      }
+    }
+
+    await logAudit(supabase, {
+      event_type: 'players-imported',
+      actor: 'admin',
+      message: `Admin imported ${count} player${count === 1 ? '' : 's'} from CSV${skipped > 0 ? ` (${skipped} already existed)` : ''}`,
+      details: { created: count, skipped, errors },
+    })
+
+    return NextResponse.json({
+      ok: true,
+      count,
+      skipped,
+      errors: errors.length > 0 ? errors : undefined,
+    })
+  } catch (err) {
+    console.error('import error', err)
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
