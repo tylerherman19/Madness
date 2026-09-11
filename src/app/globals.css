@@ -104,7 +104,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .nav-link { display: inline-flex; min-height: 40px; align-items: center; padding: 0 12px; border-radius: 4px; color: var(--muted); font-size: 13px; font-weight: 650; }
 .nav-link:hover, .nav-link-active { color: var(--ink); background: var(--court); }
 .score-rail { border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line); background: rgba(251, 253, 249, 0.88); }
-.game-hero { position: relative; overflow: hidden; margin-top: 22px; background: var(--paper-bright); color: var(--ink); border: 1px solid var(--line); border-top: 4px solid var(--orange); border-radius: 6px 6px 0 0; }
+.game-hero { position: relative; overflow: hidden; margin-top: 22px; background: var(--paper-bright); color: var(--ink); border: 1px solid var(--line); border-radius: 6px 6px 0 0; }
 .game-hero::after { content: none; }
 .deadline-board { position: relative; z-index: 1; min-width: 270px; border-left: 1px solid var(--line); padding-left: 26px; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding-bottom: 10px; border-bottom: 2px solid var(--ink); }
