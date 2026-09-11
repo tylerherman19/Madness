@@ -322,15 +322,17 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
                     )}
                     {g.tv && <span className="text-slate-500 text-xs">{g.tv}</span>}
                     <span className="text-slate-500 text-xs">
-                      {new Date(g.tip_time).toLocaleString('en-US', {
-                        timeZone: 'America/Chicago',
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        timeZoneName: 'short',
-                      })}
+                      {g.time_tbd
+                        ? 'Tip time TBD'
+                        : new Date(g.tip_time).toLocaleString('en-US', {
+                            timeZone: 'America/Chicago',
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            timeZoneName: 'short',
+                          })}
                     </span>
                   </div>
                   <button

@@ -47,6 +47,9 @@ export interface EspnEvent {
   date: string
   shortName?: string
   competitions: Array<{
+    // False when ESPN has the date but not the tip time yet — a full season
+    // is published months ahead with midnight-Eastern placeholders.
+    timeValid?: boolean
     status: {
       type: { state: string; shortDetail?: string; completed: boolean }
       displayClock?: string
@@ -189,6 +192,14 @@ export function resultOf(
   return homeScore > awayScore ? 'home_win' : 'away_win'
 }
 
+// Whether ESPN has actually announced this tip time. A placeholder event
+// carries `timeValid: false` and a status of TBD, and its `date` is midnight
+// Eastern — which is the previous day in Central, and no kind of tip time at
+// all. Callers must not treat it as one.
+export function isTimeTbd(event: EspnEvent): boolean {
+  return event.competitions?.[0]?.timeValid === false
+}
+
 // YYYYMMDD in Central time — the parameter ESPN's `dates` expects, and the
 // key the app groups a slate by.
 export function toEspnDate(date: Date): string {
@@ -208,6 +219,19 @@ export function toEspnDate(date: Date): string {
 export function centralDateOf(utcIso: string): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(utcIso))
+}
+
+// The ISO date (YYYY-MM-DD) of a timestamp in Eastern time. Used only for
+// games with a placeholder tip: the placeholder is midnight Eastern on the
+// day the game is actually meant to be played, so its Eastern date is the
+// right slate even though its Central date is the day before.
+export function easternDateOf(utcIso: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

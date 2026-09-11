@@ -19,9 +19,15 @@ function tipOf(game: Game): Date | null {
 // rule that replaced the NFL pool's per-game/Sunday-noon split: with games
 // every day, a per-game deadline would let someone watch the early window
 // before committing, and there is no weekly anchor to fall back on.
+// Games whose tip time ESPN hasn't announced are skipped: their stored
+// timestamp is a midnight-Eastern placeholder, and treating it as a tip would
+// lock the slate at 11pm the night before. A slate where nothing is announced
+// yet has no deadline — picks stay open until real times land, which the
+// daily re-sync picks up.
 export function getSlateDeadline(games: Game[]): Date | null {
   let earliest: Date | null = null
   for (const g of games) {
+    if (g.time_tbd) continue
     const tip = tipOf(g)
     if (!tip) continue
     if (!earliest || tip < earliest) earliest = tip

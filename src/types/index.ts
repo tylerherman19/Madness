@@ -48,6 +48,9 @@ export interface Game {
   home_seed: number | null
   away_seed: number | null
   tip_time: string // ISO, UTC
+  // True while ESPN has only a placeholder time (midnight Eastern). The
+  // stored tip_time is not a real tip and must not drive locks or display.
+  time_tbd: boolean
   round_label: string | null // "1st Round", "Sweet 16", "Elite 8", ...
   region: string | null
   venue: string | null

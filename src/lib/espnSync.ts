@@ -8,6 +8,8 @@ import {
   resultOf,
   seedOf,
   centralDateOf,
+  easternDateOf,
+  isTimeTbd,
   CONFERENCES,
 } from './espn'
 import { getOrCreateSlate, renumberSlates } from './slates'
@@ -48,10 +50,13 @@ export async function syncSlateFromEspn(
     return { ok: false, error: `No games found for ${date} in the tracked conferences.` }
   }
 
-  // Bucket events by the Central date they are actually played on.
+  // Bucket events by the day they are actually played on. Normally that is
+  // the Central date of the tip. For a game whose time ESPN hasn't announced
+  // yet, the "tip" is a midnight-Eastern placeholder — 11pm Central the day
+  // before — so its Eastern date is the real playing date.
   const byDate = new Map<string, typeof events>()
   for (const event of events) {
-    const date = centralDateOf(event.date)
+    const date = isTimeTbd(event) ? easternDateOf(event.date) : centralDateOf(event.date)
     const bucket = byDate.get(date)
     if (bucket) bucket.push(event)
     else byDate.set(date, [event])
@@ -101,12 +106,15 @@ export async function syncSlateFromEspn(
       }
 
       const comp = event.competitions[0]
+      const tbd = isTimeTbd(event)
       const { roundLabel, region } = parseRound(event)
       const state = comp.status?.type?.state
       const homeScore = teams.home.score != null ? Number(teams.home.score) : null
       const awayScore = teams.away.score != null ? Number(teams.away.score) : null
 
-      if (!earliestTip || event.date < earliestTip) earliestTip = event.date
+      // A placeholder time must never set the lock — one TBD game would
+      // otherwise lock the whole slate at 11pm the previous night.
+      if (!tbd && (!earliestTip || event.date < earliestTip)) earliestTip = event.date
 
       rows.push({
         slate_id: slateId,
@@ -116,6 +124,7 @@ export async function syncSlateFromEspn(
         home_seed: seedOf(teams.home),
         away_seed: seedOf(teams.away),
         tip_time: event.date,
+        time_tbd: tbd,
         round_label: roundLabel,
         region,
         venue: comp.venue?.fullName ?? null,

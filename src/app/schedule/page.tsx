@@ -2,7 +2,7 @@ import Link from 'next/link'
 import LogoMark from '@/app/components/LogoMark'
 import { getDb } from '@/lib/testMode'
 import { teamColor } from '@/lib/teamColors'
-import { fetchDayScoreboard, eventCompetitors, toEspnDate } from '@/lib/espn'
+import { fetchDayScoreboard, eventCompetitors, toEspnDate, isTimeTbd } from '@/lib/espn'
 
 export const revalidate = 3600
 
@@ -13,6 +13,9 @@ interface ScheduleGame {
   homeAbbr: string
   awayAbbr: string
   kickoff: string // ISO UTC
+  // ESPN publishes the season months ahead with placeholder times; until the
+  // real tip is announced there is nothing honest to show but "TBD".
+  timeTbd: boolean
 }
 
 interface ScheduleDay {
@@ -33,7 +36,7 @@ async function fetchDayGames(day: Date): Promise<ScheduleGame[]> {
       const awayAbbr = teams.away.team.abbreviation
       if (!homeAbbr || !awayAbbr) continue
 
-      games.push({ homeAbbr, awayAbbr, kickoff: event.date })
+      games.push({ homeAbbr, awayAbbr, kickoff: event.date, timeTbd: isTimeTbd(event) })
     }
     games.sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
     return games
@@ -166,9 +169,9 @@ export default async function SchedulePage() {
                               <span className="team-chip-swatch" style={{ background: teamColor(g.homeAbbr).primary }}>{g.homeAbbr.slice(0, 3)}</span>
                               <span className="font-bold" style={{ color: 'var(--dark)' }}>{g.homeAbbr}</span>
                             </div>
-                            <span className="block sm:hidden text-xs mt-1" style={{ color: 'var(--muted)' }}>{formatKickoff(g.kickoff)}</span>
+                            <span className="block sm:hidden text-xs mt-1" style={{ color: 'var(--muted)' }}>{g.timeTbd ? 'TBD' : formatKickoff(g.kickoff)}</span>
                           </td>
-                          <td className="py-3 pr-4 text-right text-xs hidden sm:table-cell tnum" style={{ color: 'var(--muted)' }}>{formatKickoff(g.kickoff)}</td>
+                          <td className="py-3 pr-4 text-right text-xs hidden sm:table-cell tnum" style={{ color: 'var(--muted)' }}>{g.timeTbd ? 'TBD' : formatKickoff(g.kickoff)}</td>
                         </tr>
                       ))}
                     </tbody>

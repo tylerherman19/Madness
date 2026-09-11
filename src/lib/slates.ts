@@ -73,10 +73,13 @@ export async function renumberSlates(
 // Cache the day's first tip on the slate so the pick page and the crons don't
 // each re-derive it from the games.
 export async function refreshLockTime(db: SupabaseClient, slateId: string): Promise<void> {
+  // Announced tips only — a placeholder time would lock the slate at 11pm
+  // the previous night. Null when nothing on the day has a time yet.
   const { data } = await db
     .from('games')
     .select('tip_time')
     .eq('slate_id', slateId)
+    .eq('time_tbd', false)
     .order('tip_time', { ascending: true })
     .limit(1)
 
