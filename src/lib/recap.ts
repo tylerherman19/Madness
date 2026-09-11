@@ -3,6 +3,10 @@ import { formatCentralTime } from './deadline'
 
 interface RecapInput {
   slate: Slate
+  // How the active competition names this pick period — "Saturday, January
+  // 17" or "Second Round · Thursday". Never a week number: this pool plays
+  // days and rounds, not weeks.
+  periodLabel?: string
   games: Game[]
   picks: (Pick & { player: Pick & { full_name: string } })[]
   players: Player[]
@@ -15,6 +19,7 @@ interface RecapInput {
 export function generateRecap(input: RecapInput): string {
   const {
     slate,
+    periodLabel,
     games,
     players,
     alivePlayers,
@@ -29,7 +34,9 @@ export function generateRecap(input: RecapInput): string {
 
   const lines: string[] = []
 
-  lines.push(`🏈 MADNESS POOL — WEEK ${slate.slate_number} RECAP`)
+  lines.push(
+    `🏀 MADNESS POOL — ${(periodLabel ?? `DAY ${slate.slate_number}`).toUpperCase()} RECAP`
+  )
   lines.push('─'.repeat(40))
 
   // Results
@@ -51,7 +58,7 @@ export function generateRecap(input: RecapInput): string {
   // Eliminations this slate
   if (eliminatedThisWeek.length > 0) {
     lines.push('')
-    lines.push('❌ ELIMINATED THIS WEEK:')
+    lines.push('❌ ELIMINATED:')
     for (const p of eliminatedThisWeek) {
       const reason = p.elimination_reason ? ` (${p.elimination_reason})` : ''
       lines.push(`  ${p.full_name}${reason}`)

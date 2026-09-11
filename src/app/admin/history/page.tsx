@@ -3,10 +3,13 @@ import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import { formatCentralTime } from '@/lib/deadline'
 import { getTeamAbbrs } from '@/lib/teams'
+import { getPoolConfig } from '@/lib/pool'
+import { buildPickPeriods, type PickPeriod } from '@/lib/competition'
 
 interface WeekRow {
   id: string
   slate_number: number
+  slate_date: string
   season_year: number
   is_active: boolean
 }
@@ -18,6 +21,7 @@ interface GameRow {
   away_team: string
   result: string
   tip_time: string
+  round_label: string | null
 }
 
 export default async function AdminHistoryPage() {
@@ -25,15 +29,32 @@ export default async function AdminHistoryPage() {
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
   const allTeams = await getTeamAbbrs(supabase)
+  const pool = await getPoolConfig(supabase)
 
   const [{ data: slates }, { data: games }, { data: picks }, { data: players }] = await Promise.all([
-    supabase.from('slates').select('id, slate_number, season_year, is_active').order('slate_number'),
-    supabase.from('games').select('id, slate_id, home_team, away_team, result, tip_time').order('tip_time'),
+    supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active').order('slate_number'),
+    supabase.from('games').select('id, slate_id, home_team, away_team, result, tip_time, round_label').order('tip_time'),
     supabase.from('picks').select('slate_id, team, auto_assigned'),
     supabase.from('players').select('full_name, email, status, elimination_slate, elimination_reason'),
   ])
 
   const weekRows: WeekRow[] = slates || []
+
+  // Label each row the way players see it, so an admin reading history and a
+  // player reading their picks are looking at the same thing.
+  const periodById: Record<string, PickPeriod> = {}
+  for (const p of buildPickPeriods(
+    pool.competition_mode,
+    weekRows.map((w) => ({
+      id: w.id,
+      slate_number: w.slate_number,
+      slate_date: String(w.slate_date),
+      locks_at: null,
+    })),
+    (games || []).map((g) => ({ slate_id: g.slate_id, round_label: g.round_label }))
+  )) {
+    periodById[p.id] = p
+  }
   const gamesByWeek = new Map<string, GameRow[]>()
   for (const g of games || []) {
     const list = gamesByWeek.get(g.slate_id) || []
@@ -64,12 +85,12 @@ export default async function AdminHistoryPage() {
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Season History</h1>
-        <p className="text-slate-400 mt-1">Every slate&apos;s games, results, picks, and eliminations.</p>
+        <p className="text-slate-400 mt-1">Every pick period&apos;s games, results, picks, and eliminations.</p>
       </div>
 
       {weekRows.length === 0 && (
         <div className="rounded-xl border border-slate-700 bg-slate-800 p-6 text-center">
-          <p className="text-slate-400">No slates created yet.</p>
+          <p className="text-slate-400">No pick periods created yet.</p>
         </div>
       )}
 
@@ -85,7 +106,7 @@ export default async function AdminHistoryPage() {
           <div key={slate.id} className="rounded-xl border border-slate-700 bg-slate-800 p-5 space-y-4">
             <div className="flex items-center justify-between">
               <p className="font-semibold text-white text-lg">
-                Slate {slate.slate_number} · {slate.season_year}
+                {periodById[slate.id]?.label ?? `Slate ${slate.slate_number}`} · {slate.season_year}
               </p>
               <div className="flex items-center gap-3">
                 {slate.is_active && (

@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getSignupCutoff } from '@/lib/season'
+import { getPoolConfig } from '@/lib/pool'
+import { MODE_LABEL, STATUS_LABEL } from '@/lib/competition'
 import { formatCentralTime } from '@/lib/deadline'
 import Link from 'next/link'
 import AdvanceWeekButton from './AdvanceWeekButton'
@@ -13,12 +15,13 @@ export default async function AdminDashboard() {
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
 
-  const [{ data: slate }, { data: players }, { data: allWeeks }, signupAnchor, now] = await Promise.all([
+  const [{ data: slate }, { data: players }, { data: allWeeks }, signupAnchor, now, pool] = await Promise.all([
     supabase.from('slates').select('*').eq('is_active', true).single(),
     supabase.from('players').select('id, full_name, email, status, paid'),
     supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active').order('slate_date'),
     getSignupCutoff(),
     getEffectiveNow(),
+    getPoolConfig(supabase),
   ])
 
   // Surfaced so the signup gate is inspectable rather than inferred — this is
@@ -74,6 +77,32 @@ export default async function AdminDashboard() {
             Active: Slate {slate.slate_number} · Season {slate.season_year}
           </p>
         )}
+      </div>
+
+      {/* Competition format, up front. Everything a player sees — the
+          terminology, the seeds, the schedule grouping — follows from it, so
+          the dashboard should never leave an admin guessing which mode the
+          pool is in. Format and status are separate facts and are shown as
+          such. */}
+      <div className="rounded-xl border border-slate-700 bg-slate-800 p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div>
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">Competition Format</p>
+          <p className="mt-0.5 font-semibold text-white">{MODE_LABEL[pool.competition_mode]}</p>
+        </div>
+        <div>
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">Pool Status</p>
+          <p className="mt-0.5 font-semibold text-white">{STATUS_LABEL[pool.status]}</p>
+        </div>
+        <div>
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">Pool</p>
+          <p className="mt-0.5 font-semibold text-white">{pool.name} · {pool.season_year}</p>
+        </div>
+        <Link
+          href="/admin/config"
+          className="ml-auto rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+        >
+          Pool Configuration →
+        </Link>
       </div>
 
       <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
@@ -198,6 +227,11 @@ export default async function AdminDashboard() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
+        <AdminCard
+          href="/admin/config"
+          title="⚙️ Pool Configuration"
+          desc="Competition format, season, pick frequency, deadlines, reuse and tiebreak rules"
+        />
         <AdminCard
           href="/admin/schedule"
           title="📅 Enter Schedule"

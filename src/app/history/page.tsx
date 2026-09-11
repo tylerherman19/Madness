@@ -2,21 +2,31 @@ import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { getTeamAbbrs } from '@/lib/teams'
 import { getDb } from '@/lib/testMode'
+import { getPoolConfig } from '@/lib/pool'
+import {
+  buildPickPeriods,
+  capabilitiesFor,
+  formatPeriodDateShort,
+  type PickPeriod,
+} from '@/lib/competition'
 import type { Slate, Game } from '@/types'
 import Link from 'next/link'
 import LogoutButton from '../components/LogoutButton'
-import LogoMark from '../components/LogoMark'
+import Wordmark from '../components/Wordmark'
 
 export default async function HistoryPage() {
   const session = await getSession()
   if (!session) redirect('/login')
 
   const supabase = await getDb()
+  const pool = await getPoolConfig(supabase)
+  const mode = pool.competition_mode
+  const caps = capabilitiesFor(mode)
 
   const [picksRes, weeksRes, gamesRes, playersRes, allPicksRes] = await Promise.all([
     supabase.from('picks').select('team, auto_assigned, slate_id').eq('player_id', session.player_id),
-    supabase.from('slates').select('id, slate_number, season_year, locks_at'),
-    supabase.from('games').select('slate_id, home_team, away_team, result'),
+    supabase.from('slates').select('id, slate_number, slate_date, season_year, locks_at'),
+    supabase.from('games').select('slate_id, home_team, away_team, result, round_label'),
     supabase.from('players').select('id, status, email'),
     supabase.from('picks').select('player_id, slate_id'),
   ])
@@ -31,6 +41,38 @@ export default async function HistoryPage() {
 
   const weekMap: Record<string, Slate> = {}
   for (const w of weeksData) weekMap[w.id] = w as Slate
+
+  // Pick history is labelled by the thing the competition actually organises
+  // around: the calendar day in a regular-season pool, the bracket round in a
+  // tournament one. It is never a numbered "week" — college basketball has
+  // none, and a tournament's rounds are not interchangeable with days.
+  const periods = buildPickPeriods(
+    mode,
+    weeksData.map((w: { id: string; slate_number: number; slate_date: string; locks_at: string | null }) => ({
+      id: w.id,
+      slate_number: w.slate_number,
+      slate_date: String(w.slate_date),
+      locks_at: w.locks_at,
+    })),
+    gamesData.map((g: { slate_id: string; round_label: string | null }) => ({
+      slate_id: g.slate_id,
+      round_label: g.round_label,
+    }))
+  )
+  const periodById: Record<string, PickPeriod> = {}
+  for (const p of periods) periodById[p.id] = p
+
+  // "FIRST ROUND · DAY 1" in the tournament; "JAN 6" in the regular season.
+  const historyLabel = (slateId: string): string => {
+    const period = periodById[slateId]
+    if (!period) return '—'
+    if (caps.labelPicksByRound && period.roundLabel) {
+      return period.dayInRound && period.dayInRound > 1
+        ? `${period.roundLabel} · Day ${period.dayInRound}`
+        : period.roundLabel
+    }
+    return formatPeriodDateShort(period.date).toUpperCase()
+  }
 
   const gamesByWeek: Record<string, Game[]> = {}
   for (const g of gamesData) {
@@ -85,12 +127,7 @@ export default async function HistoryPage() {
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
       <header style={{ background: 'var(--dark)' }}>
         <div className="mx-auto max-w-2xl px-4 py-4 flex items-center justify-between">
-          <div>
-            <Link href="/" className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
-              <LogoMark size={64} />
-              MADNESS
-            </Link>
-          </div>
+          <Wordmark mode={mode} />
           <div className="flex items-center gap-4">
             <Link href="/pick" className="text-xs tracking-widest uppercase" style={{ color: '#888' }}>Make Pick</Link>
             <span className="text-xs tracking-widest uppercase" style={{ color: '#888' }}>{session.full_name}</span>
@@ -137,9 +174,9 @@ export default async function HistoryPage() {
                 className="flex items-center justify-between gap-4 py-3 border-b"
                 style={{ borderColor: 'var(--border)' }}
               >
-                <div style={{ minWidth: 56 }}>
-                  <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--muted)' }}>
-                    Wk {pick.slate?.slate_number ?? '?'}
+                <div style={{ minWidth: 92, maxWidth: 170 }}>
+                  <p className="text-xs font-bold tracking-widest uppercase leading-tight" style={{ color: 'var(--muted)' }}>
+                    {historyLabel(pick.slate_id)}
                   </p>
                 </div>
                 <div className="flex-1">
@@ -171,7 +208,7 @@ export default async function HistoryPage() {
         {/* Teams remaining */}
         <div className="mt-10">
           <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: 'var(--muted)' }}>
-            Teams Remaining ({teamsRemaining.length} of 32)
+            Teams Remaining ({teamsRemaining.length} of {allTeams.length})
           </p>
           {teamsRemaining.length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--muted)' }}>You&apos;ve used every team.</p>

@@ -21,6 +21,7 @@ export const AUDIT_EVENT_TYPES: Record<string, string> = {
   'slate-advanced': 'Slate advanced',
   'broadcast-sent': 'Broadcast sent',
   'pool-reset': 'Pool reset',
+  'pool-config-updated': 'Pool configuration updated',
   'welcome-email-failed': 'Welcome email failed',
   'player-signed-up': 'Player signed up',
 }

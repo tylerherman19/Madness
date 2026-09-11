@@ -1,7 +1,47 @@
 # Madness
 
-Survivor pool app. Copied from the NFL Survivor codebase (`tylerherman19/NFL-Survivor`,
-`main`) and pointed at its own Supabase project — the two deployments share no data.
+A college basketball survivor platform. It runs two competitions off one engine
+and one UI: a **regular-season** pool played over NCAA game days, and a **March
+Madness** pool played over tournament rounds. The brand is MADNESS year-round.
+
+Copied from the NFL Survivor codebase (`tylerherman19/NFL-Survivor`, `main`) and
+pointed at its own Supabase project — the two deployments share no data.
+
+## Competition modes
+
+The survivor mechanic is identical in both modes: one pick per **pick period**,
+a team can't be reused, a win advances, a loss eliminates, picks lock at the
+period's deadline, last entry standing wins. What changes is what the product
+shows and what it calls things.
+
+| | Regular Season | March Madness |
+| --- | --- | --- |
+| Pick period | a calendar day — "Saturday, January 24" | a round day — "First Round · Thursday" |
+| Supporting line | College Basketball Survivor | Tournament Survivor |
+| Seeds / regions / rounds | hidden | shown |
+| Schedule grouped by | date | round |
+| Pick history labelled by | date | round |
+| Team context | AP Top 25 position | tournament seed |
+
+The mode is an administrator setting stored on the pool, configured at
+**Admin → Pool Configuration**. It is never inferred from the calendar month,
+and switching it never deletes players, picks or history — it only reorganises
+how the same survivor record is displayed.
+
+Three modules carry the whole system:
+
+- `src/lib/competition.ts` — pure, shared by server and client. Capabilities
+  (`showSeeds`, `groupScheduleByRound`, …), terminology, the tournament round
+  vocabulary, and `buildPickPeriods()`, which turns slates plus games into the
+  labelled pick periods every page renders.
+- `src/lib/pool.ts` — server-side read/write of the active pool's config.
+  Falls back to regular-season defaults when no pool row exists, so the app
+  still renders before `017` is applied.
+- `supabase/migrations/017_pool_configuration.sql` — the `pools` table.
+
+Components consume the capability/copy objects rather than testing the mode
+inline. Adding a mode-dependent behaviour means adding a capability, not
+another conditional.
 
 ## Differences from NFL Survivor
 
@@ -34,7 +74,7 @@ npm run dev
 
 ## Database
 
-`supabase/migrations/` — apply `001` through `013` in order against a blank project.
+`supabase/migrations/` — apply `001` through `017` in order against a blank project.
 They create the `public` schema plus a mirrored `sandbox` schema used by Test Mode.
 
 ## Scripts

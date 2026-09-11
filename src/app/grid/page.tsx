@@ -1,8 +1,11 @@
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline, isPickRevealed } from '@/lib/deadline'
+import { getPoolConfig } from '@/lib/pool'
+import { buildPickPeriods, capabilitiesFor, type PickPeriod } from '@/lib/competition'
+import { getTeamAbbrs } from '@/lib/teams'
 import type { Game } from '@/types'
 import Link from 'next/link'
-import LogoMark from '@/app/components/LogoMark'
+import Wordmark from '@/app/components/Wordmark'
 
 // Cache the render for 60s (like the homepage) so 1k concurrent viewers are
 // served from the CDN instead of each triggering the full query set. Current-slate
@@ -12,27 +15,50 @@ export const revalidate = 60
 export default async function GridPage() {
   // Guard the fetch so a DB outage (or a build without env) degrades to the
   // empty state instead of failing the render / prerender.
-  let slates: { id: string; slate_number: number; season_year: number; locks_at: string | null }[] = []
+  let slates: { id: string; slate_number: number; slate_date: string; season_year: number; locks_at: string | null }[] = []
   let players: { id: string; full_name: string; status: string; elimination_slate: number | null }[] = []
   let allPicks: { player_id: string; slate_id: string; team: string }[] = []
-  let allGames: { slate_id: string; home_team: string; away_team: string; result: string; tip_time: string }[] = []
+  let allGames: { slate_id: string; home_team: string; away_team: string; result: string; tip_time: string; round_label: string | null }[] = []
+  let teamUniverse = 0
+  let pool = await getPoolConfig()
   try {
     const supabase = await getDb()
-    const [weeksRes, playersRes, picksRes, gamesRes] = await Promise.all([
-      supabase.from('slates').select('id, slate_number, season_year, locks_at').order('slate_number'),
+    const [weeksRes, playersRes, picksRes, gamesRes, teamAbbrs] = await Promise.all([
+      supabase.from('slates').select('id, slate_number, slate_date, season_year, locks_at').order('slate_number'),
       supabase.from('players').select('id, full_name, status, elimination_slate').not('email', 'like', '%@nflsurvivor.internal').order('full_name'),
       supabase.from('picks').select('player_id, slate_id, team'),
       // tip_time is what every deadline/reveal calculation below keys
       // off — leaving it out of this select silently pins every pick as hidden.
-      supabase.from('games').select('slate_id, home_team, away_team, result, tip_time'),
+      supabase.from('games').select('slate_id, home_team, away_team, result, tip_time, round_label'),
+      getTeamAbbrs(supabase),
     ])
     slates = weeksRes.data ?? []
     players = playersRes.data ?? []
     allPicks = picksRes.data ?? []
     allGames = gamesRes.data ?? []
+    teamUniverse = teamAbbrs.length
+    pool = await getPoolConfig(supabase)
   } catch {
     // fall through to empty state
   }
+
+  const mode = pool.competition_mode
+  const caps = capabilitiesFor(mode)
+
+  // Columns are named the way the active competition names its pick periods —
+  // a date in the regular season, a bracket round in the tournament.
+  const periods = buildPickPeriods(
+    mode,
+    slates.map((w) => ({
+      id: w.id,
+      slate_number: w.slate_number,
+      slate_date: String(w.slate_date),
+      locks_at: w.locks_at,
+    })),
+    allGames.map((g) => ({ slate_id: g.slate_id, round_label: g.round_label }))
+  )
+  const periodById: Record<string, PickPeriod> = {}
+  for (const p of periods) periodById[p.id] = p
 
   // Build game lookup: slateId -> Game[]
   const gamesByWeek: Record<string, Game[]> = {}
@@ -128,20 +154,21 @@ export default async function GridPage() {
     <div style={{ background: 'var(--cream)', minHeight: '100vh' }}>
       <header style={{ background: 'var(--dark)' }}>
         <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
-            <LogoMark size={64} />
-            MADNESS
-          </Link>
+          <Wordmark mode={mode} />
           <Link href="/" className="text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors">Standings</Link>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-8">
         <h1 className="font-display text-6xl leading-none" style={{ color: 'var(--dark)' }}>PICK GRID</h1>
-        <p className="mt-2 mb-6 eyebrow">Full-season pick history · green won · red lost · ? hidden until it locks</p>
+        <p className="mt-2 mb-6 eyebrow">
+          {caps.showTournamentRounds ? 'Every round' : 'Every game day'} · green won · red lost · ? hidden until it locks
+        </p>
 
         {slates.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>No slates scheduled yet.</p>
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            No {caps.showTournamentRounds ? 'tournament rounds' : 'game days'} scheduled yet.
+          </p>
         ) : (
           <div className="card overflow-x-auto p-1">
             <table className="text-sm" style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -165,7 +192,7 @@ export default async function GridPage() {
                       className="py-2 px-1 text-center"
                       style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', minWidth: 44 }}
                     >
-                      <span className="block">Wk{w.slate_number}</span>
+                      <span className="block whitespace-nowrap">{periodById[w.id]?.shortLabel ?? `#${w.slate_number}`}</span>
                       {topPickByWeek[w.id] && (
                         <span className="block font-mono" style={{ fontSize: 9, fontWeight: 400, color: 'var(--muted)' }}>
                           {topPickByWeek[w.id]!.team} ×{topPickByWeek[w.id]!.count}
@@ -191,7 +218,7 @@ export default async function GridPage() {
                       </div>
                     </td>
                     <td className="py-2 px-2 text-center font-mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
-                      {32 - player.weeksSurvived}
+                      {teamUniverse > 0 ? teamUniverse - player.weeksSurvived : '—'}
                     </td>
                     {slates.map((w) => {
                       const team = pickMap[player.id]?.[w.id]
