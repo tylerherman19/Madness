@@ -271,14 +271,14 @@ function Shell({
       <header className="site-header">
         <div className="content-width site-header-inner max-w-4xl">
           <div className="min-w-0">
-            <Wordmark mode={mode} size={42} />
+            <Wordmark mode={mode} size={42} tone="dark" />
             {periodLabel && (
-              <p className="mt-1 truncate text-[10px] font-semibold text-white/50">{periodLabel}</p>
+              <p className="mt-1 truncate text-[10px] font-semibold" style={{ color: 'var(--muted)' }}>{periodLabel}</p>
             )}
           </div>
           <div className="flex items-center gap-4 shrink-0">
-            <Link href="/history" className="text-sm font-bold text-white/70 hover:text-white">My picks</Link>
-            <span className="hidden sm:inline text-sm font-semibold text-white/50">{session.full_name}</span>
+            <Link href="/history" className="nav-link">My picks</Link>
+            <span className="hidden sm:inline text-sm font-semibold" style={{ color: 'var(--muted)' }}>{session.full_name}</span>
             <LogoutButton />
           </div>
         </div>

@@ -130,10 +130,10 @@ export default async function HistoryPage() {
     <div className="site-shell min-h-screen flex flex-col">
       <header className="site-header">
         <div className="content-width site-header-inner max-w-4xl">
-          <Wordmark mode={mode} size={42} />
+          <Wordmark mode={mode} size={42} tone="dark" />
           <div className="flex items-center gap-4">
             <Link href="/pick" className="btn-primary px-4">Make a pick</Link>
-            <span className="hidden sm:inline text-sm font-semibold text-white/50">{session.full_name}</span>
+            <span className="hidden sm:inline text-sm font-semibold" style={{ color: 'var(--muted)' }}>{session.full_name}</span>
             <LogoutButton />
           </div>
         </div>
