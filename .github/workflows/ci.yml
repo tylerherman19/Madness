@@ -22,6 +22,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Test
+        run: npm test
+
       # Lint is currently informational: some pre-existing frontend files still
       # trip eslint. Once those are cleaned up, drop continue-on-error to make
       # lint a required gate.
