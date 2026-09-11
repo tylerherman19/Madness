@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import LogoMark from './LogoMark'
+import Wordmark from './Wordmark'
+import { type CompetitionMode } from '@/lib/competition'
 
 const BASE_NAV_LINKS = [
   { label: 'Standings', href: '/#standings' },
@@ -25,19 +26,22 @@ function RedButton({ href, children }: { href: string; children: React.ReactNode
   )
 }
 
-export default function SiteHeader({ signupsClosed = false }: { signupsClosed?: boolean }) {
+export default function SiteHeader({
+  signupsClosed = false,
+  mode = 'regular-season',
+}: {
+  signupsClosed?: boolean
+  mode?: CompetitionMode
+}) {
   const [menuOpen, setMenuOpen] = useState(false)
-  // Sign Up only makes sense until Slate 1's picks lock at Sunday 12 PM CT —
-  // signups close for good then (enforced server-side too, this just matches).
+  // Sign Up only makes sense until the first pick period locks — signups
+  // close for good then (enforced server-side too, this just matches).
   const showSignUp = !signupsClosed
 
   return (
     <header style={{ background: 'var(--dark)' }}>
       <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-        <span className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
-          <LogoMark size={64} />
-          MADNESS
-        </span>
+        <Wordmark mode={mode} />
 
         {/* Desktop nav */}
         <nav className="hidden sm:flex items-center gap-6">

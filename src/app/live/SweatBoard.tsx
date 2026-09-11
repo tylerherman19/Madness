@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { teamColor } from '@/lib/teamColors'
+import { capabilitiesFor } from '@/lib/competition'
 import type { SweatResponse, SweatGame } from '@/app/api/sweat/route'
 
 function scoreColor(myScore: number, theirScore: number, state: string): string {
@@ -21,19 +22,33 @@ function kickoffLabel(iso: string): string {
   })
 }
 
-function TeamRow({ game, side, totalPlayers }: { game: SweatGame; side: 'home' | 'away'; totalPlayers: number }) {
+function TeamRow({
+  game,
+  side,
+  fieldSize,
+  tournament,
+}: {
+  game: SweatGame
+  side: 'home' | 'away'
+  fieldSize: number
+  tournament: boolean
+}) {
   const team = side === 'home' ? game.homeTeam : game.awayTeam
+  const seed = side === 'home' ? game.homeSeed : game.awaySeed
   const my = side === 'home' ? game.homeScore : game.awayScore
   const their = side === 'home' ? game.awayScore : game.homeScore
   const pickers = side === 'home' ? game.homePlayers : game.awayPlayers
   const isPre = game.state === 'pre'
   const color = scoreColor(my, their, game.state)
-  const pct = totalPlayers > 0 ? Math.round((pickers.length / totalPlayers) * 100) : 0
+  const pct = fieldSize > 0 ? Math.round((pickers.length / fieldSize) * 100) : 0
 
   return (
     <div className="py-2">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
+          {seed != null && (
+            <span className="tnum shrink-0" style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>{seed}</span>
+          )}
           <span className="team-chip-swatch" style={{ background: teamColor(team).primary }}>{team.slice(0, 3)}</span>
           <span className="font-bold" style={{ color }}>{team}</span>
         </div>
@@ -43,41 +58,91 @@ function TeamRow({ game, side, totalPlayers }: { game: SweatGame; side: 'home' |
       </div>
       {pickers.length > 0 && (
         <p className="mt-0.5 text-xs font-semibold" style={{ color: 'var(--muted)' }}>
-          {pickers.length} {pickers.length === 1 ? 'pick' : 'picks'} · {pct}% of pool
+          {pickers.length} {tournament ? (pickers.length === 1 ? 'player riding' : 'players riding') : pickers.length === 1 ? 'pick' : 'picks'} · {pct}% of the {tournament ? 'field' : 'pool'}
         </p>
       )}
     </div>
   )
 }
 
-function GameCard({ game, totalPlayers }: { game: SweatGame; totalPlayers: number }) {
+function GameCard({
+  game,
+  fieldSize,
+  tournament,
+}: {
+  game: SweatGame
+  fieldSize: number
+  tournament: boolean
+}) {
   const isLive = game.state === 'in'
   const sweatCount = game.homePlayers.length + game.awayPlayers.length
+  // Whichever side is currently behind is the side about to lose entries.
+  const atRisk =
+    game.state === 'pre'
+      ? 0
+      : game.homeScore === game.awayScore
+      ? sweatCount
+      : game.homeScore > game.awayScore
+      ? game.awayPlayers.length
+      : game.homePlayers.length
+  const riskPct = fieldSize > 0 ? Math.round((atRisk / fieldSize) * 100) : 0
+
+  // Bracket context is a strip above the matchup, not a badge beside it —
+  // "EAST REGION · SECOND ROUND" reads like a broadcast lower third.
+  const context = [game.region ? `${game.region} Region` : null, game.round].filter(Boolean).join(' · ')
 
   return (
     <div
-      className="card px-4 py-3"
+      className="card overflow-hidden"
       style={{
         borderColor: isLive ? 'var(--red)' : 'var(--border)',
         boxShadow: isLive ? '0 0 0 2px var(--red)' : undefined,
         opacity: game.state === 'post' && sweatCount === 0 ? 0.6 : 1,
+        padding: 0,
       }}
     >
-      <div className="flex items-center justify-between mb-1">
-        {isLive ? (
-          <span className="flex items-center gap-1.5 eyebrow" style={{ color: 'var(--red)' }}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--red)' }} />
-            {game.statusText}
-          </span>
-        ) : (
-          <span className="eyebrow">
-            {game.state === 'pre' ? kickoffLabel(game.kickoff) : game.statusText}
-          </span>
+      {context && (
+        <div className="px-4 py-1 eyebrow" style={{ background: 'var(--dark)', color: 'var(--cream)', fontSize: 10 }}>
+          {context}
+        </div>
+      )}
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between mb-1">
+          {isLive ? (
+            <span className="flex items-center gap-1.5 eyebrow" style={{ color: 'var(--red)' }}>
+              <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--red)' }} />
+              {game.statusText}
+            </span>
+          ) : (
+            <span className="eyebrow">
+              {game.state === 'pre' ? kickoffLabel(game.kickoff) : game.statusText}
+            </span>
+          )}
+        </div>
+        <TeamRow game={game} side="away" fieldSize={fieldSize} tournament={tournament} />
+        <div style={{ borderTop: '1px solid var(--border)' }} />
+        <TeamRow game={game} side="home" fieldSize={fieldSize} tournament={tournament} />
+
+        {/* Survivor impact — the reason anyone watches a game they have no
+            stake in. Only shown once the picks are on the board and the game
+            is actually deciding something. */}
+        {sweatCount > 0 && game.state !== 'pre' && (
+          <div className="mt-3 pt-2.5" style={{ borderTop: '1px solid var(--border)' }}>
+            <p className="eyebrow" style={{ color: 'var(--red)' }}>Survivor Impact</p>
+            <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+              {atRisk > 0 ? (
+                <>
+                  <span className="font-bold" style={{ color: 'var(--red)' }}>{riskPct}%</span> of the{' '}
+                  {tournament ? 'remaining field' : 'remaining pool'} at risk
+                  {tournament ? ` · potential eliminations: ${atRisk}` : ''}
+                </>
+              ) : (
+                <>Everyone riding this game is currently ahead.</>
+              )}
+            </p>
+          </div>
         )}
       </div>
-      <TeamRow game={game} side="away" totalPlayers={totalPlayers} />
-      <div style={{ borderTop: '1px solid var(--border)' }} />
-      <TeamRow game={game} side="home" totalPlayers={totalPlayers} />
     </div>
   )
 }
@@ -155,6 +220,14 @@ export default function SweatBoard() {
     )
   }
 
+  // The board is the same instrument in both competitions. The tournament
+  // just gives it more to say — rounds, regions, seeds, and a field that
+  // shrinks by the hour.
+  const tournament = capabilitiesFor(data.mode).showTournamentRounds
+  // "% of the remaining field" means the entries still alive, not everyone
+  // who is rendered on the board (which includes today's casualties).
+  const fieldSize = data.aliveCount > 0 ? data.aliveCount : data.players.length
+
   const s = data.summary
   const inDanger = s.losing + s.noPick
   const games = [...data.games].sort(
@@ -171,7 +244,7 @@ export default function SweatBoard() {
         <div>
           <h1 className="font-display text-7xl leading-none" style={{ color: 'var(--dark)' }}>SWEAT BOARD</h1>
           <p className="mt-1 eyebrow">
-            Slate {data.slateNumber} · live picks &amp; scores
+            {data.periodLabel ?? `Slate ${data.slateNumber}`} · {fieldSize} {fieldSize === 1 ? 'survivor' : 'survivors'}
             {data.hasLiveGames && (
               <span className="ml-2 font-bold" style={{ color: 'var(--red)' }}>● LIVE</span>
             )}
@@ -207,14 +280,14 @@ export default function SweatBoard() {
       {/* Games with pickers */}
       <div className="mt-8 grid sm:grid-cols-2 gap-3">
         {games.map((g) => (
-          <GameCard key={g.id} game={g} totalPlayers={data.players.length} />
+          <GameCard key={g.id} game={g} fieldSize={fieldSize} tournament={tournament} />
         ))}
       </div>
 
       {/* Reveal note */}
       {!data.allRevealed && s.hidden > 0 && (
         <p className="mt-4 text-xs" style={{ color: 'var(--muted)' }}>
-          {s.hidden} pick{s.hidden !== 1 ? 's are' : ' is'} in but hidden until kickoff or the Sunday 12 PM CT reveal.
+          {s.hidden} pick{s.hidden !== 1 ? 's are' : ' is'} in but hidden until the first tip of the day.
         </p>
       )}
 
@@ -230,7 +303,7 @@ export default function SweatBoard() {
           title="Missed the deadline"
           count={byStatus(['no_pick']).length}
           color="var(--red)"
-          note="Will be auto-assigned the SNF away team, then MNF. Miss both and it's elimination."
+          note="Will be auto-assigned a team from the day's last game. If every team is spent, it's elimination."
         />
       </div>
     </div>

@@ -168,10 +168,30 @@ export function LeverageTable({ data, limit = 12 }: { data: LeverageModule; limi
 }
 
 /* ------------------------------------------------------------------ */
+/* Pick-period labels                                                  */
+/* ------------------------------------------------------------------ */
+
+// Slate number -> the label the active competition uses for that pick period:
+// "Jan 24" in a regular-season pool, "S16" in a tournament one. The editorial
+// figures key off slate numbers internally but must never *print* one, and
+// they must never call a college basketball playing day a "week".
+export type PeriodLabels = Record<number, string>
+
+function labelOf(labels: PeriodLabels | undefined, n: number): string {
+  return labels?.[n] ?? `#${n}`
+}
+
+/* ------------------------------------------------------------------ */
 /* Trajectory — the field over time, annotated                         */
 /* ------------------------------------------------------------------ */
 
-export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
+export function TrajectoryFigure({
+  data,
+  periodLabels,
+}: {
+  data: TrajectoryModule
+  periodLabels?: PeriodLabels
+}) {
   const { points, start, aliveCount, bloodiest, halvingWeek, projectedEndWeek } = data
   const series = [{ slate_number: 0, remaining: start }, ...points.map((p) => ({ slate_number: p.slate_number, remaining: p.remaining }))]
   const lastWeek = series[series.length - 1].slate_number
@@ -255,7 +275,7 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
                 color: 'var(--red)',
               }}
             >
-              Wk {bloodiest.slate_number} · −{bloodiest.eliminated}
+              {labelOf(periodLabels, bloodiest.slate_number)} · −{bloodiest.eliminated}
             </span>
           )}
 
@@ -271,7 +291,7 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
               className="absolute eyebrow whitespace-nowrap"
               style={{ left: `${px(projectedEndWeek)}%`, top: `${py(1)}%`, transform: 'translate(-100%, -140%)', fontSize: 9 }}
             >
-              ≈ Wk {projectedEndWeek}
+              ≈ {labelOf(periodLabels, projectedEndWeek)}
             </span>
           )}
         </div>
@@ -299,7 +319,7 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
                 }}
               />
               <span className="hint-body">
-                Wk {p.slate_number}: {p.eliminated} out{p.topTeam && p.topTeam !== 'no pick' ? ` · mostly ${p.topTeam}` : ''}
+                {labelOf(periodLabels, p.slate_number)}: {p.eliminated} out{p.topTeam && p.topTeam !== 'no pick' ? ` · mostly ${p.topTeam}` : ''}
               </span>
             </div>
           </div>
@@ -313,13 +333,13 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
             className="absolute eyebrow tnum"
             style={{ left: `${px(w)}%`, transform: 'translateX(-50%)', fontSize: 9 }}
           >
-            {w === 0 ? 'Start' : w}
+            {w === 0 ? 'Start' : labelOf(periodLabels, w)}
           </span>
         ))}
       </div>
       {halvingWeek && (
         <p className="mt-4 text-xs" style={{ color: 'var(--muted)' }}>
-          Dashed line marks half the starting field, crossed in Slate {halvingWeek}.
+          Dashed line marks half the starting field, crossed on {labelOf(periodLabels, halvingWeek)}.
         </p>
       )}
     </div>
@@ -330,7 +350,13 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
 /* Chalk — has following the crowd worked?                             */
 /* ------------------------------------------------------------------ */
 
-export function ChalkFigure({ data }: { data: ChalkModule }) {
+export function ChalkFigure({
+  data,
+  periodLabels,
+}: {
+  data: ChalkModule
+  periodLabels?: PeriodLabels
+}) {
   const { slates, contrarians } = data
   const top = contrarians.filter((c) => c.offChalk > 0).slice(0, 4)
 
@@ -344,7 +370,7 @@ export function ChalkFigure({ data }: { data: ChalkModule }) {
             return (
               <div key={w.slate_number}>
                 <div className="flex items-baseline justify-between">
-                  <span className="eyebrow" style={{ fontSize: 9 }}>Wk {w.slate_number}</span>
+                  <span className="eyebrow" style={{ fontSize: 9 }}>{labelOf(periodLabels, w.slate_number)}</span>
                   <span
                     className="text-[10px] font-bold uppercase tracking-wider"
                     style={{ color: lost ? 'var(--red)' : w.outcome === 'won' ? 'var(--green)' : 'var(--muted)' }}

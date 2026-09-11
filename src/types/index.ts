@@ -110,6 +110,7 @@ export interface StandingRow {
   // True once the slate has locked and the pick can be shown publicly.
   pick_revealed: boolean
   elimination_reason: string | null
+  elimination_slate?: number | null
 }
 
 export interface TeamStat {
@@ -127,30 +128,11 @@ export interface SessionPayload {
   test_mode?: boolean // set when the session was created in the testing sandbox
 }
 
-// Rounds, in bracket order. Sourced from ESPN's note headlines; used to apply
-// per-round pick quotas (the Elite 8 allows two picks across the round).
-export const TOURNAMENT_ROUNDS = [
-  '1st Round',
-  '2nd Round',
-  'Sweet 16',
-  'Elite 8',
-  'Final Four',
-  'National Championship',
-] as const
-
-export type TournamentRound = (typeof TOURNAMENT_ROUNDS)[number]
-
-// How many picks a player spends in each round. Outside the tournament the
-// rule is one pick per slate; inside it, the quota is per round and can be
-// spent across that round's days however the player likes.
-//
-// Only Elite 8 currently differs from one-per-day, and it happens to work out
-// to the same count — the difference is the flexibility, not the number.
-export const ROUND_PICK_QUOTA: Record<TournamentRound, number> = {
-  '1st Round': 2,
-  '2nd Round': 2,
-  'Sweet 16': 2,
-  'Elite 8': 2,
-  'Final Four': 1,
-  'National Championship': 1,
-}
+// Tournament rounds and their pick quotas live in lib/competition.ts, next to
+// the rest of the competition-mode system. Re-exported here so the existing
+// `@/types` import path keeps working.
+export {
+  ROUND_SEQUENCE as TOURNAMENT_ROUNDS,
+  ROUND_PICK_QUOTA,
+  type TournamentRound,
+} from '@/lib/competition'

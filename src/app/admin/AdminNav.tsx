@@ -6,6 +6,7 @@ import AdminLogoutButton from './AdminLogoutButton'
 
 const LINKS: [string, string][] = [
   ['/admin', 'Dashboard'],
+  ['/admin/config', 'Pool Config'],
   ['/admin/schedule', 'Schedule'],
   ['/admin/results', 'Results'],
   ['/admin/players', 'Players'],

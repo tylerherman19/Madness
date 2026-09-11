@@ -1,43 +1,81 @@
-import { redirect, unstable_rethrow } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
+import { getPoolConfig } from '@/lib/pool'
+import {
+  buildPickPeriods,
+  capabilitiesFor,
+  copyFor,
+  formatPeriodDateShort,
+  seedToShow,
+  type CompetitionMode,
+} from '@/lib/competition'
 import type { Game } from '@/types'
 import PickForm, { type GameRow } from './PickForm'
 import LogoutButton from '../components/LogoutButton'
+import Wordmark from '../components/Wordmark'
 import { slateDeadline } from '@/lib/deadline'
 import { fetchDayScoreboard } from '@/lib/espn'
 import Link from 'next/link'
-import LogoMark from '@/app/components/LogoMark'
 
-export default async function PickPage() {
-  const session = await getSession()
-  if (!session) redirect('/login')
+// Everything the pick page needs, loaded in one place. Kept separate from the
+// render so no JSX is constructed inside the try/catch — React renders
+// components lazily, so a throw during render would escape the catch anyway.
+type PickPageData =
+  | { kind: 'no-session' }
+  | { kind: 'no-slate' }
+  | { kind: 'failed' }
+  | {
+      kind: 'ok'
+      playerStatus: string
+      periodLabel: string
+      usedTeams: string[]
+      gameRows: GameRow[]
+      slateId: string
+      lockedPick: { team: string; autoAssigned: boolean } | null
+      currentPick: { team: string; deadline: string | null } | null
+    }
 
+async function loadPickData(playerId: string, mode: CompetitionMode): Promise<PickPageData> {
+  const caps = capabilitiesFor(mode)
   try {
     const supabase = await getDb()
     const { data: slate } = await supabase.from('slates').select('*').eq('is_active', true).single()
+    if (!slate) return { kind: 'no-slate' }
 
-    if (!slate) return (
-      <Shell session={session}>
-        <div className="text-center py-20">
-          <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>NO ACTIVE WEEK</p>
-          <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>The pool hasn&apos;t started yet — check back soon.</p>
-        </div>
-      </Shell>
-    )
+    const { data: player } = await supabase
+      .from('players')
+      .select('id, full_name, status, paid')
+      .eq('id', playerId)
+      .single()
+    if (!player) return { kind: 'no-session' }
 
-    const { data: player } = await supabase.from('players').select('id, full_name, status, paid').eq('id', session.player_id).single()
-    if (!player) redirect('/login')
+    const [{ data: pastPicks }, { data: allSlates }] = await Promise.all([
+      supabase.from('picks').select('team, slate_id').eq('player_id', playerId),
+      supabase
+        .from('slates')
+        .select('id, slate_number, slate_date, locks_at')
+        .eq('season_year', slate.season_year),
+    ])
 
-    const { data: pastPicks } = await supabase.from('picks').select('team, slate_id').eq('player_id', session.player_id)
-    // Teams burned in previous slates — this slate's pick isn't "used" while it can still be changed
-    const usedTeams = (pastPicks || [])
-      .filter((p: { slate_id: string }) => p.slate_id !== slate.id)
-      .map((p: { team: string }) => p.team)
+    // Teams burned on previous pick periods — this period's pick isn't "used"
+    // while it can still be changed. The date a team was spent travels with
+    // it so the board can say *when*: "USED · JAN 18" is the difference
+    // between a dead row and a useful one.
+    const slateDateById: Record<string, string> = {}
+    for (const s of allSlates ?? []) slateDateById[s.id] = String(s.slate_date)
 
-    const { data: currentPick } = await supabase.from('picks').select('*').eq('player_id', session.player_id).eq('slate_id', slate.id).single()
+    const usedOn: Record<string, string> = {}
+    for (const p of pastPicks ?? []) {
+      if (p.slate_id === slate.id) continue
+      usedOn[p.team] = slateDateById[p.slate_id] ?? ''
+    }
+    const usedTeams = Object.keys(usedOn)
 
-    const { data: games } = await supabase.from('games').select('*').eq('slate_id', slate.id).order('tip_time')
+    const [{ data: currentPick }, { data: games }] = await Promise.all([
+      supabase.from('picks').select('*').eq('player_id', playerId).eq('slate_id', slate.id).maybeSingle(),
+      supabase.from('games').select('*').eq('slate_id', slate.id).order('tip_time'),
+    ])
     const gamesData: Game[] = games || []
 
     const now = await getEffectiveNow()
@@ -45,26 +83,13 @@ export default async function PickPage() {
     // Every pick on the slate locks together, at the day's first tip.
     const lockTime = slateDeadline(slate, gamesData)
     const locked = lockTime ? now >= lockTime : false
-    const pickLocked = currentPick ? locked : false
-
-    const gameRows: GameRow[] = gamesData.map((g) => ({
-      gameId: g.id,
-      kickoff: g.tip_time,
-      away: { team: g.away_team, used: usedTeams.includes(g.away_team) },
-      home: { team: g.home_team, used: usedTeams.includes(g.home_team) },
-      deadline: (lockTime ?? new Date(g.tip_time)).toISOString(),
-      locked,
-    }))
 
     // Records come off the slate's own scoreboard payload rather than a
     // league-wide teams call: ESPN's /teams endpoint ignores the conference
     // filter, and only the teams playing today matter on this page.
     const teamRecords: Record<string, string> = {}
     try {
-      const { events } = await fetchDayScoreboard(
-        String(slate.slate_date).replace(/-/g, ''),
-        3600
-      )
+      const { events } = await fetchDayScoreboard(String(slate.slate_date).replace(/-/g, ''), 3600)
       for (const event of events) {
         for (const c of event.competitions?.[0]?.competitors ?? []) {
           const abbr = c.team?.abbreviation
@@ -74,74 +99,180 @@ export default async function PickPage() {
       }
     } catch { /* non-critical */ }
 
-    return (
-      <Shell session={session} slateNumber={slate.slate_number}>
-        {player.status === 'eliminated' ? (
-          <div className="border p-8 text-center" style={{ borderColor: 'var(--border)' }}>
-            <p className="font-display text-4xl" style={{ color: 'var(--red)' }}>ELIMINATED</p>
-            <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>
-              You can still follow along on the{' '}
-              <Link href="/" className="underline" style={{ color: 'var(--dark)' }}>standings page</Link>.
-            </p>
-          </div>
-        ) : currentPick && pickLocked ? (
-          <div className="space-y-6">
-            <div className="border p-8 text-center" style={{ borderColor: 'var(--green)', borderWidth: 2 }}>
-              <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: 'var(--green)' }}>
-                ✓ Slate {slate.slate_number} Pick Locked In
-              </p>
-              <p className="font-display text-5xl" style={{ color: 'var(--dark)' }}>
-                {currentPick.team}
-              </p>
-              <p className="font-mono text-sm mt-1" style={{ color: 'var(--muted)' }}>{currentPick.team}</p>
-              {currentPick.auto_assigned && (
-                <p className="text-xs mt-3" style={{ color: 'var(--red)' }}>Auto-assigned (missed deadline)</p>
-              )}
-            </div>
-            <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
-              Teams used: {[...usedTeams, currentPick.team].join(', ')}
-            </p>
-          </div>
-        ) : (
-          <PickForm
-            slateId={slate.id}
-            slateNumber={slate.slate_number}
-            playerId={session.player_id}
-            gameRows={gameRows}
-            usedTeams={usedTeams}
-            teamRecords={teamRecords}
-            currentPick={currentPick ? { team: currentPick.team, deadline: lockTime?.toISOString() || null } : null}
-          />
-        )}
-      </Shell>
+    // `curatedRank` lands in home_seed/away_seed for every game. Inside the
+    // bracket it is a tournament seed; outside it, the AP poll position. Both
+    // are useful, and they are never presented as the same thing.
+    const pollRank = (team: string, g: Game): number | null => {
+      if (!caps.showPollRank || g.round_label) return null
+      const r = g.home_team === team ? g.home_seed : g.away_seed
+      return r != null && r >= 1 && r <= 25 ? r : null
+    }
+
+    const sideOf = (team: string, g: Game, seed: number | null) => ({
+      team,
+      used: usedTeams.includes(team),
+      usedOn: usedOn[team] ? formatPeriodDateShort(usedOn[team]).toUpperCase() : null,
+      seed: seedToShow(mode, seed, g.round_label),
+      rank: pollRank(team, g),
+      record: teamRecords[team] ?? null,
+    })
+
+    const gameRows: GameRow[] = gamesData.map((g) => ({
+      gameId: g.id,
+      kickoff: g.tip_time,
+      timeTbd: g.time_tbd,
+      round: caps.showTournamentRounds ? g.round_label : null,
+      region: caps.showRegions ? g.region : null,
+      venue: g.venue,
+      tv: g.tv,
+      away: sideOf(g.away_team, g, g.away_seed),
+      home: sideOf(g.home_team, g, g.home_seed),
+      deadline: (lockTime ?? new Date(g.tip_time)).toISOString(),
+      locked,
+    }))
+
+    // The pick period this page is asking about, named the way the active
+    // competition names it.
+    const periods = buildPickPeriods(
+      mode,
+      (allSlates ?? []).map((s) => ({
+        id: s.id,
+        slate_number: s.slate_number,
+        slate_date: String(s.slate_date),
+        locks_at: s.locks_at,
+      })),
+      gamesData.map((g) => ({ slate_id: g.slate_id, round_label: g.round_label }))
     )
+    const period = periods.find((p) => p.id === slate.id) ?? null
+
+    return {
+      kind: 'ok',
+      playerStatus: player.status,
+      periodLabel: period?.label ?? `Slate ${slate.slate_number}`,
+      usedTeams,
+      gameRows,
+      slateId: slate.id,
+      lockedPick:
+        currentPick && locked
+          ? { team: currentPick.team, autoAssigned: !!currentPick.auto_assigned }
+          : null,
+      currentPick: currentPick
+        ? { team: currentPick.team, deadline: lockTime?.toISOString() ?? null }
+        : null,
+    }
   } catch (err) {
-    // redirect() (line 30) throws a Next-internal error — rethrow it so a
-    // stale session actually lands on /login instead of the failure message.
-    unstable_rethrow(err)
+    console.error('pick page load failed', err)
+    return { kind: 'failed' }
+  }
+}
+
+export default async function PickPage() {
+  const session = await getSession()
+  if (!session) redirect('/login')
+
+  const pool = await getPoolConfig()
+  const mode: CompetitionMode = pool.competition_mode
+  const caps = capabilitiesFor(mode)
+  const copy = copyFor(mode)
+
+  const data = await loadPickData(session.player_id, mode)
+  if (data.kind === 'no-session') redirect('/login')
+
+  if (data.kind === 'failed') {
     return (
-      <Shell session={session}>
+      <Shell session={session} mode={mode}>
         <p className="text-center text-sm" style={{ color: 'var(--muted)' }}>Failed to load. Try refreshing.</p>
       </Shell>
     )
   }
+
+  if (data.kind === 'no-slate') {
+    return (
+      <Shell session={session} mode={mode}>
+        <div className="text-center py-20">
+          <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>
+            {caps.showTournamentRounds ? 'NO ACTIVE ROUND' : 'NO ACTIVE GAME DAY'}
+          </p>
+          <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>The pool hasn&apos;t started yet — check back soon.</p>
+        </div>
+      </Shell>
+    )
+  }
+
+  if (data.playerStatus === 'eliminated') {
+    return (
+      <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
+        <div className="border p-8 text-center" style={{ borderColor: 'var(--border)' }}>
+          <p className="font-display text-4xl" style={{ color: 'var(--red)' }}>ELIMINATED</p>
+          <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>
+            You can still follow along on the{' '}
+            <Link href="/" className="underline" style={{ color: 'var(--dark)' }}>standings page</Link>.
+          </p>
+        </div>
+      </Shell>
+    )
+  }
+
+  if (data.lockedPick) {
+    return (
+      <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
+        <div className="space-y-6">
+          <div className="border p-8 text-center" style={{ borderColor: 'var(--green)', borderWidth: 2 }}>
+            <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: 'var(--green)' }}>
+              ✓ {data.periodLabel} — Pick Locked In
+            </p>
+            <p className="font-display text-5xl" style={{ color: 'var(--dark)' }}>{data.lockedPick.team}</p>
+            {data.lockedPick.autoAssigned && (
+              <p className="text-xs mt-3" style={{ color: 'var(--red)' }}>Auto-assigned (missed deadline)</p>
+            )}
+          </div>
+          <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
+            Teams used: {[...data.usedTeams, data.lockedPick.team].join(', ')}
+          </p>
+        </div>
+      </Shell>
+    )
+  }
+
+  return (
+    <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
+      <PickForm
+        slateId={data.slateId}
+        periodLabel={data.periodLabel}
+        pickHeading={copy.pickHeading}
+        mode={mode}
+        gameRows={data.gameRows}
+        usedTeams={data.usedTeams}
+        currentPick={data.currentPick}
+      />
+    </Shell>
+  )
 }
 
-function Shell({ children, session, slateNumber }: { children: React.ReactNode; session: { full_name: string }; slateNumber?: number }) {
+function Shell({
+  children,
+  session,
+  mode,
+  periodLabel,
+}: {
+  children: React.ReactNode
+  session: { full_name: string }
+  mode: CompetitionMode
+  periodLabel?: string
+}) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
       <header style={{ background: 'var(--dark)' }}>
-        <div className="mx-auto max-w-2xl px-4 py-4 flex items-center justify-between">
-          <div>
-            <Link href="/" className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
-              <LogoMark size={64} />
-              MADNESS
-            </Link>
-            {slateNumber && <p className="text-xs tracking-widest uppercase mt-0.5" style={{ color: '#666' }}>Slate {slateNumber}</p>}
+        <div className="mx-auto max-w-2xl px-4 py-4 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <Wordmark mode={mode} />
+            {periodLabel && (
+              <p className="text-xs tracking-widest uppercase mt-1 truncate" style={{ color: '#666' }}>{periodLabel}</p>
+            )}
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 shrink-0">
             <Link href="/history" className="text-xs tracking-widest uppercase" style={{ color: '#888' }}>My Picks</Link>
-            <span className="text-xs tracking-widest uppercase" style={{ color: '#888' }}>{session.full_name}</span>
+            <span className="hidden sm:inline text-xs tracking-widest uppercase" style={{ color: '#888' }}>{session.full_name}</span>
             <LogoutButton />
           </div>
         </div>

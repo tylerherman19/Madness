@@ -3,6 +3,14 @@ import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline, isPickRevealed } from '@/lib/deadline'
 import { isDeliverable } from '@/lib/email'
 import { fetchDayScoreboard, eventCompetitors } from '@/lib/espn'
+import { getPoolConfig } from '@/lib/pool'
+import {
+  buildPickPeriods,
+  capabilitiesFor,
+  roundDisplay,
+  seedToShow,
+  type CompetitionMode,
+} from '@/lib/competition'
 import type { Game } from '@/types'
 
 export type SweatStatus =
@@ -33,11 +41,25 @@ export interface SweatGame {
   kickoff: string
   homePlayers: string[] // revealed picks only
   awayPlayers: string[]
+  // Bracket context. Null outside the tournament, and null inside it for a
+  // game whose round ESPN hasn't labelled.
+  round: string | null
+  region: string | null
+  homeSeed: number | null
+  awaySeed: number | null
 }
 
 export interface SweatResponse {
   slateNumber: number | null
   season: number | null
+  /** The active competition, so the board can label itself correctly. */
+  mode: CompetitionMode
+  /** "Saturday, January 17" or "Second Round · Thursday". */
+  periodLabel: string | null
+  /** "Second Round", in tournament mode only. */
+  roundLabel: string | null
+  /** Entries still alive — the denominator for every "% of the field" figure. */
+  aliveCount: number
   hasLiveGames: boolean
   allRevealed: boolean
   games: SweatGame[]
@@ -57,6 +79,10 @@ export interface SweatResponse {
 const EMPTY: SweatResponse = {
   slateNumber: null,
   season: null,
+  mode: 'regular-season',
+  periodLabel: null,
+  roundLabel: null,
+  aliveCount: 0,
   hasLiveGames: false,
   allRevealed: false,
   games: [],
@@ -68,14 +94,22 @@ export async function GET() {
   try {
     const supabase = await getDb()
     const testMode = await isTestMode()
-    const { data: slate } = await supabase
-      .from('slates')
-      .select('id, slate_number, slate_date, season_year, locks_at')
-      .eq('is_active', true)
-      .single()
+    const [{ data: slate }, pool] = await Promise.all([
+      supabase
+        .from('slates')
+        .select('id, slate_number, slate_date, season_year, locks_at')
+        .eq('is_active', true)
+        .single(),
+      getPoolConfig(supabase),
+    ])
+    const mode: CompetitionMode = pool.competition_mode
+    const caps = capabilitiesFor(mode)
 
     if (!slate) {
-      return NextResponse.json(EMPTY, { headers: { 'Cache-Control': testMode ? 'private, no-store' : 'public, max-age=300' } })
+      return NextResponse.json(
+        { ...EMPTY, mode },
+        { headers: { 'Cache-Control': testMode ? 'private, no-store' : 'public, max-age=300' } }
+      )
     }
 
     const [playersRes, picksRes, dbGamesRes, events] = await Promise.all([
@@ -107,6 +141,22 @@ export async function GET() {
     for (const p of picksRes.data ?? []) pickByPlayer[p.player_id] = p.team
 
     const dbGames = (dbGamesRes.data ?? []) as Game[]
+
+    // The ESPN scoreboard payload has the scores; the synced rows have the
+    // bracket. Matching them on the team pair is enough — a slate never has
+    // the same two teams twice.
+    const metaByPair = new Map<string, Game>()
+    for (const g of dbGames) metaByPair.set(`${g.away_team}@${g.home_team}`, g)
+    const bracketOf = (awayTeam: string, homeTeam: string) => {
+      const g = metaByPair.get(`${awayTeam}@${homeTeam}`)
+      return {
+        round: caps.showTournamentRounds ? roundDisplay(g?.round_label) : null,
+        region: caps.showRegions ? g?.region ?? null : null,
+        homeSeed: seedToShow(mode, g?.home_seed, g?.round_label),
+        awaySeed: seedToShow(mode, g?.away_seed, g?.round_label),
+      }
+    }
+
     const now = await getEffectiveNow()
     const deadline = slateDeadline(slate, dbGames)
     const deadlinePassed = deadline ? deadline <= now : false
@@ -130,6 +180,7 @@ export async function GET() {
           kickoff: g.tip_time,
           homePlayers: [],
           awayPlayers: [],
+          ...bracketOf(g.away_team, g.home_team),
         })
       }
     } else {
@@ -151,6 +202,7 @@ export async function GET() {
           kickoff: event.date,
           homePlayers: [],
           awayPlayers: [],
+          ...bracketOf(awayAbbr, homeAbbr),
         })
       }
     }
@@ -217,10 +269,32 @@ export async function GET() {
 
     const hasLiveGames = espnGames.some((g) => g.state === 'in')
 
+    // Name the pick period the way the pool names it. The sweat board is the
+    // one page people leave open all day, so the label has to match the
+    // vocabulary everywhere else.
+    const [period] = buildPickPeriods(
+      mode,
+      [
+        {
+          id: slate.id,
+          slate_number: slate.slate_number,
+          slate_date: String(slate.slate_date),
+          locks_at: slate.locks_at,
+        },
+      ],
+      dbGames.map((g) => ({ slate_id: g.slate_id, round_label: g.round_label }))
+    )
+
+    const aliveCount = players.filter((p: { status: string }) => p.status === 'alive').length
+
     return NextResponse.json(
       {
         slateNumber: slate.slate_number,
         season: slate.season_year,
+        mode,
+        periodLabel: period?.label ?? null,
+        roundLabel: period?.roundLabel ?? null,
+        aliveCount,
         hasLiveGames,
         allRevealed: deadlinePassed,
         games: espnGames,

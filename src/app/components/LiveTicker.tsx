@@ -95,7 +95,19 @@ function GameCard({ game }: { game: LiveGame }) {
   )
 }
 
-export default function LiveTicker({ slateNumber, season }: { slateNumber?: number | null; season?: number | null }) {
+// `label` names the pick period the scores belong to — "Saturday, January
+// 17" in a regular-season pool, "First Round" in a tournament one. Falling
+// back to the raw slate index would reintroduce the internal vocabulary the
+// rest of the product no longer uses.
+export default function LiveTicker({
+  slateNumber,
+  season,
+  label,
+}: {
+  slateNumber?: number | null
+  season?: number | null
+  label?: string | null
+}) {
   const [data, setData] = useState<LiveScoresResponse | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -152,7 +164,7 @@ export default function LiveTicker({ slateNumber, season }: { slateNumber?: numb
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="whitespace-nowrap text-xs font-bold tracking-widest uppercase" style={{ color: 'var(--muted)' }}>
-              Slate {data.slateNumber} Scores
+              {label ?? `Slate ${data.slateNumber}`} Scores
             </span>
             {liveCount > 0 && (
               <span className="flex items-center gap-1 whitespace-nowrap text-xs font-bold tracking-wider" style={{ color: 'var(--red)' }}>

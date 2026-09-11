@@ -1,12 +1,15 @@
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
+import { getPoolConfig } from '@/lib/pool'
+import { buildPickPeriods } from '@/lib/competition'
 import RecapClient from './RecapClient'
 
 export default async function RecapPage() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
+  const pool = await getPoolConfig(supabase)
 
   const { data: activeSlate } = await supabase
     .from('slates')
@@ -39,8 +42,27 @@ export default async function RecapPage() {
 
     const slateLockTime = games ? slateDeadline(activeSlate, games) : null
 
+    // The recap gets pasted straight into a group chat, so its heading has to
+    // read the way the pool reads everywhere else.
+    const [period] = buildPickPeriods(
+      pool.competition_mode,
+      [
+        {
+          id: activeSlate.id,
+          slate_number: activeSlate.slate_number,
+          slate_date: String(activeSlate.slate_date),
+          locks_at: activeSlate.locks_at,
+        },
+      ],
+      (games || []).map((g: { slate_id: string; round_label: string | null }) => ({
+        slate_id: g.slate_id,
+        round_label: g.round_label,
+      }))
+    )
+
     recapText = generateRecap({
       slate: activeSlate,
+      periodLabel: period?.label,
       games: games || [],
       picks: (picks || []) as Parameters<typeof generateRecap>[0]['picks'],
       players: allPlayers,
@@ -53,9 +75,9 @@ export default async function RecapPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
-      <h1 className="text-2xl font-bold text-white">📋 Weekly Recap</h1>
+      <h1 className="text-2xl font-bold text-white">📋 Pool Recap</h1>
       {!activeSlate ? (
-        <p className="text-slate-400">No active slate.</p>
+        <p className="text-slate-400">No active pick period.</p>
       ) : (
         <RecapClient slateNumber={activeSlate.slate_number} recapText={recapText} />
       )}
