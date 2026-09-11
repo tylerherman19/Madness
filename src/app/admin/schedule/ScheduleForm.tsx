@@ -34,12 +34,19 @@ function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+// A college season labelled 2027 runs November 2026 through early April 2027
+// (the championship is the first Monday in April). Bounds are deliberately
+// generous — days with no games cost one request and are skipped.
+function seasonWindow(seasonYear: number): { start: string; end: string } {
+  return { start: `${seasonYear - 1}-11-01`, end: `${seasonYear}-04-10` }
+}
+
 export default function ScheduleForm({ slates, activeSlate, games, teams }: Props) {
   const router = useRouter()
   const [seasonYear, setSeasonYear] = useState(activeSlate?.season_year ?? 2027)
   const [syncDate, setSyncDate] = useState(activeSlate?.slate_date ?? today())
-  const [rangeStart, setRangeStart] = useState('2026-11-03')
-  const [rangeEnd, setRangeEnd] = useState('2027-04-06')
+  const [rangeStart, setRangeStart] = useState(seasonWindow(activeSlate?.season_year ?? 2027).start)
+  const [rangeEnd, setRangeEnd] = useState(seasonWindow(activeSlate?.season_year ?? 2027).end)
   const [newGames, setNewGames] = useState<NewGame[]>([{ ...BLANK_GAME }])
   const [submitting, setSubmitting] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -84,17 +91,30 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     }
   }
 
+  // Loads the whole season in one go. The work is identical to a date range —
+  // it just fills the dates in for you.
+  async function syncWholeSeason() {
+    const { start, end } = seasonWindow(seasonYear)
+    setRangeStart(start)
+    setRangeEnd(end)
+    await runRange(start, end, `the entire ${seasonYear} season`)
+  }
+
   async function syncRange() {
-    if (rangeEnd < rangeStart) {
+    await runRange(rangeStart, rangeEnd, `${rangeStart} → ${rangeEnd}`)
+  }
+
+  async function runRange(start: string, end: string, label: string) {
+    if (end < start) {
       setMessage('Error: end date is before start date')
       return
     }
     const totalDays =
       Math.round(
-        (new Date(`${rangeEnd}T12:00:00Z`).getTime() - new Date(`${rangeStart}T12:00:00Z`).getTime()) /
+        (new Date(`${end}T12:00:00Z`).getTime() - new Date(`${start}T12:00:00Z`).getTime()) /
           86_400_000
       ) + 1
-    if (!confirm(`Load ${totalDays} days (${rangeStart} → ${rangeEnd}) from ESPN? This runs in the background and can take a few minutes.`)) {
+    if (!confirm(`Load ${label} from ESPN — ${totalDays} days? Keep this tab open; it takes a few minutes.`)) {
       return
     }
 
@@ -106,11 +126,12 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     const failures: string[] = []
 
     try {
-      let cursor = rangeStart
+      let cursor = start
       let done = 0
-      while (cursor <= rangeEnd) {
-        const chunkEnd = addDays(cursor, CHUNK_DAYS - 1) > rangeEnd ? rangeEnd : addDays(cursor, CHUNK_DAYS - 1)
-        setProgress(`${cursor} → ${chunkEnd} (${done}/${totalDays} days)`)
+      while (cursor <= end) {
+        const chunkEnd = addDays(cursor, CHUNK_DAYS - 1) > end ? end : addDays(cursor, CHUNK_DAYS - 1)
+        const pct = Math.min(100, Math.round((done / totalDays) * 100))
+        setProgress(`${pct}% · ${cursor} → ${chunkEnd}`)
 
         const res = await fetch('/api/schedule/sync-espn-all', {
           method: 'POST',
@@ -223,11 +244,25 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
         </div>
 
         <div className="border-t border-green-900 pt-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={syncWholeSeason}
+              disabled={busy}
+              className="rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-50 px-6 py-2 text-sm font-bold text-white transition-colors"
+            >
+              {syncingRange ? 'Loading…' : `SYNC ENTIRE ${seasonYear} SEASON`}
+            </button>
+            <span className="text-xs text-slate-400">
+              November {seasonYear - 1} through the championship in April {seasonYear}.
+            </span>
+          </div>
           <p className="text-xs text-slate-400">
-            Load a whole stretch of the calendar at once. Days with no games in these conferences
-            are skipped, not treated as errors. Re-running is safe — existing days are updated in
-            place, never duplicated.
+            Roughly 160 days, loaded 20 at a time — keep the tab open, it takes a few minutes.
+            Days with no games are skipped, not treated as errors, and re-running is safe:
+            existing days are updated in place, never duplicated. Tip times ESPN hasn&rsquo;t
+            announced yet come in as TBD and fill themselves in as the season approaches.
           </p>
+          <p className="text-xs text-slate-500">Or pick your own window:</p>
           <div className="flex flex-wrap gap-3 items-end">
             <div>
               <label className="block text-xs text-slate-400 mb-1">From</label>
@@ -255,7 +290,11 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
               {syncingRange ? 'Loading…' : 'LOAD DATE RANGE'}
             </button>
           </div>
-          {progress && <p className="text-xs text-slate-400 tnum">Loading {progress}…</p>}
+          {progress && (
+            <p className="text-xs text-green-400 tnum" aria-live="polite">
+              Loading {progress}…
+            </p>
+          )}
         </div>
 
         {message && (
