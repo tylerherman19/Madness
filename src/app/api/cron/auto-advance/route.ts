@@ -21,21 +21,12 @@ export async function GET(req: NextRequest) {
   const unauthorized = await requireCronOrAdmin(req)
   if (unauthorized) return unauthorized
 
-  // The cron fires at both 17:00 and 18:00 UTC, but exactly one of those is
-  // noon Central depending on DST. Unlike auto-assign (whose deadline check
-  // makes the extra run a no-op), advancing is not idempotent — without this
-  // guard the second run would advance a second time and the pool would skip
-  // a slate. Only real cron traffic is gated: an admin hitting this route
-  // (Testing panel / manual push) is deliberate and always allowed.
-  if (isCronRequest(req)) {
-    const centralHour = parseInt(
-      new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }).format(new Date()),
-      10
-    )
-    if (centralHour !== 12) {
-      return NextResponse.json({ ok: true, message: `Skipped: ${centralHour}:00 CT is the redundant DST-coverage run — only the noon CT run advances` })
-    }
-  }
+  // The NFL version fired twice a day (17:00 and 18:00 UTC) so that one run
+  // always landed on noon Central through the DST switch, and guarded itself
+  // to the noon run because advancing is not idempotent. There is a single
+  // daily run now, so that guard is gone — keeping it would have meant
+  // advancing never happened at all, since 10:00 UTC is never noon Central.
+  // Safety comes from the last-tip check below instead.
 
   try {
     const supabase = await getDb()
