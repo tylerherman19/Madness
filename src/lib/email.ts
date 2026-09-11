@@ -1,5 +1,4 @@
 import { Resend } from 'resend'
-import { NFL_TEAM_NAMES } from '@/types'
 
 let _resend: Resend | null = null
 
@@ -96,14 +95,14 @@ export async function sendWelcomeEmail(
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
         ${LOGO_HEADER}
         <p>Hey ${name}, welcome to the 2026 NFL Survivor Pool!</p>
-        <p>Entry: $25 &mdash; If you haven&rsquo;t already, please Venmo @griffinsell before Week 1.</p>
+        <p>Entry: $25 &mdash; If you haven&rsquo;t already, please Venmo @griffinsell before Slate 1.</p>
         <p style="margin-bottom: 4px;">Your login name: ${name}</p>
-        <p style="margin-top: 0;">Your PIN: ${esc(pin)} &mdash; save that PIN, you&rsquo;ll need it every week to submit your pick.</p>
+        <p style="margin-top: 0;">Your PIN: ${esc(pin)} &mdash; save that PIN, you&rsquo;ll need it every slate to submit your pick.</p>
         <a href="${APP_URL}/login" style="display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Log In &amp; Make Your Pick</a>
         <p>Join the GroupMe chat here: <a href="https://groupme.com/join_group/116696794/alYOgDf2">https://groupme.com/join_group/116696794/alYOgDf2</a></p>
         <p>Rules (quick hits):</p>
         <ul>
-          <li>Choose one NFL team to win each week</li>
+          <li>Choose one NFL team to win each slate</li>
           <li>No repeats; you can&rsquo;t use the same team twice</li>
           <li>Win and advance; lose or tie and you&rsquo;re out</li>
           <li>Deadlines: Wed-Sat games lock at kickoff; all other picks lock Sunday at 12PM CT</li>
@@ -142,18 +141,18 @@ export async function sendPickConfirmationEmail(
   email: string,
   fullName: string,
   teamAbbr: string,
-  weekNumber: number
+  slateNumber: number
 ): Promise<SendResult> {
   if (!isDeliverable(email)) return { ok: true }
-  const teamName = NFL_TEAM_NAMES[teamAbbr] || teamAbbr
+  const teamName = teamAbbr
   return sendChecked({
     to: email,
-    subject: `You're Rolling With ${teamName} — Week ${weekNumber}`,
+    subject: `You're Rolling With ${teamName} — Slate ${slateNumber}`,
     html: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
         ${LOGO_HEADER}
         <p>Hey ${esc(fullName)},</p>
-        <p>You&rsquo;re locked in with ${esc(teamName)} for Week ${weekNumber}. You can still change it up until kickoff or Sunday at 12PM CT, whichever comes first. Let&rsquo;s see how it shakes out.</p>
+        <p>You&rsquo;re locked in with ${esc(teamName)} for Slate ${slateNumber}. You can still change it up until kickoff or Sunday at 12PM CT, whichever comes first. Let&rsquo;s see how it shakes out.</p>
         <a href="${APP_URL}" style="display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">View Standings</a>
         <p style="margin-top: 24px;">Best of luck,</p>
         <p>Griffin Sell</p>
@@ -167,16 +166,16 @@ export async function sendEliminationEmail(
   email: string,
   fullName: string,
   teamAbbr: string | null,
-  weekNumber: number
+  slateNumber: number
 ): Promise<SendResult> {
   if (!isDeliverable(email)) return { ok: true }
-  const teamName = teamAbbr ? NFL_TEAM_NAMES[teamAbbr] || teamAbbr : null
+  const teamName = teamAbbr
   const outcome = teamName
     ? `Well&hellip; ${esc(teamName)} came up short.`
     : `Well&hellip; you missed the deadline.`
   return sendChecked({
     to: email,
-    subject: `Tough One — You're Out Week ${weekNumber}`,
+    subject: `Tough One — You're Out Slate ${slateNumber}`,
     html: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
         ${LOGO_HEADER}
@@ -194,13 +193,13 @@ export async function sendEliminationEmail(
 export async function sendReminderEmail(
   email: string,
   fullName: string,
-  weekNumber: number,
+  slateNumber: number,
   deadlineStr: string
 ): Promise<SendResult> {
   if (!isDeliverable(email)) return { ok: true }
   return sendChecked({
     to: email,
-    subject: `Don't Sleep On This — Week ${weekNumber} Pick Due Soon`,
+    subject: `Don't Sleep On This — Slate ${slateNumber} Pick Due Soon`,
     html: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
         ${LOGO_HEADER}

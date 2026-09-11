@@ -46,7 +46,7 @@ export async function getDb(): Promise<SupabaseClient> {
 // The "current time" every deadline/lock decision should use. In test mode
 // this reads the sandbox's simulated clock (sandbox.clock, a singleton row
 // admins can set/advance from /admin/testing) so a tester can progress
-// through a week at their own pace; a null simulated_now — or production —
+// through a slate at their own pace; a null simulated_now — or production —
 // just falls through to real wall-clock time.
 export async function getEffectiveNow(): Promise<Date> {
   if (!(await isTestMode())) return new Date()

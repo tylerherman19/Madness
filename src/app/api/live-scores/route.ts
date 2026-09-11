@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { isDeliverable } from '@/lib/email'
-import { fetchEspnScoreboard, eventCompetitors } from '@/lib/espn'
-import { isPickRevealed } from '@/lib/deadline'
-import type { Game } from '@/types'
+import { fetchDayScoreboard, eventCompetitors, seedOf } from '@/lib/espn'
+import { isSlateLocked } from '@/lib/deadline'
+import type { Game, Slate } from '@/types'
 
 export interface LiveGame {
   id: string
@@ -14,6 +14,9 @@ export interface LiveGame {
   state: 'pre' | 'in' | 'post'
   statusText: string  // e.g. "Q3 4:22", "Final", "7:30 PM ET"
   kickoff: string
+  // NCAA tournament seeds, when the feed carries them.
+  homeSeed?: number | null
+  awaySeed?: number | null
   homePicks?: number
   awayPicks?: number
   // False when the game's outcome is known but the numbers aren't — a
@@ -22,25 +25,25 @@ export interface LiveGame {
 }
 
 export interface LiveScoresResponse {
-  weekNumber: number | null
+  slateNumber: number | null
   games: LiveGame[]
   picksVisible: boolean
   hasLiveGames: boolean
   season: number | null
   // Where the games came from: the live ESPN scoreboard, or this pool's own
-  // schedule table (the sandbox, or a week ESPN can't serve yet).
+  // schedule table (the sandbox, or a slate ESPN can't serve yet).
   source: 'espn' | 'schedule' | 'none'
 }
 
 const EMPTY: LiveScoresResponse = {
-  weekNumber: null, games: [], picksVisible: false, hasLiveGames: false, season: null, source: 'none',
+  slateNumber: null, games: [], picksVisible: false, hasLiveGames: false, season: null, source: 'none',
 }
 
 // Turn a row from our own `games` table into a ticker card. Sandbox rows carry
 // admin-entered scores; production rows don't have score columns at all, so
 // those show as a schedule card until ESPN takes over.
 function gameFromSchedule(g: Game, now: Date): LiveGame {
-  const kickoff = new Date(g.kickoff_central)
+  const kickoff = new Date(g.tip_time)
   const started = !isNaN(kickoff.getTime()) && now >= kickoff
   const state: 'pre' | 'in' | 'post' =
     g.result !== 'pending' ? 'post' : started ? 'in' : 'pre'
@@ -63,7 +66,7 @@ function gameFromSchedule(g: Game, now: Date): LiveGame {
     awayScore: g.away_score ?? 0,
     state,
     statusText,
-    kickoff: g.kickoff_central,
+    kickoff: g.tip_time,
     scoresKnown,
   }
 }
@@ -79,19 +82,19 @@ export async function GET() {
         ? 'private, no-store'
         : `public, max-age=${maxAge}${swr > 0 ? `, stale-while-revalidate=${swr}` : ''}`
 
-    // Get active week from our DB
-    const { data: week } = await supabase
-      .from('weeks')
-      .select('id, week_number, season_year')
+    // Get active slate from our DB
+    const { data: slate } = await supabase
+      .from('slates')
+      .select('id, slate_number, slate_date, season_year, locks_at')
       .eq('is_active', true)
       .single()
 
-    if (!week) {
+    if (!slate) {
       return NextResponse.json(EMPTY, { headers: { 'Cache-Control': cacheHeader(60) } })
     }
 
     const [dbGamesRes, events, now] = await Promise.all([
-      supabase.from('games').select('*').eq('week_id', week.id),
+      supabase.from('games').select('*').eq('slate_id', slate.id),
       // Sandbox matchups are fabricated, so there is nothing to look up on the
       // real scoreboard — skip the network call entirely and read the sandbox
       // schedule (with its admin-entered scores) below.
@@ -99,9 +102,13 @@ export async function GET() {
       // In production this is null when ESPN is down or served last season's
       // data (its silent fallback before the requested season starts), which
       // also falls through to the schedule.
+      // 10s matches ESPN's own cache — asking more often returns the same
+      // bytes, so this is the useful floor while games are in progress.
       testMode
         ? Promise.resolve(null)
-        : fetchEspnScoreboard(week.season_year, week.week_number, 30).catch(() => null),
+        : fetchDayScoreboard(String(slate.slate_date).replace(/-/g, ''), 10)
+            .then((r) => r.events)
+            .catch(() => null),
       getEffectiveNow(),
     ])
 
@@ -114,22 +121,27 @@ export async function GET() {
       const teams = eventCompetitors(event)
       if (!teams) continue
       const status = event.competitions[0].status
+      const homeAbbr = teams.home.team.abbreviation
+      const awayAbbr = teams.away.team.abbreviation
+      if (!homeAbbr || !awayAbbr) continue
       games.push({
         id: event.id,
-        homeTeam: teams.home.team.abbreviation,
-        awayTeam: teams.away.team.abbreviation,
-        homeScore: parseInt(teams.home.score) || 0,
-        awayScore: parseInt(teams.away.score) || 0,
+        homeTeam: homeAbbr,
+        awayTeam: awayAbbr,
+        homeScore: parseInt(teams.home.score ?? '0') || 0,
+        awayScore: parseInt(teams.away.score ?? '0') || 0,
         state: status.type.state as 'pre' | 'in' | 'post',
-        statusText: status.type.shortDetail,
+        statusText: status.type.shortDetail ?? '',
         kickoff: event.date,
+        homeSeed: seedOf(teams.home),
+        awaySeed: seedOf(teams.away),
       })
     }
 
     if (games.length > 0) {
       source = 'espn'
     } else if (dbGames.length > 0) {
-      // No ESPN coverage (sandbox, or a week it can't serve): show this pool's
+      // No ESPN coverage (sandbox, or a slate it can't serve): show this pool's
       // own slate so the ticker still carries the schedule and any result the
       // admin has entered, instead of disappearing entirely.
       games = dbGames.map((g) => gameFromSchedule(g, now))
@@ -140,18 +152,17 @@ export async function GET() {
 
     const hasLiveGames = games.some((g) => g.state === 'in')
 
-    // Pick counts go public per game, on the same rule as everywhere else: a
-    // pick is shown once it locks, which is its own kickoff for Thu/Fri/Sat and
-    // the Sunday 12 PM CT cutoff for the rest. Both are covered by
-    // isPickRevealed against our schedule table.
+    // The slate locks as a unit at its first tip, so picks go public as a
+    // unit too — there is no longer a per-team reveal to compute.
     const revealedTeams = new Set<string>()
-    for (const g of dbGames) {
-      for (const team of [g.home_team, g.away_team]) {
-        if (isPickRevealed(team, dbGames, now)) revealedTeams.add(team)
+    if (isSlateLocked(slate, dbGames, now)) {
+      for (const g of dbGames) {
+        revealedTeams.add(g.home_team)
+        revealedTeams.add(g.away_team)
       }
     }
-    // A started ESPN game is revealed too, even if our schedule row is missing
-    // or its kickoff drifted (flex scheduling).
+    // A tipped-off ESPN game is revealed regardless, which covers a slate
+    // whose locks_at is missing or whose schedule row never synced.
     for (const g of games) {
       if (g.state !== 'pre') {
         revealedTeams.add(g.homeTeam)
@@ -174,7 +185,7 @@ export async function GET() {
       const { data: picks } = await supabase
         .from('picks')
         .select('player_id, team')
-        .eq('week_id', week.id)
+        .eq('slate_id', slate.id)
 
       const pickCounts: Record<string, number> = {}
       for (const pick of picks || []) {
@@ -190,8 +201,8 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      weekNumber: week.week_number,
-      season: week.season_year,
+      slateNumber: slate.slate_number,
+      season: slate.season_year,
       games,
       picksVisible: revealedTeams.size > 0,
       hasLiveGames,

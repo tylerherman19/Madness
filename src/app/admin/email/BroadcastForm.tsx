@@ -6,10 +6,10 @@ type Audience = 'all' | 'alive' | 'unpicked'
 
 interface Props {
   counts: { all: number; alive: number; unpicked: number | null }
-  weekNumber: number | null
+  slateNumber: number | null
 }
 
-export default function BroadcastForm({ counts, weekNumber }: Props) {
+export default function BroadcastForm({ counts, slateNumber }: Props) {
   const [audience, setAudience] = useState<Audience>('alive')
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
@@ -64,8 +64,8 @@ export default function BroadcastForm({ counts, weekNumber }: Props) {
           <option value="all">All players ({counts.all})</option>
           <option value="unpicked" disabled={counts.unpicked === null}>
             {counts.unpicked === null
-              ? 'No pick yet — needs an active week'
-              : `No Week ${weekNumber} pick yet (${counts.unpicked})`}
+              ? 'No pick yet — needs an active slate'
+              : `No Slate ${slateNumber} pick yet (${counts.unpicked})`}
           </option>
         </select>
       </div>
@@ -79,7 +79,7 @@ export default function BroadcastForm({ counts, weekNumber }: Props) {
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           maxLength={150}
-          placeholder="e.g. Week 5 picks due Sunday at noon!"
+          placeholder="e.g. Slate 5 picks due Sunday at noon!"
           className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
         />
       </div>

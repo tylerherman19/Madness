@@ -3,16 +3,15 @@ import { revalidatePath } from 'next/cache'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getSession, getAdminSession } from '@/lib/session'
 import { isUuid } from '@/lib/api'
-import { getTeamDeadline } from '@/lib/deadline'
+import { isSlateLocked, seedForTeam } from '@/lib/deadline'
 import { sendPickConfirmationEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
-import { NFL_TEAMS } from '@/types'
-import type { Game } from '@/types'
+import type { Game, Slate } from '@/types'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { week_id, team, player_id_override, submitted_by_admin } = body
+    const { slate_id, team, player_id_override, submitted_by_admin } = body
 
     // Allow admin to submit on behalf of a player
     const isAdmin = submitted_by_admin ? await getAdminSession() : false
@@ -29,17 +28,16 @@ export async function POST(req: NextRequest) {
       playerId = session.player_id
     }
 
-    if (!week_id || !team) {
-      return NextResponse.json({ error: 'Missing week_id or team' }, { status: 400 })
+    if (!slate_id || !team) {
+      return NextResponse.json({ error: 'Missing slate_id or team' }, { status: 400 })
     }
 
-    // Validate team is a known NFL team
-    if (!(NFL_TEAMS as readonly string[]).includes(team)) {
-      return NextResponse.json({ error: 'Invalid team' }, { status: 400 })
-    }
+    // No global team whitelist: the only teams that exist are the ones ESPN
+    // listed, and the only legal picks are teams playing on this slate. The
+    // "is not playing this slate" check further down enforces both at once.
 
-    if (!isUuid(week_id)) {
-      return NextResponse.json({ error: 'Invalid week_id' }, { status: 400 })
+    if (!isUuid(slate_id)) {
+      return NextResponse.json({ error: 'Invalid slate_id' }, { status: 400 })
     }
 
     const supabase = await getDb()
@@ -56,72 +54,66 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'You are eliminated' }, { status: 403 })
     }
 
-    // Check week is active
-    const { data: week } = await supabase
-      .from('weeks')
-      .select('id, week_number, is_active')
-      .eq('id', week_id)
+    // Check slate is active
+    const { data: slate } = await supabase
+      .from('slates')
+      .select('id, slate_number, is_active, locks_at')
+      .eq('id', slate_id)
       .single()
 
-    if (!week?.is_active) {
-      return NextResponse.json({ error: 'This week is not active' }, { status: 400 })
+    if (!slate?.is_active) {
+      return NextResponse.json({ error: 'This slate is not active' }, { status: 400 })
     }
 
-    // Look up any existing pick for this week — players may change it until
+    // Look up any existing pick for this slate — players may change it until
     // their currently-picked team's deadline passes
     const { data: existingPick } = await supabase
       .from('picks')
       .select('id, team')
       .eq('player_id', playerId)
-      .eq('week_id', week_id)
+      .eq('slate_id', slate_id)
       .single()
 
-    // Check team hasn't been used by this player in other weeks
-    // When changing this week's pick, exclude it so the replaced team doesn't block
+    // Check team hasn't been used by this player in other slates
+    // When changing this slate's pick, exclude it so the replaced team doesn't block
     let pastPicksQuery = supabase.from('picks').select('team').eq('player_id', playerId)
-    if (existingPick) pastPicksQuery = pastPicksQuery.neq('week_id', week_id)
+    if (existingPick) pastPicksQuery = pastPicksQuery.neq('slate_id', slate_id)
     const { data: pastPicks } = await pastPicksQuery
 
     const usedTeams = (pastPicks || []).map((p: { team: string }) => p.team)
     if (usedTeams.includes(team)) {
-      return NextResponse.json({ error: `${player.full_name} already used ${team} in a previous week` }, { status: 400 })
+      return NextResponse.json({ error: `${player.full_name} already used ${team} in a previous slate` }, { status: 400 })
     }
 
     // Check deadline
     const { data: games } = await supabase
       .from('games')
       .select('*')
-      .eq('week_id', week_id)
+      .eq('slate_id', slate_id)
 
     const gamesData: Game[] = games || []
     const teamGame = gamesData.find((g) => g.home_team === team || g.away_team === team)
 
     if (!teamGame) {
-      return NextResponse.json({ error: `${team} is not playing this week` }, { status: 400 })
+      return NextResponse.json({ error: `${team} is not playing this slate` }, { status: 400 })
     }
 
-    // Admins can bypass deadline for manual submissions
-    const teamDeadline = getTeamDeadline(team, gamesData)
+    // The whole slate locks at its first tip — there is no per-team deadline
+    // any more, so submitting and changing a pick close at the same instant.
+    // Admins can still submit manually after the lock.
     if (!isAdmin) {
       const now = await getEffectiveNow()
-      // Changing an existing pick requires the current team to still be unlocked —
-      // once your picked team's deadline passes, the pick is final
-      if (existingPick) {
-        const currentDeadline = getTeamDeadline(existingPick.team, gamesData)
-        if (!currentDeadline || now >= currentDeadline) {
-          return NextResponse.json(
-            { error: 'Your pick is locked and can no longer be changed' },
-            { status: 400 }
-          )
-        }
-      }
-      if (teamDeadline && now >= teamDeadline) {
+      if (isSlateLocked(slate, gamesData, now)) {
         return NextResponse.json(
-          { error: `The deadline for picking ${team} has passed` },
+          { error: 'Picks for today are locked — the first game has tipped off' },
           { status: 400 }
         )
       }
     }
+
+    // Snapshot the seed at pick time; the endgame tiebreak sums these and a
+    // seed is only meaningful on the day the pick was made.
+    const pickedSeed = seedForTeam(team, gamesData)
 
     // Re-submitting the same team is a no-op
     if (existingPick && existingPick.team === team) {
@@ -132,12 +124,12 @@ export async function POST(req: NextRequest) {
       // UPDATE in place — atomic, no window where the player has zero picks
       const { error: updateError } = await supabase
         .from('picks')
-        .update({ team, auto_assigned: false, submitted_by_admin: isAdmin })
+        .update({ team, seed: pickedSeed, auto_assigned: false, submitted_by_admin: isAdmin })
         .eq('id', existingPick.id)
       if (updateError) {
         console.error('update error', updateError)
         if (updateError.code === '23505') {
-          return NextResponse.json({ error: `${player.full_name} already used ${team} in a previous week` }, { status: 400 })
+          return NextResponse.json({ error: `${player.full_name} already used ${team} in a previous slate` }, { status: 400 })
         }
         return NextResponse.json({ error: 'Failed to update pick' }, { status: 500 })
       }
@@ -146,15 +138,16 @@ export async function POST(req: NextRequest) {
       // client-supplied flag — players can't stamp their own picks as admin's.
       const { error: insertError } = await supabase.from('picks').insert({
         player_id: playerId,
-        week_id,
+        slate_id,
         team,
+        seed: pickedSeed,
         auto_assigned: false,
         submitted_by_admin: isAdmin,
       })
       if (insertError) {
         console.error('insert error', insertError)
         if (insertError.code === '23505') {
-          return NextResponse.json({ error: `${player.full_name} already has a pick for this week or already used ${team}` }, { status: 409 })
+          return NextResponse.json({ error: `${player.full_name} already has a pick for this slate or already used ${team}` }, { status: 409 })
         }
         return NextResponse.json({ error: 'Failed to save pick' }, { status: 500 })
       }
@@ -166,16 +159,16 @@ export async function POST(req: NextRequest) {
       player_id: playerId,
       player_name: player.full_name,
       message: existingPick
-        ? `${player.full_name} changed Week ${week.week_number} pick: ${existingPick.team} → ${team}${isAdmin ? ' (by admin)' : ''}`
-        : `${player.full_name} picked ${team} for Week ${week.week_number}${isAdmin ? ' (by admin)' : ''}`,
-      details: { week_number: week.week_number, team, previous_team: existingPick?.team ?? null },
+        ? `${player.full_name} changed Slate ${slate.slate_number} pick: ${existingPick.team} → ${team}${isAdmin ? ' (by admin)' : ''}`
+        : `${player.full_name} picked ${team} for Slate ${slate.slate_number}${isAdmin ? ' (by admin)' : ''}`,
+      details: { slate_number: slate.slate_number, team, previous_team: existingPick?.team ?? null },
     })
 
     // Awaited: fire-and-forget sends can be dropped when the serverless
     // function is frozen after responding. The pick is already saved, so a
     // failed send (logged inside the sender) doesn't fail the request.
     if (player.email) {
-      await sendPickConfirmationEmail(player.email, player.full_name, team, week.week_number)
+      await sendPickConfirmationEmail(player.email, player.full_name, team, slate.slate_number)
     }
 
     revalidatePath('/')

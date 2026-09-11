@@ -3,11 +3,11 @@
 import { useState } from 'react'
 
 interface Props {
-  weekNumber: number
+  slateNumber: number
   recapText: string
 }
 
-export default function RecapClient({ weekNumber, recapText }: Props) {
+export default function RecapClient({ slateNumber, recapText }: Props) {
   const [copied, setCopied] = useState(false)
 
   async function copyToClipboard() {
@@ -19,7 +19,7 @@ export default function RecapClient({ weekNumber, recapText }: Props) {
   return (
     <div className="space-y-4">
       <p className="text-slate-400 text-sm">
-        Week {weekNumber} recap — copy and paste into GroupMe.
+        Slate {slateNumber} recap — copy and paste into GroupMe.
       </p>
       <div className="relative">
         <pre className="rounded-xl border border-slate-700 bg-slate-800 p-4 text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed overflow-auto max-h-[600px]">

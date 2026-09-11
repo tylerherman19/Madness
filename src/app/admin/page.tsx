@@ -3,7 +3,6 @@ import { getAdminSession } from '@/lib/session'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getSignupCutoff } from '@/lib/season'
 import { formatCentralTime } from '@/lib/deadline'
-import { NFL_TEAM_NAMES } from '@/types'
 import Link from 'next/link'
 import AdvanceWeekButton from './AdvanceWeekButton'
 import SetActiveWeek from './SetActiveWeek'
@@ -14,10 +13,10 @@ export default async function AdminDashboard() {
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
 
-  const [{ data: week }, { data: players }, { data: allWeeks }, signupAnchor, now] = await Promise.all([
-    supabase.from('weeks').select('*').eq('is_active', true).single(),
+  const [{ data: slate }, { data: players }, { data: allWeeks }, signupAnchor, now] = await Promise.all([
+    supabase.from('slates').select('*').eq('is_active', true).single(),
     supabase.from('players').select('id, full_name, email, status, paid'),
-    supabase.from('weeks').select('id, week_number, season_year, is_active').order('week_number'),
+    supabase.from('slates').select('id, slate_number, season_year, is_active').order('slate_number'),
     getSignupCutoff(),
     getEffectiveNow(),
   ])
@@ -40,10 +39,10 @@ export default async function AdminDashboard() {
   let notPickedYet: string[] = []
   let games: { id: string; home_team: string; away_team: string; result: string; game_day: string }[] = []
 
-  if (week) {
+  if (slate) {
     const [{ data: picks }, { data: gamesData }] = await Promise.all([
-      supabase.from('picks').select('player_id, team').eq('week_id', week.id),
-      supabase.from('games').select('id, home_team, away_team, result, game_day').eq('week_id', week.id).order('kickoff_central'),
+      supabase.from('picks').select('player_id, team').eq('slate_id', slate.id),
+      supabase.from('games').select('id, home_team, away_team, result, game_day').eq('slate_id', slate.id).order('tip_time'),
     ])
     games = gamesData || []
     const picksData = picks || []
@@ -70,9 +69,9 @@ export default async function AdminDashboard() {
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-8">
       <div>
         <h1 className="text-2xl font-bold" style={{ color: 'var(--dark)' }}>Admin Dashboard</h1>
-        {week && (
+        {slate && (
           <p className="mt-1" style={{ color: 'var(--muted)' }}>
-            Active: Week {week.week_number} · Season {week.season_year}
+            Active: Slate {slate.slate_number} · Season {slate.season_year}
           </p>
         )}
       </div>
@@ -83,7 +82,7 @@ export default async function AdminDashboard() {
           <>
             <p className="text-green-400 font-medium">Open — no cutoff yet</p>
             <p className="text-slate-400 text-sm mt-1">
-              Nothing to anchor to until an active week exists with games synced. Signups stay open until then.
+              Nothing to anchor to until an active slate exists with games synced. Signups stay open until then.
             </p>
           </>
         ) : (
@@ -92,8 +91,8 @@ export default async function AdminDashboard() {
               {signupsClosed ? 'Closed' : 'Open'} — {signupsClosed ? 'closed' : 'closes'} {formatCentralTime(signupAnchor.cutoff)}
             </p>
             <p className="text-slate-400 text-sm mt-1">
-              Anchored to Week {signupAnchor.weekNumber} · Season {signupAnchor.seasonYear}
-              {' '}— that week&apos;s Sunday 12:00 PM CT pick deadline. Advancing weeks does not move it.
+              Anchored to Slate {signupAnchor.slateNumber} · Season {signupAnchor.seasonYear}
+              {' '}— that slate&apos;s Sunday 12:00 PM CT pick deadline. Advancing slates does not move it.
             </p>
           </>
         )}
@@ -103,30 +102,30 @@ export default async function AdminDashboard() {
         <StatCard label="Total Players" value={players?.length || 0} />
         <StatCard label="Paid" value={`${paid.length}/${players?.length || 0}`} />
         <StatCard label="Still Alive" value={alive.length} color="text-green-400" />
-        <StatCard label="Picks This Week" value={`${pickCount}/${alive.length}`} />
+        <StatCard label="Picks This Slate" value={`${pickCount}/${alive.length}`} />
       </div>
 
-      {!week && (
+      {!slate && (
         <div className="rounded-xl border border-amber-500/40 bg-slate-800 p-4">
-          <p className="text-amber-400 font-medium">No active week set.</p>
+          <p className="text-amber-400 font-medium">No active slate set.</p>
           <p className="text-slate-400 text-sm mt-1">
-            Go to <Link href="/admin/schedule" className="text-blue-400 underline">Schedule</Link> to create Week 1 and add games.
+            Go to <Link href="/admin/schedule" className="text-blue-400 underline">Schedule</Link> to create Slate 1 and add games.
           </p>
         </div>
       )}
-      {week && (
+      {slate && (
         <AdvanceWeekButton
-          currentWeekNumber={week.week_number}
-          seasonYear={week.season_year}
+          currentWeekNumber={slate.slate_number}
+          seasonYear={slate.season_year}
         />
       )}
 
-      {week && (
+      {slate && (
         <div className="grid gap-4 sm:grid-cols-2">
           {/* Pick distribution */}
           <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
             <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-3">
-              Week {week.week_number} Pick Distribution
+              Slate {slate.slate_number} Pick Distribution
             </p>
             {pickDistribution.length === 0 ? (
               <p className="text-slate-500 text-sm">No picks yet.</p>
@@ -137,7 +136,6 @@ export default async function AdminDashboard() {
                     <tr key={team} className="border-b border-slate-700/60 last:border-0">
                       <td className="py-1.5">
                         <span className="font-mono font-bold text-white">{team}</span>
-                        <span className="ml-2 text-xs text-slate-400 hidden sm:inline">{NFL_TEAM_NAMES[team]}</span>
                       </td>
                       <td className="py-1.5 text-right text-white">{count}</td>
                       <td className="py-1.5 text-right text-slate-400 w-16">{pct.toFixed(0)}%</td>
@@ -168,7 +166,7 @@ export default async function AdminDashboard() {
           {/* Games / results status */}
           <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
             <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-3">
-              Week {week.week_number} Games ({gradedCount}/{games.length} graded)
+              Slate {slate.slate_number} Games ({gradedCount}/{games.length} graded)
             </p>
             {games.length === 0 ? (
               <p className="text-slate-500 text-sm">No games entered.</p>
@@ -206,7 +204,7 @@ export default async function AdminDashboard() {
         <AdminCard
           href="/admin/schedule"
           title="📅 Enter Schedule"
-          desc="Add or update this week's game slate (teams, kickoff times, SNF/MNF flags)"
+          desc="Add or update this slate's game slate (teams, kickoff times, SNF/MNF flags)"
         />
         <AdminCard
           href="/admin/results"
@@ -226,7 +224,7 @@ export default async function AdminDashboard() {
         <AdminCard
           href="/admin/history"
           title="📜 Season History"
-          desc="Every week's games, results, pick counts, and eliminations in one view"
+          desc="Every slate's games, results, pick counts, and eliminations in one view"
         />
         <AdminCard
           href="/admin/email"
@@ -259,7 +257,7 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
-      {allWeeks && allWeeks.length > 0 && <SetActiveWeek weeks={allWeeks} />}
+      {allWeeks && allWeeks.length > 0 && <SetActiveWeek slates={allWeeks} />}
 
       <ResetPoolButton />
     </div>

@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { NFL_TEAM_NAMES } from '@/types'
 import { teamColor } from '@/lib/teamColors'
 
 export interface GameRow {
@@ -15,8 +14,8 @@ export interface GameRow {
 }
 interface CurrentPick { team: string; deadline: string | null }
 interface Props {
-  weekId: string
-  weekNumber: number
+  slateId: string
+  slateNumber: number
   playerId: string
   gameRows: GameRow[]
   usedTeams: string[]
@@ -64,7 +63,6 @@ function TeamHalf({
         <span className="team-chip-swatch" style={{ background: used || disabled ? 'var(--muted)' : c }}>{team.slice(0, 3)}</span>
         <div>
           <span className="font-bold text-sm block" style={{ color: used || disabled ? 'var(--muted)' : 'var(--dark)' }}>{team}</span>
-          <span className="text-xs" style={{ color: 'var(--muted)' }}>{NFL_TEAM_NAMES[team]}</span>
         </div>
         {selected && <span className="ml-auto text-sm" style={{ color: c }}>✓</span>}
         {isCurrentPick && !selected && <span className="ml-auto text-xs font-bold" style={{ color: 'var(--green)' }}>PICKED</span>}
@@ -77,7 +75,7 @@ function TeamHalf({
   )
 }
 
-export default function PickForm({ weekId, weekNumber, gameRows, usedTeams, teamRecords, currentPick }: Props) {
+export default function PickForm({ slateId, slateNumber, gameRows, usedTeams, teamRecords, currentPick }: Props) {
   const router = useRouter()
   const [selected, setSelected] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
@@ -98,7 +96,7 @@ export default function PickForm({ weekId, weekNumber, gameRows, usedTeams, team
       const res = await fetch('/api/picks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week_id: weekId, team: selected }),
+        body: JSON.stringify({ slate_id: slateId, team: selected }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to submit pick'); return }
@@ -115,7 +113,7 @@ export default function PickForm({ weekId, weekNumber, gameRows, usedTeams, team
     <div className="text-center py-16">
       <p className="font-display text-6xl" style={{ color: 'var(--green)' }}>{isChange ? 'PICK UPDATED!' : 'LOCKED IN!'}</p>
       <p className="text-sm mt-4" style={{ color: 'var(--muted)' }}>
-        {NFL_TEAM_NAMES[selected!] || selected} — Week {weekNumber}. Confirmation email on its way.
+        {selected} — Slate {slateNumber}. Confirmation email on its way.
       </p>
     </div>
   )
@@ -123,14 +121,14 @@ export default function PickForm({ weekId, weekNumber, gameRows, usedTeams, team
   if (!isChange && !anySelectable) return (
     <div className="text-center py-16">
       <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>ALL TEAMS LOCKED</p>
-      <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>All deadlines passed or you&apos;ve used every team playing this week.</p>
+      <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>All deadlines passed or you&apos;ve used every team playing this slate.</p>
     </div>
   )
 
   return (
     <div className="space-y-8">
       <div>
-        <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>WEEK {weekNumber} PICK</p>
+        <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>WEEK {slateNumber} PICK</p>
         {usedTeams.length > 0 && (
           <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Already used: {usedTeams.join(', ')}</p>
         )}
@@ -139,12 +137,12 @@ export default function PickForm({ weekId, weekNumber, gameRows, usedTeams, team
       {currentPick && (
         <div className="border p-6" style={{ borderColor: 'var(--green)', borderWidth: 2 }}>
           <p className="text-xs font-bold tracking-widest uppercase" style={{ color: 'var(--green)' }}>
-            ✓ Your Week {weekNumber} Pick
+            ✓ Your Slate {slateNumber} Pick
           </p>
           <div className="flex items-center gap-3 mt-3">
             <span className="team-chip-swatch" style={{ background: teamColor(currentPick.team).primary, width: 32, height: 32, fontSize: 11, borderRadius: 7 }}>{currentPick.team.slice(0, 3)}</span>
             <p className="font-display text-3xl leading-none" style={{ color: 'var(--dark)' }}>
-              {NFL_TEAM_NAMES[currentPick.team] || currentPick.team}
+              {currentPick.team}
             </p>
           </div>
           <p className="text-xs mt-3" style={{ color: 'var(--muted)' }}>
@@ -203,7 +201,7 @@ export default function PickForm({ weekId, weekNumber, gameRows, usedTeams, team
             <span className="team-chip-swatch" style={{ background: teamColor(selected).primary, width: 32, height: 32, fontSize: 11, borderRadius: 7 }}>{selected.slice(0, 3)}</span>
             <div>
               <p className="eyebrow" style={{ color: 'var(--muted)' }}>{isChange ? 'New Pick' : 'Your Pick'}</p>
-              <p className="font-display text-2xl leading-none" style={{ color: 'var(--dark)' }}>{NFL_TEAM_NAMES[selected] || selected}</p>
+              <p className="font-display text-2xl leading-none" style={{ color: 'var(--dark)' }}>{selected}</p>
             </div>
           </div>
           <label className="flex items-start gap-3 cursor-pointer">

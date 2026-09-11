@@ -9,36 +9,36 @@ export async function POST(req: NextRequest) {
   if (unauthorized) return unauthorized
 
   try {
-    const { week_id } = await req.json()
-    if (!isUuid(week_id)) {
-      return NextResponse.json({ error: 'Invalid week_id' }, { status: 400 })
+    const { slate_id } = await req.json()
+    if (!isUuid(slate_id)) {
+      return NextResponse.json({ error: 'Invalid slate_id' }, { status: 400 })
     }
 
     const supabase = await getDb()
-    const { data: week, error: lookupErr } = await supabase
-      .from('weeks')
-      .select('id, week_number, season_year')
-      .eq('id', week_id)
+    const { data: slate, error: lookupErr } = await supabase
+      .from('slates')
+      .select('id, slate_number, season_year')
+      .eq('id', slate_id)
       .single()
-    if (lookupErr || !week) {
-      return NextResponse.json({ error: 'Week not found' }, { status: 404 })
+    if (lookupErr || !slate) {
+      return NextResponse.json({ error: 'Slate not found' }, { status: 404 })
     }
 
-    await supabase.from('weeks').update({ is_active: false }).gt('week_number', 0)
-    const { error } = await supabase.from('weeks').update({ is_active: true }).eq('id', week_id)
+    await supabase.from('slates').update({ is_active: false }).gt('slate_number', 0)
+    const { error } = await supabase.from('slates').update({ is_active: true }).eq('id', slate_id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     await logAudit(supabase, {
-      event_type: 'week-activated',
+      event_type: 'slate-activated',
       actor: 'admin',
-      message: `Admin set Week ${week.week_number} (${week.season_year}) as the active week`,
-      details: { week_id, week_number: week.week_number, season_year: week.season_year },
+      message: `Admin set Slate ${slate.slate_number} (${slate.season_year}) as the active slate`,
+      details: { slate_id, slate_number: slate.slate_number, season_year: slate.season_year },
     })
 
     revalidatePath('/')
-    return NextResponse.json({ ok: true, week_number: week.week_number, season_year: week.season_year })
+    return NextResponse.json({ ok: true, slate_number: slate.slate_number, season_year: slate.season_year })
   } catch (err) {
-    console.error('set-active-week error', err)
+    console.error('set-active-slate error', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

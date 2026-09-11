@@ -18,7 +18,7 @@ export async function PATCH(
   const body = await req.json()
   const supabase = await getDb()
 
-  const allowed = ['paid', 'status', 'elimination_reason', 'elimination_week', 'full_name', 'email']
+  const allowed = ['paid', 'status', 'elimination_reason', 'elimination_slate', 'full_name', 'email']
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]

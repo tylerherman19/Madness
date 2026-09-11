@@ -8,7 +8,7 @@ export interface SandboxGame {
   id: string
   home_team: string
   away_team: string
-  kickoff_central: string
+  tip_time: string
   home_score: number | null
   away_score: number | null
   result: string
@@ -18,7 +18,7 @@ export interface SandboxSnapshot {
   ok: boolean
   error: string | null
   players: { id: string; full_name: string; email: string; status: string }[]
-  activeWeek: { id: string; week_number: number; season_year: number } | null
+  activeSlate: { id: string; slate_number: number; season_year: number } | null
   gameCount: number
   pickCount: number
   games: SandboxGame[]
@@ -27,7 +27,7 @@ export interface SandboxSnapshot {
 }
 
 async function getSandboxSnapshot(): Promise<SandboxSnapshot> {
-  const empty = { players: [], activeWeek: null, gameCount: 0, pickCount: 0, games: [], simulatedNow: null }
+  const empty = { players: [], activeSlate: null, gameCount: 0, pickCount: 0, games: [], simulatedNow: null }
   try {
     const { data: players, error } = await sandboxSupabase
       .from('players')
@@ -37,26 +37,26 @@ async function getSandboxSnapshot(): Promise<SandboxSnapshot> {
     // right in the panel instead of failing silently everywhere.
     if (error) return { ok: false, error: error.message, effectiveNow: new Date().toISOString(), ...empty }
 
-    const [{ data: week }, { count: gameCount }, { count: pickCount }, { data: clockRow }] = await Promise.all([
-      sandboxSupabase.from('weeks').select('id, week_number, season_year').eq('is_active', true).single(),
+    const [{ data: slate }, { count: gameCount }, { count: pickCount }, { data: clockRow }] = await Promise.all([
+      sandboxSupabase.from('slates').select('id, slate_number, season_year').eq('is_active', true).single(),
       sandboxSupabase.from('games').select('id', { count: 'exact', head: true }),
       sandboxSupabase.from('picks').select('id', { count: 'exact', head: true }),
       sandboxSupabase.from('clock').select('simulated_now').eq('id', true).single(),
     ])
 
-    const { data: games } = week
+    const { data: games } = slate
       ? await sandboxSupabase
           .from('games')
-          .select('id, home_team, away_team, kickoff_central, home_score, away_score, result')
-          .eq('week_id', week.id)
-          .order('kickoff_central')
+          .select('id, home_team, away_team, tip_time, home_score, away_score, result')
+          .eq('slate_id', slate.id)
+          .order('tip_time')
       : { data: [] }
 
     return {
       ok: true,
       error: null,
       players: players || [],
-      activeWeek: week ?? null,
+      activeSlate: slate ?? null,
       gameCount: gameCount ?? 0,
       pickCount: pickCount ?? 0,
       games: games ?? [],

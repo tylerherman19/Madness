@@ -2,17 +2,17 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Game, Week } from '@/types'
+import type { Game, Slate } from '@/types'
 
 interface Props {
-  week: Week
+  slate: Slate
   games: Game[]
   pendingEliminations: number
 }
 
 type GameResult = 'home_win' | 'away_win' | 'tie' | 'pending'
 
-export default function ResultsForm({ week, games, pendingEliminations }: Props) {
+export default function ResultsForm({ slate, games, pendingEliminations }: Props) {
   const router = useRouter()
   const [results, setResults] = useState<Record<string, GameResult>>(
     Object.fromEntries(games.map((g) => [g.id, g.result as GameResult]))
@@ -54,15 +54,15 @@ export default function ResultsForm({ week, games, pendingEliminations }: Props)
     setSubmitting(true)
     setMessage('')
     try {
-      const res = await fetch('/api/results/grade-week', {
+      const res = await fetch('/api/results/grade-slate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week_id: week.id }),
+        body: JSON.stringify({ slate_id: slate.id }),
       })
       const data = await res.json()
       if (res.ok && data.grading) {
         setGradingResult(data.grading)
-        setMessage(`✅ Graded ${week.week_number}. ${data.grading.eliminated.length} eliminated.`)
+        setMessage(`✅ Graded ${slate.slate_number}. ${data.grading.eliminated.length} eliminated.`)
         router.refresh()
       } else {
         setMessage(data.error || 'Grading failed')
@@ -93,10 +93,10 @@ export default function ResultsForm({ week, games, pendingEliminations }: Props)
               <p className="text-white font-medium font-mono">
                 {g.away_team} @ {g.home_team}
               </p>
-              <p className="text-slate-400 text-xs mt-0.5 capitalize">
-                {g.game_day}
-                {g.is_snf && ' · SNF'}
-                {g.is_mnf && ' · MNF'}
+              <p className="text-slate-400 text-xs mt-0.5">
+                {g.round_label ?? 'Regular season'}
+                {g.region && ` · ${g.region}`}
+                {g.tv && ` · ${g.tv}`}
               </p>
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -159,7 +159,7 @@ export default function ResultsForm({ week, games, pendingEliminations }: Props)
             </div>
           )}
           {gradingResult.eliminated.length === 0 && gradingResult.advanced.length === 0 && (
-            <p className="text-slate-400 text-sm">No picks found for this week yet.</p>
+            <p className="text-slate-400 text-sm">No picks found for this slate yet.</p>
           )}
         </div>
       )}

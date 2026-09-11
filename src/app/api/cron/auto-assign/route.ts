@@ -1,57 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireCronOrAdmin } from '@/lib/api'
-import { getSNFGame, getMNFGame, getWeekSundayDeadline } from '@/lib/deadline'
+import { slateDeadline, autoAssignTeam, seedForTeam } from '@/lib/deadline'
 import { sendEliminationEmail, sendPickConfirmationEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
-import type { Game } from '@/types'
+import type { Game, Slate } from '@/types'
 
 // Per-player DB round trips plus awaited emails — allow a big no-pick cohort.
 export const maxDuration = 300
 
-// Vercel Cron (vercel.json) — fires at 17:00 and 18:00 UTC Sunday (noon
-// Central for both CDT and CST, since the NFL season straddles the November
-// DST switch); the deadline check below makes whichever run is premature for
-// the current DST state a no-op, and re-running after the real one is a
-// harmless no-op too since playersWithoutPick will already be empty. After
-// the Sunday noon deadline, players without a pick get the SNF away team,
-// then the MNF away team, or are eliminated if they've already used both.
+// Vercel Cron (vercel.json). Games happen every day now, so this runs daily
+// and guards itself on the slate's own lock time rather than on a fixed
+// weekly cutoff: if the first tip hasn't happened yet it is a no-op, and
+// re-running afterwards is harmless because everyone then has a pick.
+//
+// A player who missed the lock is assigned a team from the latest game of the
+// day they haven't already used (see autoAssignTeam). Elimination is the
+// fallback for the one case that cannot be assigned: every team on the slate
+// is already spent.
 export async function GET(req: NextRequest) {
   const unauthorized = await requireCronOrAdmin(req)
   if (unauthorized) return unauthorized
 
   try {
     const supabase = await getDb()
-    const { data: week } = await supabase
-      .from('weeks')
+    const { data: slate } = await supabase
+      .from('slates')
       .select('*')
       .eq('is_active', true)
       .single()
 
-    if (!week) return NextResponse.json({ ok: true, message: 'No active week' })
+    if (!slate) return NextResponse.json({ ok: true, message: 'No active slate' })
 
     const { data: games } = await supabase
       .from('games')
       .select('*')
-      .eq('week_id', week.id)
+      .eq('slate_id', slate.id)
 
     if (!games || games.length === 0) {
       return NextResponse.json({ ok: true, message: 'No games found' })
     }
 
     const gamesData: Game[] = games
-    const snfGame = getSNFGame(gamesData)
-    const mnfGame = getMNFGame(gamesData)
 
-    // Only act once the week's Sunday 12:00 PM Central deadline has passed
-    // (in test mode, against the sandbox's simulated clock).
-    const sundayDeadline = getWeekSundayDeadline(gamesData)
+    // Only act once the slate has locked (in test mode, against the
+    // sandbox's simulated clock).
+    const deadline = slateDeadline(slate, gamesData)
     const now = await getEffectiveNow()
-    if (!sundayDeadline || now < sundayDeadline) {
-      return NextResponse.json({ ok: true, message: 'Not past deadline yet' })
+    if (!deadline || now < deadline) {
+      return NextResponse.json({ ok: true, message: 'Slate has not locked yet' })
     }
 
-    // Find alive players without a pick for this week
+    // Find alive players without a pick for this slate
     const { data: alivePlayers } = await supabase
       .from('players')
       .select('id, full_name, email')
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     const { data: existingPicks } = await supabase
       .from('picks')
       .select('player_id')
-      .eq('week_id', week.id)
+      .eq('slate_id', slate.id)
 
     const playersWithPicks = new Set(
       (existingPicks || []).map((p: { player_id: string }) => p.player_id)
@@ -85,19 +85,14 @@ export async function GET(req: NextRequest) {
 
       const usedTeams = new Set((pastPicks || []).map((p: { team: string }) => p.team))
 
-      let autoTeam: string | null = null
-
-      if (snfGame && !usedTeams.has(snfGame.away_team)) {
-        autoTeam = snfGame.away_team
-      } else if (mnfGame && !usedTeams.has(mnfGame.away_team)) {
-        autoTeam = mnfGame.away_team
-      }
+      const autoTeam = autoAssignTeam(gamesData, [...usedTeams])
 
       if (autoTeam) {
         const { error: insertError } = await supabase.from('picks').insert({
           player_id: player.id,
-          week_id: week.id,
+          slate_id: slate.id,
           team: autoTeam,
+          seed: seedForTeam(autoTeam, gamesData),
           auto_assigned: true,
           submitted_by_admin: false,
         })
@@ -112,25 +107,25 @@ export async function GET(req: NextRequest) {
           actor: 'system',
           player_id: player.id,
           player_name: player.full_name,
-          message: `${player.full_name} missed the Week ${week.week_number} deadline — auto-assigned ${autoTeam}`,
-          details: { week_number: week.week_number, team: autoTeam },
+          message: `${player.full_name} missed the Slate ${slate.slate_number} deadline — auto-assigned ${autoTeam}`,
+          details: { slate_number: slate.slate_number, team: autoTeam },
         })
 
         // Awaited: fire-and-forget sends can be dropped when the serverless
         // function is frozen after responding. Failures are logged inside the
         // sender; the assignment itself already succeeded.
         if (player.email) {
-          await sendPickConfirmationEmail(player.email, player.full_name, autoTeam, week.week_number)
+          await sendPickConfirmationEmail(player.email, player.full_name, autoTeam, slate.slate_number)
         }
 
         results.push({ player: player.full_name, action: `auto-assigned ${autoTeam}` })
       } else {
-        const reason = 'Missed deadline — both auto-assign options already used'
+        const reason = 'Missed the lock — every team on the slate was already used'
         const { error: eliminateError } = await supabase
           .from('players')
           .update({
             status: 'eliminated',
-            elimination_week: week.week_number,
+            elimination_slate: slate.slate_number,
             elimination_reason: reason,
           })
           .eq('id', player.id)
@@ -148,11 +143,11 @@ export async function GET(req: NextRequest) {
           player_id: player.id,
           player_name: player.full_name,
           message: `${player.full_name} eliminated — ${reason}`,
-          details: { week_number: week.week_number, cause: 'missed-deadline' },
+          details: { slate_number: slate.slate_number, cause: 'missed-deadline' },
         })
 
         if (player.email) {
-          await sendEliminationEmail(player.email, player.full_name, null, week.week_number)
+          await sendEliminationEmail(player.email, player.full_name, null, slate.slate_number)
         }
 
         results.push({ player: player.full_name, action: 'eliminated (no auto-assign available)' })

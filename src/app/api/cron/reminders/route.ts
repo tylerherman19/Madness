@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireCronOrAdmin } from '@/lib/api'
-import { formatCentralTime, getWeekSundayDeadline } from '@/lib/deadline'
+import { formatCentralTime, slateDeadline } from '@/lib/deadline'
 import { sendReminderEmail, sleep, SEND_DELAY_MS } from '@/lib/email'
 import type { Game } from '@/types'
 
@@ -9,11 +9,12 @@ import type { Game } from '@/types'
 // full-group reminder batch.
 export const maxDuration = 300
 
-// Only nag once the deadline is actually close — a week can go active days
-// or weeks before kickoff (the admin syncs ahead to get the site ready), and
-// the Fri/Sun cron schedule in vercel.json would otherwise fire every single
-// week the pool is active regardless of how far off the real deadline is.
-const REMINDER_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
+// Only nag once the lock is actually close — a slate can go active days
+// before its first tip (the admin syncs ahead to get the site ready), and the
+// daily cron would otherwise fire every single day the pool is active
+// regardless of how far off the real deadline is. One day, since slates are
+// now one day apart.
+const REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000
 
 export async function GET(req: NextRequest) {
   const unauthorized = await requireCronOrAdmin(req)
@@ -21,34 +22,34 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = await getDb()
-    const { data: week } = await supabase
-      .from('weeks')
+    const { data: slate } = await supabase
+      .from('slates')
       .select('*')
       .eq('is_active', true)
       .single()
 
-    if (!week) return NextResponse.json({ ok: true, message: 'No active week' })
+    if (!slate) return NextResponse.json({ ok: true, message: 'No active slate' })
 
     const { data: games } = await supabase
       .from('games')
       .select('*')
-      .eq('week_id', week.id)
+      .eq('slate_id', slate.id)
 
-    const sundayDeadline = getWeekSundayDeadline((games || []) as Game[])
-    if (!sundayDeadline) return NextResponse.json({ ok: true, message: 'No deadline found' })
+    const deadline = slateDeadline(slate, (games || []) as Game[])
+    if (!deadline) return NextResponse.json({ ok: true, message: 'No deadline found' })
 
     const now = await getEffectiveNow()
-    const msUntilDeadline = sundayDeadline.getTime() - now.getTime()
+    const msUntilDeadline = deadline.getTime() - now.getTime()
     if (msUntilDeadline > REMINDER_WINDOW_MS) {
       return NextResponse.json({
         ok: true,
-        message: `Deadline is ${formatCentralTime(sundayDeadline)} — too far out to remind yet`,
+        message: `Deadline is ${formatCentralTime(deadline)} — too far out to remind yet`,
       })
     }
 
-    const deadlineStr = formatCentralTime(sundayDeadline)
+    const deadlineStr = formatCentralTime(deadline)
 
-    // Find alive players without a pick this week
+    // Find alive players without a pick this slate
     const { data: alivePlayers } = await supabase
       .from('players')
       .select('id, full_name, email')
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
     const { data: existingPicks } = await supabase
       .from('picks')
       .select('player_id')
-      .eq('week_id', week.id)
+      .eq('slate_id', slate.id)
 
     const playersWithPicks = new Set(
       (existingPicks || []).map((p: { player_id: string }) => p.player_id)
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
       const result = await sendReminderEmail(
         player.email,
         player.full_name,
-        week.week_number,
+        slate.slate_number,
         deadlineStr
       )
       if (result.ok) reminded++

@@ -7,33 +7,32 @@
 // which teams are effectively spent, and how alike the survivors' remaining
 // boards have become.
 //
-// Reveal safety: the caller passes only *revealed* current-week picks (see
-// isPickRevealed). Anything keyed off the current week therefore describes
-// picks that are already public and can no longer be changed. Past weeks are
+// Reveal safety: the caller passes only *revealed* current-slate picks (see
+// isPickRevealed). Anything keyed off the current slate therefore describes
+// picks that are already public and can no longer be changed. Past slates are
 // public in full — the pick grid has always shown them.
 
-import { NFL_TEAMS } from '@/types'
 
 export interface InsightPlayer {
   id: string
   full_name: string
   status: string
-  elimination_week: number | null
+  elimination_slate: number | null
 }
 
 export interface InsightWeek {
   id: string
-  week_number: number
+  slate_number: number
 }
 
 export interface InsightPick {
   player_id: string
-  week_id: string
+  slate_id: string
   team: string
 }
 
 export interface InsightGame {
-  week_id: string
+  slate_id: string
   home_team: string
   away_team: string
   result: string
@@ -42,16 +41,22 @@ export interface InsightGame {
 export interface InsightsInput {
   /** Real players in the season being played (internal test accounts already filtered out). */
   players: InsightPlayer[]
-  /** This season's weeks, ascending by week_number. */
-  weeks: InsightWeek[]
+  /** This season's slates, ascending by slate_number. */
+  slates: InsightWeek[]
   /** This season's picks, real players only. */
   picks: InsightPick[]
   games: InsightGame[]
-  currentWeek: InsightWeek | null
-  /** player_id -> team, current week, revealed picks only. */
+  currentSlate: InsightWeek | null
+  /** player_id -> team, current slate, revealed picks only. */
   revealedCurrentPicks: Record<string, string>
   potSize: number
   totalWeeks: number
+  /**
+   * The team universe scarcity is measured against. College basketball has no
+   * fixed 32-team roster to import, so the caller passes the teams discovered
+   * from the ESPN feed (see lib/teams).
+   */
+  teamUniverse: string[]
 }
 
 export interface ExposureRow {
@@ -127,7 +132,7 @@ export interface OverlapModule {
 }
 
 export interface ChalkWeek {
-  week_number: number
+  slate_number: number
   team: string
   count: number
   totalPicks: number
@@ -136,21 +141,21 @@ export interface ChalkWeek {
 }
 
 export interface ChalkModule {
-  weeks: ChalkWeek[]
+  slates: ChalkWeek[]
   wins: number
   decided: number
   worstWeek: ChalkWeek | null
-  /** Alive players ranked by how rarely they rode the week's most-picked team. */
-  contrarians: { player_id: string; full_name: string; offChalk: number; weeks: number }[]
+  /** Alive players ranked by how rarely they rode the slate's most-picked team. */
+  contrarians: { player_id: string; full_name: string; offChalk: number; slates: number }[]
   headline: string
   deck: string
 }
 
 export interface TrajectoryPoint {
-  week_number: number
+  slate_number: number
   remaining: number
   eliminated: number
-  /** Team that took out the most players that week, if any. */
+  /** Team that took out the most players that slate, if any. */
   topTeam: string | null
 }
 
@@ -159,9 +164,9 @@ export interface TrajectoryModule {
   start: number
   aliveCount: number
   bloodiest: TrajectoryPoint | null
-  /** First week the field was at or below half its starting size. */
+  /** First slate the field was at or below half its starting size. */
   halvingWeek: number | null
-  /** Week the pool resolves to one at the season's observed attrition rate. */
+  /** Slate the pool resolves to one at the season's observed attrition rate. */
   projectedEndWeek: number | null
   /** True when the projection runs past the end of the regular season. */
   projectionOverruns: boolean
@@ -181,26 +186,26 @@ export interface PoolInsights {
 const pct = (n: number) => `${Math.round(n * 100)}%`
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
-/** player+week -> team, so the per-week scans below stay linear. */
+/** player+slate -> team, so the per-slate scans below stay linear. */
 function indexPicks(picks: InsightPick[]): Map<string, string> {
   const m = new Map<string, string>()
-  for (const p of picks) m.set(`${p.player_id}:${p.week_id}`, p.team)
+  for (const p of picks) m.set(`${p.player_id}:${p.slate_id}`, p.team)
   return m
 }
 
-/** Teams that won their game, keyed by week. Ties count as losses for pickers. */
+/** Teams that won their game, keyed by slate. Ties count as losses for pickers. */
 function buildWinners(games: InsightGame[]): Record<string, Set<string>> {
   const winners: Record<string, Set<string>> = {}
   for (const g of games) {
     if (g.result !== 'home_win' && g.result !== 'away_win') continue
-    if (!winners[g.week_id]) winners[g.week_id] = new Set()
-    winners[g.week_id].add(g.result === 'home_win' ? g.home_team : g.away_team)
+    if (!winners[g.slate_id]) winners[g.slate_id] = new Set()
+    winners[g.slate_id].add(g.result === 'home_win' ? g.home_team : g.away_team)
   }
   return winners
 }
 
 export function computeInsights(input: InsightsInput): PoolInsights {
-  const { players, weeks, picks, games, currentWeek, revealedCurrentPicks, potSize, totalWeeks } = input
+  const { players, slates, picks, games, currentSlate, revealedCurrentPicks, potSize, totalWeeks, teamUniverse } = input
 
   const alive = players.filter((p) => p.status === 'alive')
   const nameById: Record<string, string> = {}
@@ -208,13 +213,13 @@ export function computeInsights(input: InsightsInput): PoolInsights {
 
   const winnersByWeek = buildWinners(games)
 
-  // Picks from weeks that are behind us. The current week is excluded because
+  // Picks from slates that are behind us. The current slate is excluded because
   // its picks are only partly public and, for anyone still able to change one,
   // not yet spent.
-  const pastPicks = picks.filter((p) => !currentWeek || p.week_id !== currentWeek.id)
-  const completedWeeks = weeks.filter((w) => !currentWeek || w.week_number < currentWeek.week_number)
+  const pastPicks = picks.filter((p) => !currentSlate || p.slate_id !== currentSlate.id)
+  const completedWeeks = slates.filter((w) => !currentSlate || w.slate_number < currentSlate.slate_number)
 
-  // Teams each survivor has spent: every past pick, plus this week's pick once
+  // Teams each survivor has spent: every past pick, plus this slate's pick once
   // it is public and locked.
   const usedByPlayer: Record<string, Set<string>> = {}
   for (const p of alive) usedByPlayer[p.id] = new Set()
@@ -226,25 +231,25 @@ export function computeInsights(input: InsightsInput): PoolInsights {
   }
 
   return {
-    exposure: buildExposure({ alive, revealedCurrentPicks, currentWeek }),
+    exposure: buildExposure({ alive, revealedCurrentPicks, currentSlate }),
     leverage: buildLeverage({ alive, revealedCurrentPicks, potSize, nameById }),
-    scarcity: buildScarcity({ alive, usedByPlayer, nameById, pastPicks }),
-    overlap: buildOverlap({ alive, usedByPlayer, completedWeeks }),
+    scarcity: buildScarcity({ alive, usedByPlayer, nameById, pastPicks, teamUniverse }),
+    overlap: buildOverlap({ alive, usedByPlayer, completedWeeks, teamUniverse }),
     chalk: buildChalk({ players, alive, pastPicks, completedWeeks, winnersByWeek, nameById }),
-    trajectory: buildTrajectory({ players, alive, completedWeeks, pastPicks, weeks, totalWeeks }),
+    trajectory: buildTrajectory({ players, alive, completedWeeks, pastPicks, slates, totalWeeks }),
   }
 }
 
 function buildExposure({
   alive,
   revealedCurrentPicks,
-  currentWeek,
+  currentSlate,
 }: {
   alive: InsightPlayer[]
   revealedCurrentPicks: Record<string, string>
-  currentWeek: InsightWeek | null
+  currentSlate: InsightWeek | null
 }): ExposureModule | null {
-  if (!currentWeek || alive.length === 0) return null
+  if (!currentSlate || alive.length === 0) return null
 
   const counts: Record<string, number> = {}
   let revealedCount = 0
@@ -289,7 +294,7 @@ function buildLeverage({
   nameById: Record<string, string>
 }): LeverageModule | null {
   // "Alone on a team" is only true once every survivor's pick is public. Run
-  // this mid-week, off a Thursday night reveal, and a player who merely happens
+  // this mid-slate, off a Thursday night reveal, and a player who merely happens
   // to be the first one public gets called a lone wolf while most of the field
   // is still hidden. Exposure is built to describe a partial picture honestly;
   // this module is not, so it waits.
@@ -350,15 +355,17 @@ function buildScarcity({
   usedByPlayer,
   nameById,
   pastPicks,
+  teamUniverse,
 }: {
   alive: InsightPlayer[]
   usedByPlayer: Record<string, Set<string>>
   nameById: Record<string, string>
   pastPicks: InsightPick[]
+  teamUniverse: string[]
 }): ScarcityModule | null {
   if (alive.length === 0 || pastPicks.length === 0) return null
 
-  const rows: ScarcityRow[] = NFL_TEAMS.map((team) => {
+  const rows: ScarcityRow[] = teamUniverse.map((team) => {
     let burnedBy = 0
     for (const p of alive) {
       if (usedByPlayer[p.id]?.has(team)) burnedBy++
@@ -405,19 +412,21 @@ function buildOverlap({
   alive,
   usedByPlayer,
   completedWeeks,
+  teamUniverse,
 }: {
   alive: InsightPlayer[]
   usedByPlayer: Record<string, Set<string>>
   completedWeeks: InsightWeek[]
+  teamUniverse: string[]
 }): OverlapModule | null {
-  // Before a few weeks are in the books every board is nearly identical, so the
+  // Before a few slates are in the books every board is nearly identical, so the
   // number carries no information.
   if (alive.length < 3 || completedWeeks.length < 3) return null
 
   const unused: Record<string, Set<string>> = {}
   for (const p of alive) {
     const used = usedByPlayer[p.id] ?? new Set<string>()
-    unused[p.id] = new Set(NFL_TEAMS.filter((t) => !used.has(t)))
+    unused[p.id] = new Set(teamUniverse.filter((t) => !used.has(t)))
   }
 
   let sum = 0
@@ -479,8 +488,8 @@ function buildChalk({
 
   const picksByWeek: Record<string, InsightPick[]> = {}
   for (const pick of pastPicks) {
-    if (!picksByWeek[pick.week_id]) picksByWeek[pick.week_id] = []
-    picksByWeek[pick.week_id].push(pick)
+    if (!picksByWeek[pick.slate_id]) picksByWeek[pick.slate_id] = []
+    picksByWeek[pick.slate_id].push(pick)
   }
 
   const modalByWeek: Record<string, string> = {}
@@ -496,9 +505,9 @@ function buildChalk({
 
     const winners = winnersByWeek[w.id]
     const outcome: ChalkWeek['outcome'] = !winners || winners.size === 0 ? 'unknown' : winners.has(team) ? 'won' : 'lost'
-    const eliminated = players.filter((p) => p.elimination_week === w.week_number).length
+    const eliminated = players.filter((p) => p.elimination_slate === w.slate_number).length
 
-    weeksOut.push({ week_number: w.week_number, team, count, totalPicks: weekPicks.length, outcome, eliminated })
+    weeksOut.push({ slate_number: w.slate_number, team, count, totalPicks: weekPicks.length, outcome, eliminated })
   }
 
   if (weeksOut.length === 0) return null
@@ -508,7 +517,7 @@ function buildChalk({
   const losses = decided.filter((w) => w.outcome === 'lost')
   const worstWeek = losses.sort((a, b) => b.eliminated - a.eliminated)[0] ?? null
 
-  // How often each survivor went off the week's most-picked team.
+  // How often each survivor went off the slate's most-picked team.
   const pickIndex = indexPicks(pastPicks)
   const contrarians = alive
     .map((p) => {
@@ -522,26 +531,26 @@ function buildChalk({
         weeksPlayed++
         if (team !== modal) offChalk++
       }
-      return { player_id: p.id, full_name: nameById[p.id] ?? p.full_name, offChalk, weeks: weeksPlayed }
+      return { player_id: p.id, full_name: nameById[p.id] ?? p.full_name, offChalk, slates: weeksPlayed }
     })
-    .filter((r) => r.weeks > 0)
+    .filter((r) => r.slates > 0)
     .sort((a, b) => b.offChalk - a.offChalk || a.full_name.localeCompare(b.full_name))
 
   let headline: string
   if (decided.length === 0) {
     headline = `The most-picked team is still waiting on results.`
   } else if (worstWeek) {
-    headline = `Following the crowd has worked ${wins} of ${decided.length} weeks — and the week it didn't, ${worstWeek.team} took ${worstWeek.eliminated} ${plural(worstWeek.eliminated, 'player', 'players')} down with it.`
+    headline = `Following the crowd has worked ${wins} of ${decided.length} slates — and the slate it didn't, ${worstWeek.team} took ${worstWeek.eliminated} ${plural(worstWeek.eliminated, 'player', 'players')} down with it.`
   } else {
-    headline = `The most-picked team has won all ${decided.length} decided ${plural(decided.length, 'week', 'weeks')}. Nobody has been punished for riding the chalk yet.`
+    headline = `The most-picked team has won all ${decided.length} decided ${plural(decided.length, 'slate', 'slates')}. Nobody has been punished for riding the chalk yet.`
   }
 
   const topContrarian = contrarians[0]
   const deck = topContrarian && topContrarian.offChalk > 0
-    ? `${topContrarian.full_name} has gone against the crowd ${topContrarian.offChalk} of ${topContrarian.weeks} ${plural(topContrarian.weeks, 'week', 'weeks')} and is still alive.`
-    : 'Every survivor left has ridden the most-picked team in most weeks.'
+    ? `${topContrarian.full_name} has gone against the crowd ${topContrarian.offChalk} of ${topContrarian.slates} ${plural(topContrarian.slates, 'slate', 'slates')} and is still alive.`
+    : 'Every survivor left has ridden the most-picked team in most slates.'
 
-  return { weeks: weeksOut, wins, decided: decided.length, worstWeek, contrarians, headline, deck }
+  return { slates: weeksOut, wins, decided: decided.length, worstWeek, contrarians, headline, deck }
 }
 
 function buildTrajectory({
@@ -549,42 +558,42 @@ function buildTrajectory({
   alive,
   completedWeeks,
   pastPicks,
-  weeks,
+  slates,
   totalWeeks,
 }: {
   players: InsightPlayer[]
   alive: InsightPlayer[]
   completedWeeks: InsightWeek[]
   pastPicks: InsightPick[]
-  weeks: InsightWeek[]
+  slates: InsightWeek[]
   totalWeeks: number
 }): TrajectoryModule | null {
   if (completedWeeks.length === 0 || players.length === 0) return null
 
   const weekIdByNumber: Record<number, string> = {}
-  for (const w of weeks) weekIdByNumber[w.week_number] = w.id
+  for (const w of slates) weekIdByNumber[w.slate_number] = w.id
   const pickIndex = indexPicks(pastPicks)
 
   const points: TrajectoryPoint[] = completedWeeks.map((w) => {
-    const out = players.filter((p) => p.elimination_week === w.week_number)
-    const remaining = players.length - players.filter((p) => p.elimination_week !== null && p.elimination_week <= w.week_number).length
+    const out = players.filter((p) => p.elimination_slate === w.slate_number)
+    const remaining = players.length - players.filter((p) => p.elimination_slate !== null && p.elimination_slate <= w.slate_number).length
 
-    // Team most responsible for that week's eliminations.
+    // Team most responsible for that slate's eliminations.
     const counts: Record<string, number> = {}
     for (const p of out) {
-      const key = pickIndex.get(`${p.id}:${weekIdByNumber[w.week_number]}`) ?? 'no pick'
+      const key = pickIndex.get(`${p.id}:${weekIdByNumber[w.slate_number]}`) ?? 'no pick'
       counts[key] = (counts[key] || 0) + 1
     }
     const topTeam = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 
-    return { week_number: w.week_number, remaining, eliminated: out.length, topTeam }
+    return { slate_number: w.slate_number, remaining, eliminated: out.length, topTeam }
   })
 
   const bloodiest = [...points].sort((a, b) => b.eliminated - a.eliminated)[0] ?? null
   const half = players.length / 2
-  const halvingWeek = points.find((p) => p.remaining <= half)?.week_number ?? null
+  const halvingWeek = points.find((p) => p.remaining <= half)?.slate_number ?? null
 
-  // Attrition compounded over the weeks actually played, extended forward. A
+  // Attrition compounded over the slates actually played, extended forward. A
   // rate this crude is only worth stating as "at this rate", never as a forecast.
   let projectedEndWeek: number | null = null
   let projectionOverruns = false
@@ -592,7 +601,7 @@ function buildTrajectory({
   const survivalRate = players.length > 0 && weeksPlayed > 0 ? Math.pow(alive.length / players.length, 1 / weeksPlayed) : 1
   if (alive.length > 1 && survivalRate > 0 && survivalRate < 1) {
     const weeksToOne = Math.log(1 / alive.length) / Math.log(survivalRate)
-    const lastWeek = points[points.length - 1].week_number
+    const lastWeek = points[points.length - 1].slate_number
     const projected = Math.ceil(lastWeek + weeksToOne)
     projectionOverruns = projected > totalWeeks
     projectedEndWeek = projectionOverruns ? null : projected
@@ -604,21 +613,21 @@ function buildTrajectory({
   } else if (bloodiest && bloodiest.eliminated > 0) {
     const share = bloodiest.eliminated / Math.max(players.length - alive.length, 1)
     headline = share >= 0.4
-      ? `Week ${bloodiest.week_number} did most of the damage — ${bloodiest.eliminated} of the ${players.length - alive.length} eliminations came in that single Sunday.`
-      : `${players.length - alive.length} of ${players.length} entries are gone. Week ${bloodiest.week_number} was the bloodiest at ${bloodiest.eliminated}.`
+      ? `Slate ${bloodiest.slate_number} did most of the damage — ${bloodiest.eliminated} of the ${players.length - alive.length} eliminations came in that single Sunday.`
+      : `${players.length - alive.length} of ${players.length} entries are gone. Slate ${bloodiest.slate_number} was the bloodiest at ${bloodiest.eliminated}.`
   } else {
     headline = `All ${players.length} entries are still alive.`
   }
 
   let deck: string
   if (projectedEndWeek) {
-    deck = `At the season's observed attrition rate, the pool resolves to one around Week ${projectedEndWeek}.`
+    deck = `At the season's observed attrition rate, the pool resolves to one around Slate ${projectedEndWeek}.`
   } else if (projectionOverruns) {
-    deck = `At this rate the field would still have survivors when Week ${totalWeeks} ends — a split, not a winner.`
+    deck = `At this rate the field would still have survivors when Slate ${totalWeeks} ends — a split, not a winner.`
   } else {
     deck = `Not enough attrition yet to project an end date.`
   }
-  if (halvingWeek) deck = `The field was cut in half by Week ${halvingWeek}. ${deck}`
+  if (halvingWeek) deck = `The field was cut in half by Slate ${halvingWeek}. ${deck}`
 
   return {
     points,

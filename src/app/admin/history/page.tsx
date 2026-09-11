@@ -1,61 +1,62 @@
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
-import { NFL_TEAM_NAMES } from '@/types'
 import { formatCentralTime } from '@/lib/deadline'
+import { getTeamAbbrs } from '@/lib/teams'
 
 interface WeekRow {
   id: string
-  week_number: number
+  slate_number: number
   season_year: number
   is_active: boolean
 }
 
 interface GameRow {
   id: string
-  week_id: string
+  slate_id: string
   home_team: string
   away_team: string
   result: string
-  kickoff_central: string
+  tip_time: string
 }
 
 export default async function AdminHistoryPage() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
+  const allTeams = await getTeamAbbrs(supabase)
 
-  const [{ data: weeks }, { data: games }, { data: picks }, { data: players }] = await Promise.all([
-    supabase.from('weeks').select('id, week_number, season_year, is_active').order('week_number'),
-    supabase.from('games').select('id, week_id, home_team, away_team, result, kickoff_central').order('kickoff_central'),
-    supabase.from('picks').select('week_id, team, auto_assigned'),
-    supabase.from('players').select('full_name, email, status, elimination_week, elimination_reason'),
+  const [{ data: slates }, { data: games }, { data: picks }, { data: players }] = await Promise.all([
+    supabase.from('slates').select('id, slate_number, season_year, is_active').order('slate_number'),
+    supabase.from('games').select('id, slate_id, home_team, away_team, result, tip_time').order('tip_time'),
+    supabase.from('picks').select('slate_id, team, auto_assigned'),
+    supabase.from('players').select('full_name, email, status, elimination_slate, elimination_reason'),
   ])
 
-  const weekRows: WeekRow[] = weeks || []
+  const weekRows: WeekRow[] = slates || []
   const gamesByWeek = new Map<string, GameRow[]>()
   for (const g of games || []) {
-    const list = gamesByWeek.get(g.week_id) || []
+    const list = gamesByWeek.get(g.slate_id) || []
     list.push(g)
-    gamesByWeek.set(g.week_id, list)
+    gamesByWeek.set(g.slate_id, list)
   }
 
   const pickStatsByWeek = new Map<string, { total: number; auto: number; byTeam: Record<string, number> }>()
   for (const p of picks || []) {
-    const stats = pickStatsByWeek.get(p.week_id) || { total: 0, auto: 0, byTeam: {} }
+    const stats = pickStatsByWeek.get(p.slate_id) || { total: 0, auto: 0, byTeam: {} }
     stats.total++
     if (p.auto_assigned) stats.auto++
     stats.byTeam[p.team] = (stats.byTeam[p.team] || 0) + 1
-    pickStatsByWeek.set(p.week_id, stats)
+    pickStatsByWeek.set(p.slate_id, stats)
   }
 
   const realPlayers = (players || []).filter((p) => !p.email?.endsWith('@nflsurvivor.internal'))
   const elimsByWeek = new Map<number, { full_name: string; elimination_reason: string | null }[]>()
   for (const p of realPlayers) {
-    if (p.status === 'eliminated' && p.elimination_week != null) {
-      const list = elimsByWeek.get(p.elimination_week) || []
+    if (p.status === 'eliminated' && p.elimination_slate != null) {
+      const list = elimsByWeek.get(p.elimination_slate) || []
       list.push({ full_name: p.full_name, elimination_reason: p.elimination_reason })
-      elimsByWeek.set(p.elimination_week, list)
+      elimsByWeek.set(p.elimination_slate, list)
     }
   }
 
@@ -63,31 +64,31 @@ export default async function AdminHistoryPage() {
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Season History</h1>
-        <p className="text-slate-400 mt-1">Every week&apos;s games, results, picks, and eliminations.</p>
+        <p className="text-slate-400 mt-1">Every slate&apos;s games, results, picks, and eliminations.</p>
       </div>
 
       {weekRows.length === 0 && (
         <div className="rounded-xl border border-slate-700 bg-slate-800 p-6 text-center">
-          <p className="text-slate-400">No weeks created yet.</p>
+          <p className="text-slate-400">No slates created yet.</p>
         </div>
       )}
 
-      {weekRows.map((week) => {
-        const weekGames = gamesByWeek.get(week.id) || []
-        const stats = pickStatsByWeek.get(week.id)
-        const elims = elimsByWeek.get(week.week_number) || []
+      {weekRows.map((slate) => {
+        const weekGames = gamesByWeek.get(slate.id) || []
+        const stats = pickStatsByWeek.get(slate.id)
+        const elims = elimsByWeek.get(slate.slate_number) || []
         const topPicks = stats
           ? Object.entries(stats.byTeam).sort((a, b) => b[1] - a[1]).slice(0, 5)
           : []
 
         return (
-          <div key={week.id} className="rounded-xl border border-slate-700 bg-slate-800 p-5 space-y-4">
+          <div key={slate.id} className="rounded-xl border border-slate-700 bg-slate-800 p-5 space-y-4">
             <div className="flex items-center justify-between">
               <p className="font-semibold text-white text-lg">
-                Week {week.week_number} · {week.season_year}
+                Slate {slate.slate_number} · {slate.season_year}
               </p>
               <div className="flex items-center gap-3">
-                {week.is_active && (
+                {slate.is_active && (
                   <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-semibold text-green-400">ACTIVE</span>
                 )}
                 <span className="text-xs text-slate-400">
@@ -111,7 +112,7 @@ export default async function AdminHistoryPage() {
                       <td className="py-1.5 font-mono text-white">
                         {g.away_team} @ {g.home_team}
                       </td>
-                      <td className="py-1.5 text-slate-400 hidden sm:table-cell">{formatCentralTime(g.kickoff_central)}</td>
+                      <td className="py-1.5 text-slate-400 hidden sm:table-cell">{formatCentralTime(g.tip_time)}</td>
                       <td className="py-1.5 text-right">
                         {g.result === 'pending' ? (
                           <span className="text-xs text-amber-400">pending</span>
@@ -128,7 +129,7 @@ export default async function AdminHistoryPage() {
                 </tbody>
               </table>
             ) : (
-              <p className="text-sm text-slate-500">No games entered for this week.</p>
+              <p className="text-sm text-slate-500">No games entered for this slate.</p>
             )}
 
             {topPicks.length > 0 && (
@@ -146,7 +147,7 @@ export default async function AdminHistoryPage() {
             {elims.length > 0 && (
               <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-red-400 mb-1.5">
-                  Eliminated in Week {week.week_number} ({elims.length})
+                  Eliminated in Slate {slate.slate_number} ({elims.length})
                 </p>
                 <ul className="space-y-0.5 text-sm text-slate-300">
                   {elims.map((e) => (
@@ -163,14 +164,14 @@ export default async function AdminHistoryPage() {
       })}
 
       {/* Teams never yet picked across the season */}
-      <NeverPicked picks={picks || []} />
+      <NeverPicked picks={picks || []} allTeams={allTeams} />
     </div>
   )
 }
 
-function NeverPicked({ picks }: { picks: { team: string }[] }) {
+function NeverPicked({ picks, allTeams }: { picks: { team: string }[]; allTeams: string[] }) {
   const pickedTeams = new Set(picks.map((p) => p.team))
-  const never = Object.keys(NFL_TEAM_NAMES).filter((t) => !pickedTeams.has(t))
+  const never = allTeams.filter((t) => !pickedTeams.has(t))
   if (never.length === 0) return null
   return (
     <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">

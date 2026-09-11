@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
+import { getTeamAbbrs } from '@/lib/teams'
 import { getDb } from '@/lib/testMode'
-import { NFL_TEAM_NAMES, NFL_TEAMS } from '@/types'
-import type { Week, Game } from '@/types'
+import type { Slate, Game } from '@/types'
 import Link from 'next/link'
 import LogoutButton from '../components/LogoutButton'
 import LogoMark from '../components/LogoMark'
@@ -14,11 +14,11 @@ export default async function HistoryPage() {
   const supabase = await getDb()
 
   const [picksRes, weeksRes, gamesRes, playersRes, allPicksRes] = await Promise.all([
-    supabase.from('picks').select('team, auto_assigned, week_id').eq('player_id', session.player_id),
-    supabase.from('weeks').select('id, week_number, season_year'),
-    supabase.from('games').select('week_id, home_team, away_team, result'),
+    supabase.from('picks').select('team, auto_assigned, slate_id').eq('player_id', session.player_id),
+    supabase.from('slates').select('id, slate_number, season_year, locks_at'),
+    supabase.from('games').select('slate_id, home_team, away_team, result'),
     supabase.from('players').select('id, status, email'),
-    supabase.from('picks').select('player_id, week_id'),
+    supabase.from('picks').select('player_id, slate_id'),
   ])
 
   const picksData = picksRes.data ?? []
@@ -29,20 +29,20 @@ export default async function HistoryPage() {
   )
   const allPicks = allPicksRes.data ?? []
 
-  const weekMap: Record<string, Week> = {}
-  for (const w of weeksData) weekMap[w.id] = w as Week
+  const weekMap: Record<string, Slate> = {}
+  for (const w of weeksData) weekMap[w.id] = w as Slate
 
   const gamesByWeek: Record<string, Game[]> = {}
   for (const g of gamesData) {
-    if (!gamesByWeek[g.week_id]) gamesByWeek[g.week_id] = []
-    gamesByWeek[g.week_id].push(g as Game)
+    if (!gamesByWeek[g.slate_id]) gamesByWeek[g.slate_id] = []
+    gamesByWeek[g.slate_id].push(g as Game)
   }
 
   type Outcome = 'won' | 'lost' | 'pending'
 
   const picks = picksData.map((pick) => {
-    const week = weekMap[pick.week_id]
-    const games = gamesByWeek[pick.week_id] ?? []
+    const slate = weekMap[pick.slate_id]
+    const games = gamesByWeek[pick.slate_id] ?? []
     const game = games.find((g) => g.home_team === pick.team || g.away_team === pick.team)
 
     let outcome: Outcome = 'pending'
@@ -52,10 +52,10 @@ export default async function HistoryPage() {
       else outcome = 'lost' // tie
     }
 
-    return { ...pick, week, outcome }
+    return { ...pick, slate, outcome }
   })
 
-  picks.sort((a, b) => (a.week?.week_number ?? 0) - (b.week?.week_number ?? 0))
+  picks.sort((a, b) => (a.slate?.slate_number ?? 0) - (b.slate?.slate_number ?? 0))
 
   // Season summary stats for this player
   const wins = picks.filter((p) => p.outcome === 'won').length
@@ -63,9 +63,10 @@ export default async function HistoryPage() {
   const myStatus = allPlayers.find((p: { id: string }) => p.id === session.player_id)?.status ?? 'alive'
 
   const usedTeams = new Set(picksData.map((p: { team: string }) => p.team))
-  const teamsRemaining = NFL_TEAMS.filter((t) => !usedTeams.has(t))
+  const allTeams = await getTeamAbbrs(supabase)
+  const teamsRemaining = allTeams.filter((t) => !usedTeams.has(t))
 
-  // Percentile: how many other players this player has outlasted (weeks survived = picks made)
+  // Percentile: how many other players this player has outlasted (slates survived = picks made)
   const survivedByPlayer: Record<string, number> = {}
   for (const pick of allPicks) {
     survivedByPlayer[pick.player_id] = (survivedByPlayer[pick.player_id] || 0) + 1
@@ -132,13 +133,13 @@ export default async function HistoryPage() {
           <div>
             {picks.map((pick) => (
               <div
-                key={pick.week_id}
+                key={pick.slate_id}
                 className="flex items-center justify-between gap-4 py-3 border-b"
                 style={{ borderColor: 'var(--border)' }}
               >
                 <div style={{ minWidth: 56 }}>
                   <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--muted)' }}>
-                    Wk {pick.week?.week_number ?? '?'}
+                    Wk {pick.slate?.slate_number ?? '?'}
                   </p>
                 </div>
                 <div className="flex-1">
@@ -150,7 +151,6 @@ export default async function HistoryPage() {
                   >
                     {pick.team}
                   </p>
-                  <p className="text-xs" style={{ color: 'var(--muted)' }}>{NFL_TEAM_NAMES[pick.team] || pick.team}</p>
                 </div>
                 <div className="text-right">
                   <span
@@ -182,7 +182,7 @@ export default async function HistoryPage() {
                   key={t}
                   className="border px-2 py-1 font-mono text-xs font-bold"
                   style={{ borderColor: 'var(--border)', color: 'var(--dark)', background: 'white' }}
-                  title={NFL_TEAM_NAMES[t]}
+                  title={t}
                 >
                   {t}
                 </span>

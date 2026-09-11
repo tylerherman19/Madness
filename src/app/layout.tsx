@@ -7,7 +7,7 @@ const anton = Anton({ weight: '400', subsets: ['latin'], variable: '--font-anton
 
 export const metadata: Metadata = {
   title: 'Madness',
-  description: "Pick one team per week. One loss and you're out.",
+  description: "Pick one team per slate. One loss and you're out.",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

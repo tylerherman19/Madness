@@ -1,32 +1,32 @@
 import { getDb, getEffectiveNow } from '@/lib/testMode'
-import { getWeekSundayDeadline, isPickRevealed } from '@/lib/deadline'
+import { slateDeadline, isPickRevealed } from '@/lib/deadline'
 import type { Game } from '@/types'
 import Link from 'next/link'
 import LogoMark from '@/app/components/LogoMark'
 
 // Cache the render for 60s (like the homepage) so 1k concurrent viewers are
-// served from the CDN instead of each triggering the full query set. Current-week
+// served from the CDN instead of each triggering the full query set. Current-slate
 // picks stay hidden behind the reveal deadline regardless of cache freshness.
 export const revalidate = 60
 
 export default async function GridPage() {
   // Guard the fetch so a DB outage (or a build without env) degrades to the
   // empty state instead of failing the render / prerender.
-  let weeks: { id: string; week_number: number; season_year: number }[] = []
-  let players: { id: string; full_name: string; status: string; elimination_week: number | null }[] = []
-  let allPicks: { player_id: string; week_id: string; team: string }[] = []
-  let allGames: { week_id: string; home_team: string; away_team: string; result: string; kickoff_central: string }[] = []
+  let slates: { id: string; slate_number: number; season_year: number; locks_at: string | null }[] = []
+  let players: { id: string; full_name: string; status: string; elimination_slate: number | null }[] = []
+  let allPicks: { player_id: string; slate_id: string; team: string }[] = []
+  let allGames: { slate_id: string; home_team: string; away_team: string; result: string; tip_time: string }[] = []
   try {
     const supabase = await getDb()
     const [weeksRes, playersRes, picksRes, gamesRes] = await Promise.all([
-      supabase.from('weeks').select('id, week_number, season_year').order('week_number'),
-      supabase.from('players').select('id, full_name, status, elimination_week').not('email', 'like', '%@nflsurvivor.internal').order('full_name'),
-      supabase.from('picks').select('player_id, week_id, team'),
-      // kickoff_central is what every deadline/reveal calculation below keys
+      supabase.from('slates').select('id, slate_number, season_year, locks_at').order('slate_number'),
+      supabase.from('players').select('id, full_name, status, elimination_slate').not('email', 'like', '%@nflsurvivor.internal').order('full_name'),
+      supabase.from('picks').select('player_id, slate_id, team'),
+      // tip_time is what every deadline/reveal calculation below keys
       // off — leaving it out of this select silently pins every pick as hidden.
-      supabase.from('games').select('week_id, home_team, away_team, result, kickoff_central'),
+      supabase.from('games').select('slate_id, home_team, away_team, result, tip_time'),
     ])
-    weeks = weeksRes.data ?? []
+    slates = weeksRes.data ?? []
     players = playersRes.data ?? []
     allPicks = picksRes.data ?? []
     allGames = gamesRes.data ?? []
@@ -34,40 +34,45 @@ export default async function GridPage() {
     // fall through to empty state
   }
 
-  // Build game lookup: weekId -> Game[]
+  // Build game lookup: slateId -> Game[]
   const gamesByWeek: Record<string, Game[]> = {}
   for (const g of allGames) {
-    if (!gamesByWeek[g.week_id]) gamesByWeek[g.week_id] = []
-    gamesByWeek[g.week_id].push(g as Game)
+    if (!gamesByWeek[g.slate_id]) gamesByWeek[g.slate_id] = []
+    gamesByWeek[g.slate_id].push(g as Game)
   }
 
   const now = await getEffectiveNow()
 
-  // Build pick map: playerId -> weekId -> team
+  // Build pick map: playerId -> slateId -> team
   const pickMap: Record<string, Record<string, string>> = {}
   for (const pick of allPicks) {
     if (!pickMap[pick.player_id]) pickMap[pick.player_id] = {}
-    pickMap[pick.player_id][pick.week_id] = pick.team
+    pickMap[pick.player_id][pick.slate_id] = pick.team
   }
 
-  // Reveal each pick the moment it locks rather than waiting on the whole week:
-  // a Thursday-night pick goes public at that kickoff, the rest at Sunday noon.
-  // Memoised per week+team since the grid re-asks for every player row.
+  // A slate reveals as a unit at its first tip, so this is memoised per
+  // slate rather than per slate+team.
+  const slateById: Record<string, { locks_at?: string | null }> = {}
+  for (const w of slates) slateById[w.id] = w
+
   const revealCache: Record<string, boolean> = {}
-  const isRevealed = (weekId: string, team: string): boolean => {
-    const key = `${weekId}:${team}`
-    if (revealCache[key] === undefined) {
-      revealCache[key] = isPickRevealed(team, gamesByWeek[weekId] ?? [], now)
+  const isRevealed = (slateId: string): boolean => {
+    if (revealCache[slateId] === undefined) {
+      revealCache[slateId] = isPickRevealed(
+        slateById[slateId] ?? null,
+        gamesByWeek[slateId] ?? [],
+        now
+      )
     }
-    return revealCache[key]
+    return revealCache[slateId]
   }
 
-  // Most-picked team per week, only for weeks whose Sunday deadline has passed
+  // Most-picked team per slate, only for slates that have locked
   const realPlayerIds = new Set(players.map((p) => p.id))
   const topPickByWeek: Record<string, { team: string; count: number } | null> = {}
-  for (const w of weeks) {
+  for (const w of slates) {
     const weekGames = gamesByWeek[w.id] ?? []
-    const deadline = getWeekSundayDeadline(weekGames)
+    const deadline = slateDeadline(slateById[w.id] ?? null, weekGames)
     const revealed = deadline ? deadline <= now : false
     if (!revealed) {
       topPickByWeek[w.id] = null
@@ -75,7 +80,7 @@ export default async function GridPage() {
     }
     const counts: Record<string, number> = {}
     for (const pick of allPicks) {
-      if (pick.week_id !== w.id || !realPlayerIds.has(pick.player_id)) continue
+      if (pick.slate_id !== w.id || !realPlayerIds.has(pick.player_id)) continue
       counts[pick.team] = (counts[pick.team] || 0) + 1
     }
     let top: { team: string; count: number } | null = null
@@ -85,11 +90,11 @@ export default async function GridPage() {
     topPickByWeek[w.id] = top
   }
 
-  // Build result map: playerId -> weekId -> outcome
+  // Build result map: playerId -> slateId -> outcome
   type Outcome = 'won' | 'lost' | 'pending'
   const resultMap: Record<string, Record<string, Outcome>> = {}
   for (const pick of allPicks) {
-    const games = gamesByWeek[pick.week_id] ?? []
+    const games = gamesByWeek[pick.slate_id] ?? []
     const game = games.find((g) => g.home_team === pick.team || g.away_team === pick.team)
     let outcome: Outcome = 'pending'
     if (game && game.result !== 'pending') {
@@ -98,10 +103,10 @@ export default async function GridPage() {
       else outcome = 'lost'
     }
     if (!resultMap[pick.player_id]) resultMap[pick.player_id] = {}
-    resultMap[pick.player_id][pick.week_id] = outcome
+    resultMap[pick.player_id][pick.slate_id] = outcome
   }
 
-  // Sort players: alive first (by weeks survived desc, then name), then eliminated (by elimination_week desc, then name)
+  // Sort players: alive first (by slates survived desc, then name), then eliminated (by elimination_slate desc, then name)
   const withStats = players.map((p) => ({
     ...p,
     weeksSurvived: Object.keys(pickMap[p.id] ?? {}).length,
@@ -113,8 +118,8 @@ export default async function GridPage() {
       return a.full_name.localeCompare(b.full_name)
     }
     // both eliminated
-    const aElim = a.elimination_week ?? 0
-    const bElim = b.elimination_week ?? 0
+    const aElim = a.elimination_slate ?? 0
+    const bElim = b.elimination_slate ?? 0
     if (bElim !== aElim) return bElim - aElim
     return a.full_name.localeCompare(b.full_name)
   })
@@ -135,8 +140,8 @@ export default async function GridPage() {
         <h1 className="font-display text-6xl leading-none" style={{ color: 'var(--dark)' }}>PICK GRID</h1>
         <p className="mt-2 mb-6 eyebrow">Full-season pick history · green won · red lost · ? hidden until it locks</p>
 
-        {weeks.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>No weeks scheduled yet.</p>
+        {slates.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>No slates scheduled yet.</p>
         ) : (
           <div className="card overflow-x-auto p-1">
             <table className="text-sm" style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -154,13 +159,13 @@ export default async function GridPage() {
                   >
                     Left
                   </th>
-                  {weeks.map((w) => (
+                  {slates.map((w) => (
                     <th
                       key={w.id}
                       className="py-2 px-1 text-center"
                       style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', minWidth: 44 }}
                     >
-                      <span className="block">Wk{w.week_number}</span>
+                      <span className="block">Wk{w.slate_number}</span>
                       {topPickByWeek[w.id] && (
                         <span className="block font-mono" style={{ fontSize: 9, fontWeight: 400, color: 'var(--muted)' }}>
                           {topPickByWeek[w.id]!.team} ×{topPickByWeek[w.id]!.count}
@@ -188,9 +193,9 @@ export default async function GridPage() {
                     <td className="py-2 px-2 text-center font-mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
                       {32 - player.weeksSurvived}
                     </td>
-                    {weeks.map((w) => {
+                    {slates.map((w) => {
                       const team = pickMap[player.id]?.[w.id]
-                      const hidden = !!team && !isRevealed(w.id, team)
+                      const hidden = !!team && !isRevealed(w.id)
 
                       if (!team) {
                         return (

@@ -1,9 +1,8 @@
-import type { Week, Game, Pick, Player } from '@/types'
-import { NFL_TEAM_NAMES } from '@/types'
+import type { Slate, Game, Pick, Player } from '@/types'
 import { formatCentralTime } from './deadline'
 
 interface RecapInput {
-  week: Week
+  slate: Slate
   games: Game[]
   picks: (Pick & { player: Pick & { full_name: string } })[]
   players: Player[]
@@ -15,7 +14,7 @@ interface RecapInput {
 
 export function generateRecap(input: RecapInput): string {
   const {
-    week,
+    slate,
     games,
     players,
     alivePlayers,
@@ -30,7 +29,7 @@ export function generateRecap(input: RecapInput): string {
 
   const lines: string[] = []
 
-  lines.push(`🏈 NFL SURVIVOR POOL — WEEK ${week.week_number} RECAP`)
+  lines.push(`🏈 NFL SURVIVOR POOL — WEEK ${slate.slate_number} RECAP`)
   lines.push('─'.repeat(40))
 
   // Results
@@ -49,7 +48,7 @@ export function generateRecap(input: RecapInput): string {
     }
   }
 
-  // Eliminations this week
+  // Eliminations this slate
   if (eliminatedThisWeek.length > 0) {
     lines.push('')
     lines.push('❌ ELIMINATED THIS WEEK:')

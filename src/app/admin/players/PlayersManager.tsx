@@ -3,13 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Player } from '@/types'
-import { NFL_TEAMS, NFL_TEAM_NAMES } from '@/types'
 import { teamColor } from '@/lib/teamColors'
 
 interface Props {
   players: Player[]
   activeWeekId: string | null
   activeWeekNumber: number | null
+  teams: string[]
   currentPicks: Record<string, string>
   weeksSurvived: Record<string, number>
 }
@@ -22,7 +22,7 @@ function actionBtn(color: 'neutral' | 'red' | 'green') {
   }
 }
 
-export default function PlayersManager({ players, activeWeekId, activeWeekNumber, currentPicks, weeksSurvived }: Props) {
+export default function PlayersManager({ players, activeWeekId, activeWeekNumber, teams, currentPicks, weeksSurvived }: Props) {
   const router = useRouter()
   const [message, setMessage] = useState('')
   const [csvText, setCsvText] = useState('')
@@ -143,7 +143,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       body: JSON.stringify({
         status: player.status === 'eliminated' ? 'alive' : 'eliminated',
         elimination_reason: reason,
-        elimination_week: activeWeekNumber,
+        elimination_slate: activeWeekNumber,
       }),
     })
     if (res.ok) {
@@ -183,7 +183,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          week_id: activeWeekId,
+          slate_id: activeWeekId,
           team: pickModal.team,
           player_id_override: pickModal.player.id,
           submitted_by_admin: true,
@@ -340,7 +340,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
         ) : null}
         {filtered.map((p) => {
           const pick = currentPicks[p.id]
-          const weeks = weeksSurvived[p.id] || 0
+          const slates = weeksSurvived[p.id] || 0
           return (
             <div
               key={p.id}
@@ -361,7 +361,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 </span>
               </div>
 
-              {/* Second row: paid + week pick */}
+              {/* Second row: paid + slate pick */}
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => togglePaid(p.id, p.paid)}
@@ -377,8 +377,8 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 ) : null}
               </div>
 
-              {/* Third row: weeks survived */}
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>{weeks > 0 ? `${weeks} week${weeks !== 1 ? 's' : ''} survived` : 'No weeks survived'}</p>
+              {/* Third row: slates survived */}
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>{slates > 0 ? `${slates} slate${slates !== 1 ? 's' : ''} survived` : 'No slates survived'}</p>
 
               {/* Bottom row: actions */}
               <div className="flex gap-2 flex-wrap">
@@ -436,7 +436,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               <th className="px-4 py-3 eyebrow">Name</th>
               <th className="px-4 py-3 eyebrow">Status</th>
               <th className="px-4 py-3 eyebrow">Wks</th>
-              <th className="px-4 py-3 eyebrow">This Week</th>
+              <th className="px-4 py-3 eyebrow">This Slate</th>
               <th className="px-4 py-3 eyebrow">Paid</th>
               <th className="px-4 py-3 eyebrow">Email</th>
               <th className="px-4 py-3 eyebrow">Actions</th>
@@ -452,7 +452,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             )}
             {filtered.map((p) => {
               const pick = currentPicks[p.id]
-              const weeks = weeksSurvived[p.id] || 0
+              const slates = weeksSurvived[p.id] || 0
               return (
                 <tr
                   key={p.id}
@@ -472,7 +472,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                       {p.status === 'alive' ? 'Alive' : 'Out'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 tnum" style={{ color: 'var(--muted)' }}>{weeks}</td>
+                  <td className="px-4 py-3 tnum" style={{ color: 'var(--muted)' }}>{slates}</td>
                   <td className="px-4 py-3">
                     {pick ? (
                       <span className="team-chip-swatch" style={{ background: teamColor(pick).primary, width: 'auto', padding: '3px 8px', borderRadius: 6 }}>{pick}</span>
@@ -561,9 +561,9 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 style={{ color: 'var(--dark)' }}
               >
                 <option value="">Select team…</option>
-                {NFL_TEAMS.map((t) => (
+                {teams.map((t) => (
                   <option key={t} value={t}>
-                    {t} — {NFL_TEAM_NAMES[t]}
+                    {t}
                   </option>
                 ))}
               </select>

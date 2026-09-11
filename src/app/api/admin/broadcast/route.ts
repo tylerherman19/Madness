@@ -47,9 +47,9 @@ export async function POST(req: NextRequest) {
     if (audience === 'alive') {
       recipients = recipients.filter((p) => p.status === 'alive')
     } else if (audience === 'unpicked') {
-      const { data: week } = await supabase.from('weeks').select('id').eq('is_active', true).single()
-      if (!week) return NextResponse.json({ error: 'No active week — cannot compute unpicked players' }, { status: 400 })
-      const { data: picks } = await supabase.from('picks').select('player_id').eq('week_id', week.id)
+      const { data: slate } = await supabase.from('slates').select('id').eq('is_active', true).single()
+      if (!slate) return NextResponse.json({ error: 'No active slate — cannot compute unpicked players' }, { status: 400 })
+      const { data: picks } = await supabase.from('picks').select('player_id').eq('slate_id', slate.id)
       const pickedIds = new Set((picks || []).map((p) => p.player_id))
       recipients = recipients.filter((p) => p.status === 'alive' && !pickedIds.has(p.id))
     }

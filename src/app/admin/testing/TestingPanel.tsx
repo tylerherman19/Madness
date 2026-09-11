@@ -26,7 +26,7 @@ function toDatetimeLocal(iso: string): string {
 
 function gameState(g: SandboxGame, effectiveNow: string): 'pre' | 'in' | 'final' {
   if (g.result !== 'pending') return 'final'
-  return new Date(effectiveNow) >= new Date(g.kickoff_central) ? 'in' : 'pre'
+  return new Date(effectiveNow) >= new Date(g.tip_time) ? 'in' : 'pre'
 }
 
 export default function TestingPanel({
@@ -130,7 +130,7 @@ export default function TestingPanel({
                 const seeded = await callTestMode('seed', { users: seedUsers })
                 if (seeded) {
                   setMessage(
-                    `Sandbox ready: ${seeded.created_users} test users (PIN ${seeded.pin}), Week ${seeded.week_number} with ${seeded.games} games.`
+                    `Sandbox ready: ${seeded.created_users} test users (PIN ${seeded.pin}), Slate ${seeded.slate_number} with ${seeded.games} games.`
                   )
                 }
                 router.refresh()
@@ -190,8 +190,8 @@ export default function TestingPanel({
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Stat label="Test Players" value={snapshot.players.length} />
             <Stat
-              label="Active Week"
-              value={snapshot.activeWeek ? `Wk ${snapshot.activeWeek.week_number}` : '—'}
+              label="Active Slate"
+              value={snapshot.activeSlate ? `Wk ${snapshot.activeSlate.slate_number}` : '—'}
             />
             <Stat label="Games" value={snapshot.gameCount} />
             <Stat label="Picks" value={snapshot.pickCount} />
@@ -217,7 +217,7 @@ export default function TestingPanel({
                   const data = await callTestMode('seed', { users: seedUsers })
                   if (data) {
                     setMessage(
-                      `Seeded: ${data.created_users} new test users (PIN ${data.pin}), Week ${data.week_number} with ${data.games} games.`
+                      `Seeded: ${data.created_users} new test users (PIN ${data.pin}), Slate ${data.slate_number} with ${data.games} games.`
                     )
                     router.refresh()
                   }
@@ -225,11 +225,11 @@ export default function TestingPanel({
                 disabled={busy !== null}
                 className="rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 transition-colors disabled:opacity-50"
               >
-                {busy === 'seed' ? 'Seeding…' : 'Seed Test Week + Users'}
+                {busy === 'seed' ? 'Seeding…' : 'Seed Test Slate + Users'}
               </button>
               <button
                 onClick={async () => {
-                  if (!confirm('Delete ALL sandbox data (players, weeks, games, picks)? Production is untouched.')) return
+                  if (!confirm('Delete ALL sandbox data (players, slates, games, picks)? Production is untouched.')) return
                   const data = await callTestMode('reset')
                   if (data) {
                     setMessage('Sandbox wiped clean.')
@@ -244,7 +244,7 @@ export default function TestingPanel({
             </div>
             <p className="text-slate-400 text-sm">
               Seeding creates test users (login with their name + PIN <span className="font-mono text-white">1234</span>)
-              and a one-week slate anchored on next Sunday: a locked Thursday game, three Sunday games, SNF and MNF.
+              and a one-slate slate anchored on next Sunday: a locked Thursday game, three Sunday games, SNF and MNF.
               Prefer your own slate? Build it in{' '}
               <Link href="/admin/schedule" className="text-blue-400 underline">Schedule</Link> — while testing mode is
               on, every admin page edits the sandbox.
@@ -265,7 +265,7 @@ export default function TestingPanel({
             </div>
             <p className="text-slate-400 text-sm">
               Every deadline/lock check in the sandbox — pick locking, auto-assign, the sweat board — reads this
-              clock instead of the real time, so you can progress through a week at your own pace.
+              clock instead of the real time, so you can progress through a slate at your own pace.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <input
@@ -306,7 +306,7 @@ export default function TestingPanel({
                   const data = await callTestMode('jump_to_next_kickoff')
                   if (data) { setMessage(`Sandbox clock jumped to next kickoff: ${formatCt(data.simulated_now)}.`); setClockInput(toDatetimeLocal(data.simulated_now)); router.refresh() }
                 }}
-                disabled={busy !== null || !snapshot.activeWeek}
+                disabled={busy !== null || !snapshot.activeSlate}
                 className="rounded-lg border border-slate-600 bg-slate-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-600 transition-colors disabled:opacity-50"
               >
                 Jump to next kickoff
@@ -325,10 +325,10 @@ export default function TestingPanel({
           </div>
 
           {/* Game scores */}
-          {snapshot.activeWeek && snapshot.games.length > 0 && (
+          {snapshot.activeSlate && snapshot.games.length > 0 && (
             <div className="rounded-xl border border-slate-700 bg-slate-800 p-5 space-y-3">
               <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">
-                Week {snapshot.activeWeek.week_number} Scores
+                Slate {snapshot.activeSlate.slate_number} Scores
               </p>
               <p className="text-slate-400 text-sm">
                 A game is <span className="text-slate-300 font-medium">not started</span> before its kickoff,{' '}
@@ -354,7 +354,7 @@ export default function TestingPanel({
                         {state === 'final' ? 'Final' : state === 'in' ? 'In Progress' : 'Not Started'}
                       </span>
                       <span className="text-sm font-semibold text-white min-w-[110px]">{g.away_team} @ {g.home_team}</span>
-                      <span className="text-xs text-slate-500 min-w-[130px]">{formatCt(g.kickoff_central)}</span>
+                      <span className="text-xs text-slate-500 min-w-[130px]">{formatCt(g.tip_time)}</span>
                       <input
                         type="number"
                         min={0}
@@ -457,7 +457,7 @@ export default function TestingPanel({
               These hit the same endpoints Vercel Cron does, but run against the sandbox. Auto-assign only acts once
               the Sunday 12 PM CT deadline has passed on the <span className="text-amber-300">sandbox clock above</span>;
               result sync still only matches games that exist on the real ESPN scoreboard — for made-up matchups, use{' '}
-              <span className="text-amber-300">Mark Final</span> in Week Scores above instead of running it here.
+              <span className="text-amber-300">Mark Final</span> in Slate Scores above instead of running it here.
             </p>
           </div>
 

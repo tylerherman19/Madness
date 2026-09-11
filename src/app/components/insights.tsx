@@ -9,7 +9,6 @@
 // and serves ~1k concurrent viewers, so the hover layer is pure CSS and no
 // chart library ships to the browser.
 
-import { NFL_TEAM_NAMES } from '@/types'
 import { teamColor } from '@/lib/teamColors'
 import TeamChip from './TeamChip'
 import type {
@@ -21,7 +20,9 @@ import type {
   TrajectoryModule,
 } from '@/lib/insights'
 
-const teamName = (t: string) => NFL_TEAM_NAMES[t] ?? t
+// College teams are conventionally written as their abbreviation on a
+// scoreboard, so the abbreviation stands on its own here.
+const teamName = (t: string) => t
 
 export function Story({
   kicker,
@@ -172,18 +173,18 @@ export function LeverageTable({ data, limit = 12 }: { data: LeverageModule; limi
 
 export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
   const { points, start, aliveCount, bloodiest, halvingWeek, projectedEndWeek } = data
-  const series = [{ week_number: 0, remaining: start }, ...points.map((p) => ({ week_number: p.week_number, remaining: p.remaining }))]
-  const lastWeek = series[series.length - 1].week_number
+  const series = [{ slate_number: 0, remaining: start }, ...points.map((p) => ({ slate_number: p.slate_number, remaining: p.remaining }))]
+  const lastWeek = series[series.length - 1].slate_number
   const maxWeek = Math.max(projectedEndWeek ?? lastWeek, lastWeek, 1)
   const maxY = Math.max(start, 1)
 
   // Inset the plot so the end markers and the last elimination bar sit inside
   // the card rather than half-hanging off its edge.
   const PAD = 2.5
-  const px = (week: number) => PAD + (week / maxWeek) * (100 - 2 * PAD)
+  const px = (slate: number) => PAD + (slate / maxWeek) * (100 - 2 * PAD)
   const py = (v: number) => (1 - v / maxY) * 100
 
-  const linePts = series.map((s) => `${px(s.week_number)},${py(s.remaining)}`).join(' ')
+  const linePts = series.map((s) => `${px(s.slate_number)},${py(s.remaining)}`).join(' ')
   const areaPts = `${px(0)},100 ${linePts} ${px(lastWeek)},100`
   const barWidth = `${Math.min(Math.max(56 / maxWeek, 2), 9)}%`
   const projectionPts =
@@ -225,13 +226,13 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
           </span>
 
           {series.map((s) => {
-            const isLast = s.week_number === lastWeek
+            const isLast = s.slate_number === lastWeek
             return (
               <span
-                key={s.week_number}
+                key={s.slate_number}
                 className="absolute rounded-full"
                 style={{
-                  left: `${px(s.week_number)}%`,
+                  left: `${px(s.slate_number)}%`,
                   top: `${py(s.remaining)}%`,
                   transform: 'translate(-50%, -50%)',
                   width: isLast ? 10 : 7,
@@ -248,13 +249,13 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
             <span
               className="absolute text-[10px] font-bold whitespace-nowrap"
               style={{
-                left: `${px(bloodiest.week_number)}%`,
-                top: `${py(points.find((p) => p.week_number === bloodiest.week_number)?.remaining ?? 0)}%`,
+                left: `${px(bloodiest.slate_number)}%`,
+                top: `${py(points.find((p) => p.slate_number === bloodiest.slate_number)?.remaining ?? 0)}%`,
                 transform: 'translate(-50%, -175%)',
                 color: 'var(--red)',
               }}
             >
-              Wk {bloodiest.week_number} · −{bloodiest.eliminated}
+              Wk {bloodiest.slate_number} · −{bloodiest.eliminated}
             </span>
           )}
 
@@ -276,29 +277,29 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
         </div>
       </div>
 
-      {/* Eliminations per week — same x scale, its own axis. Two measures, two
+      {/* Eliminations per slate — same x scale, its own axis. Two measures, two
           plots; never two scales on one chart. The hover wrapper has to sit
           inside the positioned column: .hint carries position:relative and
           would otherwise cancel the absolute placement. */}
-      <p className="eyebrow mt-5" style={{ fontSize: 9 }}>Eliminations per week</p>
+      <p className="eyebrow mt-5" style={{ fontSize: 9 }}>Eliminations per slate</p>
       <div className="relative mt-1.5" style={{ height: 44 }}>
         <span className="absolute left-0 right-0 bottom-0" style={{ height: 1, background: 'var(--grid)' }} />
         {points.map((p) => (
           <div
-            key={p.week_number}
+            key={p.slate_number}
             className="absolute"
-            style={{ left: `${px(p.week_number)}%`, bottom: 0, transform: 'translateX(-50%)', width: barWidth }}
+            style={{ left: `${px(p.slate_number)}%`, bottom: 0, transform: 'translateX(-50%)', width: barWidth }}
           >
             <div className="hint">
               <div
                 style={{
                   height: Math.max((p.eliminated / maxOut) * 40, p.eliminated > 0 ? 3 : 0),
-                  background: p.week_number === bloodiest?.week_number ? 'var(--red)' : 'var(--burn-2)',
+                  background: p.slate_number === bloodiest?.slate_number ? 'var(--red)' : 'var(--burn-2)',
                   borderRadius: '3px 3px 0 0',
                 }}
               />
               <span className="hint-body">
-                Wk {p.week_number}: {p.eliminated} out{p.topTeam && p.topTeam !== 'no pick' ? ` · mostly ${p.topTeam}` : ''}
+                Wk {p.slate_number}: {p.eliminated} out{p.topTeam && p.topTeam !== 'no pick' ? ` · mostly ${p.topTeam}` : ''}
               </span>
             </div>
           </div>
@@ -306,7 +307,7 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
       </div>
 
       <div className="relative mt-2" style={{ height: 14 }}>
-        {[0, ...points.map((p) => p.week_number)].map((w) => (
+        {[0, ...points.map((p) => p.slate_number)].map((w) => (
           <span
             key={w}
             className="absolute eyebrow tnum"
@@ -318,7 +319,7 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
       </div>
       {halvingWeek && (
         <p className="mt-4 text-xs" style={{ color: 'var(--muted)' }}>
-          Dashed line marks half the starting field, crossed in Week {halvingWeek}.
+          Dashed line marks half the starting field, crossed in Slate {halvingWeek}.
         </p>
       )}
     </div>
@@ -330,20 +331,20 @@ export function TrajectoryFigure({ data }: { data: TrajectoryModule }) {
 /* ------------------------------------------------------------------ */
 
 export function ChalkFigure({ data }: { data: ChalkModule }) {
-  const { weeks, contrarians } = data
+  const { slates, contrarians } = data
   const top = contrarians.filter((c) => c.offChalk > 0).slice(0, 4)
 
   return (
     <div className="space-y-3">
       <div className="card p-4 sm:p-5">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-4">
-          {weeks.map((w) => {
+          {slates.map((w) => {
             const share = w.totalPicks > 0 ? w.count / w.totalPicks : 0
             const lost = w.outcome === 'lost'
             return (
-              <div key={w.week_number}>
+              <div key={w.slate_number}>
                 <div className="flex items-baseline justify-between">
-                  <span className="eyebrow" style={{ fontSize: 9 }}>Wk {w.week_number}</span>
+                  <span className="eyebrow" style={{ fontSize: 9 }}>Wk {w.slate_number}</span>
                   <span
                     className="text-[10px] font-bold uppercase tracking-wider"
                     style={{ color: lost ? 'var(--red)' : w.outcome === 'won' ? 'var(--green)' : 'var(--muted)' }}
@@ -363,7 +364,7 @@ export function ChalkFigure({ data }: { data: ChalkModule }) {
                   </div>
                   <span className="hint-body">
                     {w.count} of {w.totalPicks} picks on {w.team}
-                    {w.eliminated > 0 ? ` · ${w.eliminated} eliminated that week` : ''}
+                    {w.eliminated > 0 ? ` · ${w.eliminated} eliminated that slate` : ''}
                   </span>
                 </div>
                 <p className="mt-1 tnum" style={{ fontSize: 10, color: 'var(--muted)' }}>
@@ -385,11 +386,11 @@ export function ChalkFigure({ data }: { data: ChalkModule }) {
                 <div className="flex-1 bar-track" style={{ height: 10 }}>
                   <div
                     className="bar-fill"
-                    style={{ width: `${(c.offChalk / Math.max(c.weeks, 1)) * 100}%`, background: 'var(--dark)' }}
+                    style={{ width: `${(c.offChalk / Math.max(c.slates, 1)) * 100}%`, background: 'var(--dark)' }}
                   />
                 </div>
                 <span className="text-xs tnum w-20 sm:w-24 text-right shrink-0" style={{ color: 'var(--ink-2)' }}>
-                  {c.offChalk} of {c.weeks} wks
+                  {c.offChalk} of {c.slates} wks
                 </span>
               </div>
             ))}

@@ -2,7 +2,7 @@ import { isTestMode } from '@/lib/testMode'
 
 // Sticky strip shown on every page while this browser is in the testing
 // sandbox. Renders nothing (and costs nothing — isTestMode is draft-mode
-// gated, so static/ISR pages stay static) during normal weeks.
+// gated, so static/ISR pages stay static) during normal slates.
 export default async function TestModeBanner() {
   if (!(await isTestMode())) return null
 

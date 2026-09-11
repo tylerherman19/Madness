@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { NFL_TEAM_NAMES } from '@/types'
 import { teamColor } from '@/lib/teamColors'
 import type { SweatResponse, SweatGame } from '@/app/api/sweat/route'
 
@@ -37,7 +36,6 @@ function TeamRow({ game, side, totalPlayers }: { game: SweatGame; side: 'home' |
         <div className="flex items-center gap-2 min-w-0">
           <span className="team-chip-swatch" style={{ background: teamColor(team).primary }}>{team.slice(0, 3)}</span>
           <span className="font-bold" style={{ color }}>{team}</span>
-          <span className="text-xs hidden sm:inline truncate" style={{ color: 'var(--muted)' }}>{NFL_TEAM_NAMES[team]}</span>
         </div>
         {!isPre && (
           <span className="font-display text-2xl tnum leading-none shrink-0" style={{ color }}>{my}</span>
@@ -146,7 +144,7 @@ export default function SweatBoard() {
     )
   }
 
-  if (data.weekNumber === null || data.games.length === 0) {
+  if (data.slateNumber === null || data.games.length === 0) {
     return (
       <div className="py-20 text-center">
         <p className="font-display text-6xl" style={{ color: 'var(--dark)' }}>NO GAMES YET</p>
@@ -173,7 +171,7 @@ export default function SweatBoard() {
         <div>
           <h1 className="font-display text-7xl leading-none" style={{ color: 'var(--dark)' }}>SWEAT BOARD</h1>
           <p className="mt-1 eyebrow">
-            Week {data.weekNumber} · live picks &amp; scores
+            Slate {data.slateNumber} · live picks &amp; scores
             {data.hasLiveGames && (
               <span className="ml-2 font-bold" style={{ color: 'var(--red)' }}>● LIVE</span>
             )}

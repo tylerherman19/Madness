@@ -2,12 +2,12 @@ import Link from 'next/link'
 import LogoMark from '@/app/components/LogoMark'
 import { getDb } from '@/lib/testMode'
 import { teamColor } from '@/lib/teamColors'
-import { fetchEspnScoreboard, eventCompetitors } from '@/lib/espn'
+import { fetchDayScoreboard, eventCompetitors, toEspnDate } from '@/lib/espn'
 
 export const revalidate = 3600
 
-const TOTAL_WEEKS = 18
-const WEEKS_AHEAD = 4
+// How many days of upcoming games to show.
+const DAYS_AHEAD = 5
 
 interface ScheduleGame {
   homeAbbr: string
@@ -15,26 +15,25 @@ interface ScheduleGame {
   kickoff: string // ISO UTC
 }
 
-interface ScheduleWeek {
-  weekNumber: number
+interface ScheduleDay {
+  date: string // YYYY-MM-DD, Central
+  label: string
   games: ScheduleGame[]
 }
 
-async function fetchWeekGames(season: number, week: number): Promise<ScheduleGame[]> {
+async function fetchDayGames(day: Date): Promise<ScheduleGame[]> {
   try {
-    const events = await fetchEspnScoreboard(season, week, 3600)
-    if (!events) return []
+    const { events } = await fetchDayScoreboard(toEspnDate(day), 3600)
 
     const games: ScheduleGame[] = []
     for (const event of events) {
       const teams = eventCompetitors(event)
       if (!teams) continue
+      const homeAbbr = teams.home.team.abbreviation
+      const awayAbbr = teams.away.team.abbreviation
+      if (!homeAbbr || !awayAbbr) continue
 
-      games.push({
-        homeAbbr: teams.home.team.abbreviation,
-        awayAbbr: teams.away.team.abbreviation,
-        kickoff: event.date,
-      })
+      games.push({ homeAbbr, awayAbbr, kickoff: event.date })
     }
     games.sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
     return games
@@ -43,32 +42,49 @@ async function fetchWeekGames(season: number, week: number): Promise<ScheduleGam
   }
 }
 
-async function getScheduleData(): Promise<{ weeks: ScheduleWeek[]; season: number; activeWeek: number | null }> {
-  let activeWeek: number | null = null
+async function getScheduleData(): Promise<{
+  days: ScheduleDay[]
+  season: number
+  activeDate: string | null
+}> {
+  let activeDate: string | null = null
   let season = 2026
   try {
     const supabase = await getDb()
-    const { data: week } = await supabase
-      .from('weeks')
-      .select('week_number, season_year')
+    const { data: slate } = await supabase
+      .from('slates')
+      .select('slate_date, season_year')
       .eq('is_active', true)
       .single()
-    if (week) {
-      activeWeek = week.week_number
-      season = week.season_year
+    if (slate) {
+      activeDate = String(slate.slate_date)
+      season = slate.season_year
     }
   } catch { /* pool not started yet */ }
 
-  const maxWeek = TOTAL_WEEKS
-  const startWeek = activeWeek ? Math.min(activeWeek + 1, maxWeek) : 1
-  const endWeek = Math.min(startWeek + WEEKS_AHEAD - 1, maxWeek)
+  // Start from the day after the active slate, or today if the pool hasn't
+  // started. Dark days are kept in the list and simply render as empty.
+  const start = activeDate
+    ? new Date(new Date(`${activeDate}T12:00:00Z`).getTime() + 86_400_000)
+    : new Date()
 
-  const weekNumbers: number[] = []
-  for (let w = startWeek; w <= endWeek; w++) weekNumbers.push(w)
+  const dayDates: Date[] = []
+  for (let i = 0; i < DAYS_AHEAD; i++) {
+    dayDates.push(new Date(start.getTime() + i * 86_400_000))
+  }
 
-  const results = await Promise.all(weekNumbers.map((w) => fetchWeekGames(season, w)))
-  const weeks: ScheduleWeek[] = weekNumbers.map((weekNumber, i) => ({ weekNumber, games: results[i] }))
-  return { weeks, season, activeWeek }
+  const results = await Promise.all(dayDates.map((d) => fetchDayGames(d)))
+  const days: ScheduleDay[] = dayDates.map((d, i) => ({
+    date: d.toISOString().slice(0, 10),
+    label: d.toLocaleDateString('en-US', {
+      timeZone: 'America/Chicago',
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    }),
+    games: results[i],
+  }))
+  return { days, season, activeDate }
 }
 
 function formatKickoff(iso: string): string {
@@ -84,8 +100,8 @@ function formatKickoff(iso: string): string {
 }
 
 export default async function SchedulePage() {
-  const { weeks, season, activeWeek } = await getScheduleData()
-  const hasAnyGames = weeks.some((w) => w.games.length > 0)
+  const { days, season, activeDate } = await getScheduleData()
+  const hasAnyGames = days.some((d) => d.games.length > 0)
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
@@ -114,7 +130,7 @@ export default async function SchedulePage() {
             UPCOMING SCHEDULE
           </h1>
           <p className="mt-2 eyebrow">
-            {season} Season{activeWeek ? ` · Currently Week ${activeWeek}` : ''}
+            {season} Season{activeDate ? ` · Currently playing ${activeDate}` : ''}
           </p>
           <p className="mt-3 text-sm" style={{ color: 'var(--muted)' }}>
             Plan ahead — you can only use each team once.
@@ -124,19 +140,19 @@ export default async function SchedulePage() {
         {!hasAnyGames ? (
           <div className="py-20 text-center">
             <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>SCHEDULE NOT AVAILABLE YET</p>
-            <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>Check back once the league releases upcoming weeks.</p>
+            <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>Check back once the league releases upcoming slates.</p>
           </div>
         ) : (
-          weeks.map(({ weekNumber, games }) =>
+          days.map(({ date, label, games }) =>
             games.length === 0 ? null : (
-              <section key={weekNumber} className="pt-9">
-                <p className="eyebrow mb-3">Week {weekNumber}</p>
+              <section key={date} className="pt-9">
+                <p className="eyebrow mb-3">{label}</p>
                 <div className="card overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
                       <tr style={{ background: 'var(--surface-sunken)' }}>
                         <th className="py-2.5 pl-4 text-left eyebrow">Matchup</th>
-                        <th className="py-2.5 pr-4 text-right eyebrow hidden sm:table-cell">Kickoff (CT)</th>
+                        <th className="py-2.5 pr-4 text-right eyebrow hidden sm:table-cell">Tip (CT)</th>
                       </tr>
                     </thead>
                     <tbody>

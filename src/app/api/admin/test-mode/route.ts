@@ -5,7 +5,7 @@ import { requireAdmin } from '@/lib/api'
 import { isTestMode, setTestModeCookie, clearTestModeCookie } from '@/lib/testMode'
 import { sandboxSupabase } from '@/lib/supabase'
 import { hashPin } from '@/lib/pin'
-import { gradeWeekPicks } from '@/lib/grading'
+import { gradeSlatePicks } from '@/lib/grading'
 import type { Game } from '@/types'
 
 const CHICAGO_TZ = 'America/Chicago'
@@ -13,10 +13,10 @@ const CHICAGO_TZ = 'America/Chicago'
 // Every seeded test user logs in with this PIN (sandbox-only accounts).
 const TEST_USER_PIN = '1234'
 
-// A one-week slate spread across the survivor deadline rules: a Thursday game
+// A one-slate slate spread across the survivor deadline rules: a Thursday game
 // (locks at kickoff), three Sunday-slot games (lock Sunday 12 PM CT), SNF and
 // MNF (auto-assign fallbacks). 12 distinct teams, so seeded players have
-// plenty of untouched teams for multi-week testing.
+// plenty of untouched teams for multi-slate testing.
 const TEST_SLATE = [
   { away: 'DAL', home: 'PHI', day: 'thursday', offsetDays: -3, hour: 19, minute: 15, snf: false, mnf: false },
   { away: 'GB', home: 'CHI', day: 'sunday', offsetDays: 0, hour: 12, minute: 0, snf: false, mnf: false },
@@ -86,13 +86,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'jump_to_next_kickoff') {
-      const { data: activeWeek } = await sandboxSupabase.from('weeks').select('id').eq('is_active', true).single()
-      if (!activeWeek) return NextResponse.json({ error: 'No active sandbox week' }, { status: 400 })
+      const { data: activeSlate } = await sandboxSupabase.from('slates').select('id').eq('is_active', true).single()
+      if (!activeSlate) return NextResponse.json({ error: 'No active sandbox slate' }, { status: 400 })
       const { data: clockRow } = await sandboxSupabase.from('clock').select('simulated_now').eq('id', true).single()
       const currentNow = clockRow?.simulated_now ? new Date(clockRow.simulated_now) : new Date()
-      const { data: games } = await sandboxSupabase.from('games').select('kickoff_central').eq('week_id', activeWeek.id)
+      const { data: games } = await sandboxSupabase.from('games').select('tip_time').eq('slate_id', activeSlate.id)
       const upcoming = (games || [])
-        .map((g: { kickoff_central: string }) => new Date(g.kickoff_central))
+        .map((g: { tip_time: string }) => new Date(g.tip_time))
         .filter((d: Date) => d > currentNow)
         .sort((a: Date, b: Date) => a.getTime() - b.getTime())
       if (upcoming.length === 0) {
@@ -134,21 +134,21 @@ export async function POST(req: NextRequest) {
       const { error: updateErr } = await sandboxSupabase.from('games').update({ result }).eq('id', gameId)
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
-      // Re-grade the whole week (idempotent) so elimination/standings pick up
+      // Re-grade the whole slate (idempotent) so elimination/standings pick up
       // this and any previously-finalized sandbox games together.
-      const { data: week } = await sandboxSupabase.from('weeks').select('week_number').eq('id', game.week_id).single()
-      const { data: weekGames } = await sandboxSupabase.from('games').select('*').eq('week_id', game.week_id)
+      const { data: slate } = await sandboxSupabase.from('slates').select('slate_number').eq('id', game.slate_id).single()
+      const { data: weekGames } = await sandboxSupabase.from('games').select('*').eq('slate_id', game.slate_id)
       const completedGames = ((weekGames || []) as Game[]).filter((g) => g.result !== 'pending')
-      const grading = week
-        ? await gradeWeekPicks(sandboxSupabase, game.week_id, week.week_number, completedGames)
+      const grading = slate
+        ? await gradeSlatePicks(sandboxSupabase, game.slate_id, slate.slate_number, completedGames)
         : null
 
       return NextResponse.json({ ok: true, result, grading })
     }
 
     if (action === 'reset') {
-      // Order matters only for clarity — FKs cascade from weeks/players.
-      const tables = ['picks', 'games', 'weeks', 'players'] as const
+      // Order matters only for clarity — FKs cascade from slates/players.
+      const tables = ['picks', 'games', 'slates', 'players'] as const
       for (const table of tables) {
         const { error } = await sandboxSupabase.from(table).delete().not('id', 'is', null)
         if (error) return NextResponse.json({ error: `Failed to clear ${table}: ${error.message}` }, { status: 500 })
@@ -194,24 +194,24 @@ export async function POST(req: NextRequest) {
         if (error) return NextResponse.json({ error: `Failed to create test users: ${error.message}` }, { status: 500 })
       }
 
-      // --- Test week + schedule ---
-      const { data: weeks } = await sandboxSupabase
-        .from('weeks')
-        .select('week_number, season_year')
-        .order('week_number', { ascending: false })
+      // --- Test slate + schedule ---
+      const { data: slates } = await sandboxSupabase
+        .from('slates')
+        .select('slate_number, season_year')
+        .order('slate_number', { ascending: false })
         .limit(1)
-      const latest = weeks?.[0]
+      const latest = slates?.[0]
       const seasonYear = latest?.season_year ?? new Date().getFullYear()
-      const weekNumber = (latest?.week_number ?? 0) + 1
+      const slateNumber = (latest?.slate_number ?? 0) + 1
 
-      await sandboxSupabase.from('weeks').update({ is_active: false }).gt('week_number', 0)
+      await sandboxSupabase.from('slates').update({ is_active: false }).gt('slate_number', 0)
       const { data: newWeek, error: weekErr } = await sandboxSupabase
-        .from('weeks')
-        .insert({ week_number: weekNumber, season_year: seasonYear, is_active: true })
+        .from('slates')
+        .insert({ slate_number: slateNumber, season_year: seasonYear, is_active: true })
         .select('id')
         .single()
       if (weekErr || !newWeek) {
-        return NextResponse.json({ error: `Failed to create test week: ${weekErr?.message}` }, { status: 500 })
+        return NextResponse.json({ error: `Failed to create test slate: ${weekErr?.message}` }, { status: 500 })
       }
 
       // Anchor the slate on the next Sunday (CT) so the Sunday 12 PM deadline
@@ -224,11 +224,11 @@ export async function POST(req: NextRequest) {
         kickoffCt.setDate(nowCt.getDate() + daysToSunday + g.offsetDays)
         kickoffCt.setHours(g.hour, g.minute, 0, 0)
         return {
-          week_id: newWeek.id,
+          slate_id: newWeek.id,
           home_team: g.home,
           away_team: g.away,
           game_day: g.day,
-          kickoff_central: fromZonedTime(kickoffCt, CHICAGO_TZ).toISOString(),
+          tip_time: fromZonedTime(kickoffCt, CHICAGO_TZ).toISOString(),
           is_snf: g.snf,
           is_mnf: g.mnf,
           result: 'pending',
@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         created_users: newUsers.length,
-        week_number: weekNumber,
+        slate_number: slateNumber,
         games: games.length,
         pin: TEST_USER_PIN,
       })

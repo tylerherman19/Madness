@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import type { StandingRow, TeamStat, Week } from '@/types'
+import type { StandingRow, TeamStat, Slate } from '@/types'
 import { computeInsights } from '@/lib/insights'
 import Countdown from './components/Countdown'
 import LiveTicker from './components/LiveTicker'
@@ -20,11 +20,14 @@ import {
 // updates client-side via the Countdown component regardless.
 export const revalidate = 60
 
-const TOTAL_WEEKS = 18
+// A season has no fixed number of playing days, so the progress bar can't be
+// "slate N of 18" any more. This is only the denominator the trajectory
+// module uses to scale its projection; the header shows the date instead.
+const TOTAL_SLATES_ESTIMATE = 120
 
 async function getDashboardData() {
   try {
-    const { getWeekSundayDeadline, isPickRevealed } = await import('@/lib/deadline')
+    const { slateDeadline, isPickRevealed } = await import('@/lib/deadline')
 
     /* eslint-disable @typescript-eslint/no-explicit-any */
     let allWeeks: any[] | null = null
@@ -33,29 +36,15 @@ async function getDashboardData() {
     let allGames: any[] | null = null
     /* eslint-enable @typescript-eslint/no-explicit-any */
 
-    // Local UI work only: a synthetic mid-season pool so every module renders
-    // without DB access, which local dev has no credentials for (the Supabase
-    // keys are Sensitive in Vercel and pull back empty). The NODE_ENV check is
-    // the load-bearing half — it makes it impossible for a stray UI_DEMO in a
-    // deployed environment to put fabricated standings in front of real
-    // players, whatever the env vars say.
-    const demoMode = process.env.NODE_ENV !== 'production' ? process.env.UI_DEMO : undefined
-    if (demoMode === '1' || demoMode === '2') {
-      const { buildDemoData } = await import('@/lib/demoData')
-      const demo = buildDemoData(demoMode)
-      allWeeks = demo.weeks
-      allPlayers = demo.players
-      allPicks = demo.picks
-      allGames = demo.games
-    } else {
+    {
       const { getDb } = await import('@/lib/testMode')
       const supabase = await getDb()
 
-      // Single Promise.all with 4 queries: all weeks, all players, all picks with team, all games
+      // Single Promise.all with 4 queries: all slates, all players, all picks with team, all games
       const [weeksRes, playersRes, picksRes, gamesRes] = await Promise.all([
-        supabase.from('weeks').select('*').order('week_number'),
-        supabase.from('players').select('id, full_name, email, status, elimination_week, elimination_reason, paid').order('full_name'),
-        supabase.from('picks').select('player_id, week_id, team'),
+        supabase.from('slates').select('*').order('slate_number'),
+        supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name'),
+        supabase.from('picks').select('player_id, slate_id, team'),
         supabase.from('games').select('*')
       ])
       allWeeks = weeksRes.data
@@ -73,17 +62,17 @@ async function getDashboardData() {
     const alive = players.filter((p: { status: string }) => p.status === 'alive')
     const payoutPerSurvivor = alive.length > 0 ? Math.floor(potSize / alive.length) : 0
 
-    // Find active week from allWeeks
-    const week = (allWeeks || []).find((w: { is_active: boolean }) => w.is_active) || null
+    // Find active slate from allWeeks
+    const slate = (allWeeks || []).find((w: { is_active: boolean }) => w.is_active) || null
 
     // Everything derived below is scoped to the season currently being played
-    // (season_year), read off the active week like getSignupCutoff does — a
+    // (season_year), read off the active slate like getSignupCutoff does — a
     // future season synced early, or last season's leftovers, must not get
     // folded into this season's carnage cards, survival curve, or team stats.
-    // With no active week there is nothing being played, so fall back to the
+    // With no active slate there is nothing being played, so fall back to the
     // newest season_year present.
     const seasonAnchor =
-      week ||
+      slate ||
       (allWeeks || [])
         .slice()
         .sort((a: { season_year: number }, b: { season_year: number }) => b.season_year - a.season_year)[0] ||
@@ -94,21 +83,20 @@ async function getDashboardData() {
     )
     const seasonWeekIds = new Set<string>(seasonWeeks.map((w: { id: string }) => w.id))
     const seasonPicks = (allPicks || []).filter(
-      (p: { week_id: string; player_id: string }) => seasonWeekIds.has(p.week_id) && realPlayerIds.has(p.player_id)
+      (p: { slate_id: string; player_id: string }) => seasonWeekIds.has(p.slate_id) && realPlayerIds.has(p.player_id)
     )
 
     let currentPicks: Record<string, string> = {}
-    // Subset of currentPicks whose team has already locked, so it can be shown
-    // publicly. Fills in through the week: Thursday picks first, the rest at
-    // Sunday noon.
+    // Subset of currentPicks that can be shown publicly — all of them, once
+    // the slate locks at its first tip.
     const revealedPicks: Record<string, string> = {}
     let nextDeadline: string | null = null
     let nextDeadlineFormatted: string | null = null
     let picksRevealed = false
 
-    if (week) {
-      // Filter picks for current week from allPicks
-      const picksData = (allPicks || []).filter((p: { week_id: string }) => p.week_id === week.id)
+    if (slate) {
+      // Filter picks for current slate from allPicks
+      const picksData = (allPicks || []).filter((p: { slate_id: string }) => p.slate_id === slate.id)
       if (picksData) {
         currentPicks = Object.fromEntries(
           picksData
@@ -117,15 +105,15 @@ async function getDashboardData() {
         )
       }
 
-      // Filter games for current week from allGames
-      const gamesData = (allGames || []).filter((g: { week_id: string }) => g.week_id === week.id)
+      // Filter games for current slate from allGames
+      const gamesData = (allGames || []).filter((g: { slate_id: string }) => g.slate_id === slate.id)
       if (gamesData) {
         const { getEffectiveNow } = await import('@/lib/testMode')
         const now = await getEffectiveNow()
-        const sundayDeadline = getWeekSundayDeadline(gamesData)
-        if (sundayDeadline && sundayDeadline > now) {
-          nextDeadline = sundayDeadline.toISOString()
-          nextDeadlineFormatted = sundayDeadline.toLocaleString('en-US', {
+        const slateLockTime = slateDeadline(slate, gamesData)
+        if (slateLockTime && slateLockTime > now) {
+          nextDeadline = slateLockTime.toISOString()
+          nextDeadlineFormatted = slateLockTime.toLocaleString('en-US', {
             timeZone: 'America/Chicago',
             weekday: 'short',
             month: 'short',
@@ -135,57 +123,68 @@ async function getDashboardData() {
             timeZoneName: 'short',
           })
         }
-        picksRevealed = sundayDeadline ? sundayDeadline <= now : false
+        picksRevealed = slateLockTime ? slateLockTime <= now : false
 
-        const revealedTeams = new Map<string, boolean>()
-        for (const [playerId, team] of Object.entries(currentPicks)) {
-          if (!revealedTeams.has(team)) {
-            revealedTeams.set(team, isPickRevealed(team, gamesData, now))
+        // The slate reveals as a unit at its first tip, so this is one
+        // decision for every pick rather than a per-team lookup.
+        if (isPickRevealed(slate, gamesData, now)) {
+          for (const [playerId, team] of Object.entries(currentPicks)) {
+            revealedPicks[playerId] = team
           }
-          if (revealedTeams.get(team)) revealedPicks[playerId] = team
         }
       }
     }
 
-    // Count weeks survived per player from this season's picks (including current week)
+    const { getTeamAbbrs } = await import('@/lib/teams')
+    const { getDb } = await import('@/lib/testMode')
+    const teamUniverse = await getTeamAbbrs(await getDb())
+
+    // Count slates survived per player from this season's picks (including current slate)
     const weeksSurvivedByPlayer: Record<string, number> = {}
+    // Sum of the seeds each player has taken — the tiebreak when more than
+    // one survivor is left. Regular-season picks carry no seed, so this stays
+    // at zero until the bracket is set.
+    const seedTotalByPlayer: Record<string, number> = {}
     for (const pick of seasonPicks) {
       weeksSurvivedByPlayer[pick.player_id] = (weeksSurvivedByPlayer[pick.player_id] || 0) + 1
+      seedTotalByPlayer[pick.player_id] =
+        (seedTotalByPlayer[pick.player_id] || 0) + (pick.seed ?? 0)
     }
 
     const standings: StandingRow[] = players.map(
-      (p: { id: string; full_name: string; status: string; elimination_reason: string | null; elimination_week: number | null }) => ({
+      (p: { id: string; full_name: string; status: string; elimination_reason: string | null; elimination_slate: number | null }) => ({
         player_id: p.id,
         full_name: p.full_name,
         status: p.status as 'alive' | 'eliminated',
-        weeks_survived: weeksSurvivedByPlayer[p.id] || 0,
+        slates_survived: weeksSurvivedByPlayer[p.id] || 0,
+        seed_total: seedTotalByPlayer[p.id] || 0,
         current_pick: currentPicks[p.id] || null,
         pick_locked: !!currentPicks[p.id],
         pick_revealed: !!revealedPicks[p.id],
         elimination_reason: p.elimination_reason,
-        elimination_week: p.elimination_week,
+        elimination_slate: p.elimination_slate,
       })
     )
 
     standings.sort((a, b) => {
       if (a.status !== b.status) return a.status === 'alive' ? -1 : 1
-      return b.weeks_survived - a.weeks_survived
+      return b.slates_survived - a.slates_survived
     })
 
-    // Filter picks to exclude current week for team stats
-    const allPicksWithTeam = seasonPicks.filter((p: { week_id: string }) => !week || p.week_id !== week.id)
+    // Filter picks to exclude current slate for team stats
+    const allPicksWithTeam = seasonPicks.filter((p: { slate_id: string }) => !slate || p.slate_id !== slate.id)
 
     const teamMap: Record<string, { times_picked: number; wins: number; eliminations: number }> = {}
     if (allPicksWithTeam) {
       const winnersByWeek: Record<string, string[]> = {}
       for (const g of allGames || []) {
-        if (g.result === 'home_win') winnersByWeek[g.week_id] = [...(winnersByWeek[g.week_id] || []), g.home_team]
-        else if (g.result === 'away_win') winnersByWeek[g.week_id] = [...(winnersByWeek[g.week_id] || []), g.away_team]
+        if (g.result === 'home_win') winnersByWeek[g.slate_id] = [...(winnersByWeek[g.slate_id] || []), g.home_team]
+        else if (g.result === 'away_win') winnersByWeek[g.slate_id] = [...(winnersByWeek[g.slate_id] || []), g.away_team]
       }
       for (const pick of allPicksWithTeam) {
         if (!teamMap[pick.team]) teamMap[pick.team] = { times_picked: 0, wins: 0, eliminations: 0 }
         teamMap[pick.team].times_picked++
-        const winners = winnersByWeek[pick.week_id] || []
+        const winners = winnersByWeek[pick.slate_id] || []
         if (winners.includes(pick.team)) teamMap[pick.team].wins++
         else if (winners.length > 0) teamMap[pick.team].eliminations++
       }
@@ -205,22 +204,23 @@ async function getDashboardData() {
 
     // Everything the editorial modules need is already in hand — the insight
     // layer is a pure function over it, and only ever sees revealed picks for
-    // the current week.
+    // the current slate.
     const insights = computeInsights({
       players,
-      weeks: seasonWeeks
+      slates: seasonWeeks
         .slice()
-        .sort((a: { week_number: number }, b: { week_number: number }) => a.week_number - b.week_number),
+        .sort((a: { slate_number: number }, b: { slate_number: number }) => a.slate_number - b.slate_number),
       picks: seasonPicks,
       games: allGames || [],
-      currentWeek: week,
+      currentSlate: slate,
       revealedCurrentPicks: revealedPicks,
       potSize,
-      totalWeeks: TOTAL_WEEKS,
+      totalWeeks: TOTAL_SLATES_ESTIMATE,
+      teamUniverse,
     })
 
     return {
-      week: week as Week | null,
+      slate: slate as Slate | null,
       standings,
       teamStats,
       potSize,
@@ -254,7 +254,7 @@ export default async function DashboardPage() {
       <SiteHeader signupsClosed={signupsClosed} />
 
       {/* Live scores ticker — client component, polls independently of cached server render */}
-      <LiveTicker weekNumber={data?.week?.week_number} season={data?.week?.season_year} />
+      <LiveTicker slateNumber={data?.slate?.slate_number} season={data?.slate?.season_year} />
 
       {data && data.aliveCount === 1 && aliveRows.length === 1 && (
         <div style={{ background: 'var(--dark)', borderBottom: '4px solid var(--green)' }}>
@@ -273,17 +273,17 @@ export default async function DashboardPage() {
         </main>
       ) : (
         <main className="mx-auto max-w-5xl px-4 pb-4">
-          {/* Masthead: the week and the deadline */}
+          {/* Masthead: the slate and the deadline */}
           <div className="pt-9 pb-6">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5">
               <div className="min-w-0">
                 <h1 className="font-display text-6xl sm:text-7xl leading-[0.88]" style={{ color: 'var(--dark)' }}>
-                  {data.week?.season_year ?? '2026'} SEASON
+                  {data.slate?.season_year ?? '2026'} SEASON
                 </h1>
                 <div className="mt-3 flex items-center gap-3">
-                  <span className="eyebrow">Week {data.week?.week_number ?? '—'} of {TOTAL_WEEKS}</span>
+                  <span className="eyebrow">{data.slate?.slate_date ?? 'No active slate'}</span>
                   <span className="hidden sm:block h-1.5 w-40 rounded-full overflow-hidden" style={{ background: 'var(--surface-sunken)' }}>
-                    <span className="block h-full rounded-full" style={{ background: 'var(--dark)', width: `${((data.week?.week_number ?? 0) / TOTAL_WEEKS) * 100}%` }} />
+                    <span className="block h-full rounded-full" style={{ background: 'var(--dark)', width: `${Math.min(100, ((data.slate?.slate_number ?? 0) / TOTAL_SLATES_ESTIMATE) * 100)}%` }} />
                   </span>
                 </div>
               </div>
@@ -341,7 +341,7 @@ export default async function DashboardPage() {
                   <tr style={{ background: 'var(--surface-sunken)' }}>
                     <th className="py-2.5 pl-4 text-left eyebrow w-full">Player</th>
                     <th className="py-2.5 px-4 text-left eyebrow hidden sm:table-cell whitespace-nowrap">Status</th>
-                    <th className="py-2.5 pl-4 pr-4 text-left eyebrow whitespace-nowrap">{data.week ? `Wk ${data.week.week_number} Pick` : 'Pick'}</th>
+                    <th className="py-2.5 pl-4 pr-4 text-left eyebrow whitespace-nowrap">{data.slate ? `Wk ${data.slate.slate_number} Pick` : 'Pick'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -380,7 +380,7 @@ export default async function DashboardPage() {
                     </tr>
                   )}
                   {elimRows.map((row) => {
-                    const ew = (row as StandingRow & { elimination_week?: number | null }).elimination_week
+                    const ew = (row as StandingRow & { elimination_slate?: number | null }).elimination_slate
                     return (
                       <tr key={row.player_id} className="border-t" style={{ borderColor: 'var(--border)', opacity: 0.65 }}>
                         <td className="py-2.5 pl-4 text-sm" style={{ color: 'var(--muted)', textDecoration: 'line-through' }}>{row.full_name}</td>
@@ -422,7 +422,7 @@ export default async function DashboardPage() {
               kicker="The crowd"
               lede={insights.chalk.headline}
               deck={insights.chalk.deck}
-              method="The crowd pick is the most-selected team in a completed week, across every entry that was still alive to make one."
+              method="The crowd pick is the most-selected team in a completed slate, across every entry that was still alive to make one."
             >
               <ChalkFigure data={insights.chalk} />
             </Story>
@@ -444,7 +444,7 @@ export default async function DashboardPage() {
               kicker="Divergence"
               lede={insights.overlap.headline}
               deck={insights.overlap.deck}
-              method="Overlap is the share of two survivors' unused teams that is common to both. Boards that overlap heavily tend to live and die together in later weeks."
+              method="Overlap is the share of two survivors' unused teams that is common to both. Boards that overlap heavily tend to live and die together in later slates."
             >
               <OverlapFigure data={insights.overlap} />
             </Story>
@@ -491,7 +491,7 @@ export default async function DashboardPage() {
                   </tbody>
                 </table>
               </div>
-              <p className="method">Completed weeks only. Win rate is how often a team delivered for the people who picked it; Outs is how many entries it ended.</p>
+              <p className="method">Completed slates only. Win rate is how often a team delivered for the people who picked it; Outs is how many entries it ended.</p>
             </Section>
           )}
 
@@ -499,7 +499,7 @@ export default async function DashboardPage() {
           <Section id="rules" title="How It Works">
             <div className="card p-5 sm:p-6 grid sm:grid-cols-2 gap-x-10 gap-y-4">
               <Rule n="1" text="Pay $25 entry via Venmo to @griffinsell." />
-              <Rule n="2" text="Each week, pick one NFL team to win their game." />
+              <Rule n="2" text="Each slate, pick one NFL team to win their game." />
               <Rule n="3" text="You can't pick the same team twice all season." />
               <Rule n="4" text="Your team wins, you survive. Loses or ties, you're out." />
               <Rule n="5" text="Wed/Thu/Fri/Sat games lock at kickoff. All other picks lock Sunday 12 PM CT." />

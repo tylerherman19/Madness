@@ -27,7 +27,7 @@ function RedButton({ href, children }: { href: string; children: React.ReactNode
 
 export default function SiteHeader({ signupsClosed = false }: { signupsClosed?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  // Sign Up only makes sense until Week 1's picks lock at Sunday 12 PM CT —
+  // Sign Up only makes sense until Slate 1's picks lock at Sunday 12 PM CT —
   // signups close for good then (enforced server-side too, this just matches).
   const showSignUp = !signupsClosed
 

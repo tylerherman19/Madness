@@ -3,6 +3,7 @@ import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import PlayersManager from './PlayersManager'
 import type { Player } from '@/types'
+import { getTeamAbbrs } from '@/lib/teams'
 
 export default async function PlayersPage() {
   const isAdmin = await getAdminSession()
@@ -11,19 +12,21 @@ export default async function PlayersPage() {
 
   const { data: players } = await supabase
     .from('players')
-    .select('id, full_name, email, phone, venmo_handle, paid, status, elimination_week, elimination_reason')
+    .select('id, full_name, email, phone, venmo_handle, paid, status, elimination_slate, elimination_reason')
     .order('status')
     .order('full_name')
 
-  const { data: activeWeek } = await supabase
-    .from('weeks')
-    .select('id, week_number')
+  const { data: activeSlate } = await supabase
+    .from('slates')
+    .select('id, slate_number')
     .eq('is_active', true)
     .single()
 
-  const { data: picksData } = activeWeek
-    ? await supabase.from('picks').select('player_id, team').eq('week_id', activeWeek.id)
+  const { data: picksData } = activeSlate
+    ? await supabase.from('picks').select('player_id, team').eq('slate_id', activeSlate.id)
     : { data: [] }
+
+  const teams = await getTeamAbbrs(supabase)
 
   const { data: allPicks } = await supabase.from('picks').select('player_id')
   const weeksSurvived: Record<string, number> = {}
@@ -39,8 +42,9 @@ export default async function PlayersPage() {
       <h1 className="font-display text-4xl" style={{ color: 'var(--dark)' }}>MANAGE PLAYERS</h1>
       <PlayersManager
         players={(players || []) as Player[]}
-        activeWeekId={activeWeek?.id || null}
-        activeWeekNumber={activeWeek?.week_number || null}
+        activeWeekId={activeSlate?.id || null}
+        activeWeekNumber={activeSlate?.slate_number || null}
+        teams={teams}
         currentPicks={currentPicks}
         weeksSurvived={weeksSurvived}
       />

@@ -2,15 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { NFL_TEAMS, NFL_TEAM_NAMES } from '@/types'
-import type { Game, Week } from '@/types'
+import type { Game, Slate } from '@/types'
 
 type GameDay = 'thursday' | 'friday' | 'saturday' | 'sunday' | 'monday' | 'tuesday'
 
 interface Props {
-  weeks: Week[]
-  activeWeek: Week | null
+  slates: Slate[]
+  activeSlate: Slate | null
   games: Game[]
+  teams: string[]
 }
 
 interface NewGame {
@@ -33,12 +33,12 @@ const BLANK_GAME: NewGame = {
   is_mnf: false,
 }
 
-export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
+export default function ScheduleForm({ slates, activeSlate, games, teams }: Props) {
   const router = useRouter()
-  const [weekNumber, setWeekNumber] = useState(
-    activeWeek ? activeWeek.week_number : (weeks.length > 0 ? weeks[weeks.length - 1].week_number + 1 : 1)
+  const [slateNumber, setWeekNumber] = useState(
+    activeSlate ? activeSlate.slate_number : (slates.length > 0 ? slates[slates.length - 1].slate_number + 1 : 1)
   )
-  const [seasonYear, setSeasonYear] = useState(activeWeek?.season_year || 2026)
+  const [seasonYear, setSeasonYear] = useState(activeSlate?.season_year || 2026)
   const [newGames, setNewGames] = useState<NewGame[]>([{ ...BLANK_GAME }])
   const [submitting, setSubmitting] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -91,13 +91,13 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
       const res = await fetch('/api/schedule/sync-espn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week_number: weekNumber, season_year: seasonYear }),
+        body: JSON.stringify({ slate_number: slateNumber, season_year: seasonYear }),
       })
       const data = await res.json()
       if (!res.ok) {
         setMessage(`Error: ${data.error}`)
       } else {
-        setMessage(`✅ Synced ${data.games_synced} games from ESPN for Week ${weekNumber} ${seasonYear}`)
+        setMessage(`✅ Synced ${data.games_synced} games from ESPN for Slate ${slateNumber} ${seasonYear}`)
         router.refresh()
       }
     } catch {
@@ -108,7 +108,7 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
   }
 
   async function syncAllFromESPN() {
-    if (!confirm(`Sync every week of the ${seasonYear} season from ESPN? This can take a minute.`)) return
+    if (!confirm(`Sync every slate of the ${seasonYear} season from ESPN? This can take a minute.`)) return
     setSyncingAll(true)
     setMessage('')
     try {
@@ -121,8 +121,8 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
       if (!res.ok) {
         setMessage(`Error: ${data.error}`)
       } else {
-        const weeks = data.weeks_synced as number[]
-        const range = weeks.length > 0 ? `Weeks ${weeks[0]}–${weeks[weeks.length - 1]}` : 'No weeks'
+        const slates = data.weeks_synced as number[]
+        const range = slates.length > 0 ? `Slates ${slates[0]}–${slates[slates.length - 1]}` : 'No slates'
         const failedNote = data.failures ? ` (${data.failures.length} failed)` : ''
         setMessage(`✅ ${range} synced, ${data.total_games} games total${failedNote}`)
         router.refresh()
@@ -144,11 +144,11 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          week_number: weekNumber,
+          slate_number: slateNumber,
           season_year: seasonYear,
           games: newGames.map((g) => ({
             ...g,
-            kickoff_central: `${g.kickoff_date}T${g.kickoff_time}:00`,
+            tip_time: `${g.kickoff_date}T${g.kickoff_time}:00`,
           })),
         }),
       })
@@ -156,7 +156,7 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
       if (!res.ok) {
         setMessage(`Error: ${data.error}`)
       } else {
-        setMessage(`✅ Week ${weekNumber} schedule saved!`)
+        setMessage(`✅ Slate ${slateNumber} schedule saved!`)
         setNewGames([{ ...BLANK_GAME }])
         router.refresh()
       }
@@ -198,10 +198,10 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Week</label>
+            <label className="block text-xs text-slate-400 mb-1">Slate</label>
             <input
               type="number"
-              value={weekNumber}
+              value={slateNumber}
               min={1}
               max={22}
               onChange={(e) => setWeekNumber(Number(e.target.value))}
@@ -231,13 +231,13 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
       </div>
 
       {/* Existing games */}
-      {activeWeek && (
+      {activeSlate && (
         <div>
           <h2 className="text-lg font-semibold text-white mb-3">
-            Week {activeWeek.week_number} Current Schedule
+            Slate {activeSlate.slate_number} Current Schedule
           </h2>
           {games.length === 0 ? (
-            <p className="text-slate-400 text-sm">No games entered yet for this week.</p>
+            <p className="text-slate-400 text-sm">No games entered yet for this slate.</p>
           ) : (
             <div className="space-y-2">
               {games.map((g) => (
@@ -249,11 +249,18 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
                     <span className="text-white font-medium font-mono">
                       {g.away_team} @ {g.home_team}
                     </span>
-                    <span className="text-slate-400 text-sm capitalize">{g.game_day}</span>
-                    {g.is_snf && <span className="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">SNF</span>}
-                    {g.is_mnf && <span className="text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">MNF</span>}
+                    {g.round_label && (
+                      <span className="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">
+                        {g.round_label}
+                      </span>
+                    )}
+                    {(g.home_seed || g.away_seed) && (
+                      <span className="text-slate-400 text-sm">
+                        ({g.away_seed ?? '—'}) v ({g.home_seed ?? '—'})
+                      </span>
+                    )}
                     <span className="text-slate-500 text-xs">
-                      {new Date(g.kickoff_central).toLocaleString('en-US', {
+                      {new Date(g.tip_time).toLocaleString('en-US', {
                         timeZone: 'America/Chicago',
                         weekday: 'short',
                         month: 'short',
@@ -278,7 +285,7 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
         </div>
       )}
 
-      {/* Add new week/games */}
+      {/* Add new slate/games */}
       <form onSubmit={handleSubmit} className="space-y-6">
         <h2 className="text-lg font-semibold text-white">Add Games</h2>
 
@@ -293,10 +300,10 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Week Number</label>
+            <label className="block text-xs text-slate-400 mb-1">Slate Number</label>
             <input
               type="number"
-              value={weekNumber}
+              value={slateNumber}
               min={1}
               max={22}
               onChange={(e) => setWeekNumber(Number(e.target.value))}
@@ -331,9 +338,9 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
                     className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
                   >
                     <option value="">Select…</option>
-                    {NFL_TEAMS.map((t) => (
+                    {teams.map((t) => (
                       <option key={t} value={t}>
-                        {t} — {NFL_TEAM_NAMES[t]}
+                        {t}
                       </option>
                     ))}
                   </select>
@@ -347,9 +354,9 @@ export default function ScheduleForm({ weeks, activeWeek, games }: Props) {
                     className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
                   >
                     <option value="">Select…</option>
-                    {NFL_TEAMS.map((t) => (
+                    {teams.map((t) => (
                       <option key={t} value={t}>
-                        {t} — {NFL_TEAM_NAMES[t]}
+                        {t}
                       </option>
                     ))}
                   </select>

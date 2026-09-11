@@ -1,11 +1,11 @@
 import { redirect, unstable_rethrow } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
-import { NFL_TEAM_NAMES } from '@/types'
 import type { Game } from '@/types'
 import PickForm, { type GameRow } from './PickForm'
 import LogoutButton from '../components/LogoutButton'
-import { getPickDeadline, getTeamDeadline } from '@/lib/deadline'
+import { slateDeadline } from '@/lib/deadline'
+import { fetchDayScoreboard } from '@/lib/espn'
 import Link from 'next/link'
 import LogoMark from '@/app/components/LogoMark'
 
@@ -15,9 +15,9 @@ export default async function PickPage() {
 
   try {
     const supabase = await getDb()
-    const { data: week } = await supabase.from('weeks').select('*').eq('is_active', true).single()
+    const { data: slate } = await supabase.from('slates').select('*').eq('is_active', true).single()
 
-    if (!week) return (
+    if (!slate) return (
       <Shell session={session}>
         <div className="text-center py-20">
           <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>NO ACTIVE WEEK</p>
@@ -29,54 +29,53 @@ export default async function PickPage() {
     const { data: player } = await supabase.from('players').select('id, full_name, status, paid').eq('id', session.player_id).single()
     if (!player) redirect('/login')
 
-    const { data: pastPicks } = await supabase.from('picks').select('team, week_id').eq('player_id', session.player_id)
-    // Teams burned in previous weeks — this week's pick isn't "used" while it can still be changed
+    const { data: pastPicks } = await supabase.from('picks').select('team, slate_id').eq('player_id', session.player_id)
+    // Teams burned in previous slates — this slate's pick isn't "used" while it can still be changed
     const usedTeams = (pastPicks || [])
-      .filter((p: { week_id: string }) => p.week_id !== week.id)
+      .filter((p: { slate_id: string }) => p.slate_id !== slate.id)
       .map((p: { team: string }) => p.team)
 
-    const { data: currentPick } = await supabase.from('picks').select('*').eq('player_id', session.player_id).eq('week_id', week.id).single()
+    const { data: currentPick } = await supabase.from('picks').select('*').eq('player_id', session.player_id).eq('slate_id', slate.id).single()
 
-    const { data: games } = await supabase.from('games').select('*').eq('week_id', week.id).order('kickoff_central')
+    const { data: games } = await supabase.from('games').select('*').eq('slate_id', slate.id).order('tip_time')
     const gamesData: Game[] = games || []
 
     const now = await getEffectiveNow()
 
-    // A pick stays changeable until the picked team's own deadline passes
-    const currentPickDeadline = currentPick ? getTeamDeadline(currentPick.team, gamesData) : null
-    const pickLocked = currentPick ? !currentPickDeadline || now >= currentPickDeadline : false
+    // Every pick on the slate locks together, at the day's first tip.
+    const lockTime = slateDeadline(slate, gamesData)
+    const locked = lockTime ? now >= lockTime : false
+    const pickLocked = currentPick ? locked : false
 
-    const gameRows: GameRow[] = gamesData.map((g) => {
-      const deadline = getPickDeadline(g)
-      return {
-        gameId: g.id,
-        kickoff: g.kickoff_central,
-        away: { team: g.away_team, used: usedTeams.includes(g.away_team) },
-        home: { team: g.home_team, used: usedTeams.includes(g.home_team) },
-        deadline: deadline.toISOString(),
-        locked: now >= deadline,
-      }
-    })
+    const gameRows: GameRow[] = gamesData.map((g) => ({
+      gameId: g.id,
+      kickoff: g.tip_time,
+      away: { team: g.away_team, used: usedTeams.includes(g.away_team) },
+      home: { team: g.home_team, used: usedTeams.includes(g.home_team) },
+      deadline: (lockTime ?? new Date(g.tip_time)).toISOString(),
+      locked,
+    }))
 
-    let teamRecords: Record<string, string> = {}
+    // Records come off the slate's own scoreboard payload rather than a
+    // league-wide teams call: ESPN's /teams endpoint ignores the conference
+    // filter, and only the teams playing today matter on this page.
+    const teamRecords: Record<string, string> = {}
     try {
-      const espnRes = await fetch(
-        'https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams?limit=32',
-        { next: { revalidate: 3600 } }
+      const { events } = await fetchDayScoreboard(
+        String(slate.slate_date).replace(/-/g, ''),
+        3600
       )
-      if (espnRes.ok) {
-        const espnData = await espnRes.json()
-        const teams = espnData.sports?.[0]?.leagues?.[0]?.teams ?? []
-        for (const entry of teams) {
-          const abbr: string = entry.team?.abbreviation
-          const record: string = entry.team?.record?.items?.[0]?.summary ?? ''
+      for (const event of events) {
+        for (const c of event.competitions?.[0]?.competitors ?? []) {
+          const abbr = c.team?.abbreviation
+          const record = c.records?.[0]?.summary
           if (abbr && record) teamRecords[abbr] = record
         }
       }
     } catch { /* non-critical */ }
 
     return (
-      <Shell session={session} weekNumber={week.week_number}>
+      <Shell session={session} slateNumber={slate.slate_number}>
         {player.status === 'eliminated' ? (
           <div className="border p-8 text-center" style={{ borderColor: 'var(--border)' }}>
             <p className="font-display text-4xl" style={{ color: 'var(--red)' }}>ELIMINATED</p>
@@ -89,10 +88,10 @@ export default async function PickPage() {
           <div className="space-y-6">
             <div className="border p-8 text-center" style={{ borderColor: 'var(--green)', borderWidth: 2 }}>
               <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: 'var(--green)' }}>
-                ✓ Week {week.week_number} Pick Locked In
+                ✓ Slate {slate.slate_number} Pick Locked In
               </p>
               <p className="font-display text-5xl" style={{ color: 'var(--dark)' }}>
-                {NFL_TEAM_NAMES[currentPick.team] || currentPick.team}
+                {currentPick.team}
               </p>
               <p className="font-mono text-sm mt-1" style={{ color: 'var(--muted)' }}>{currentPick.team}</p>
               {currentPick.auto_assigned && (
@@ -105,13 +104,13 @@ export default async function PickPage() {
           </div>
         ) : (
           <PickForm
-            weekId={week.id}
-            weekNumber={week.week_number}
+            slateId={slate.id}
+            slateNumber={slate.slate_number}
             playerId={session.player_id}
             gameRows={gameRows}
             usedTeams={usedTeams}
             teamRecords={teamRecords}
-            currentPick={currentPick ? { team: currentPick.team, deadline: currentPickDeadline?.toISOString() || null } : null}
+            currentPick={currentPick ? { team: currentPick.team, deadline: lockTime?.toISOString() || null } : null}
           />
         )}
       </Shell>
@@ -128,7 +127,7 @@ export default async function PickPage() {
   }
 }
 
-function Shell({ children, session, weekNumber }: { children: React.ReactNode; session: { full_name: string }; weekNumber?: number }) {
+function Shell({ children, session, slateNumber }: { children: React.ReactNode; session: { full_name: string }; slateNumber?: number }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
       <header style={{ background: 'var(--dark)' }}>
@@ -138,7 +137,7 @@ function Shell({ children, session, weekNumber }: { children: React.ReactNode; s
               <LogoMark size={64} />
               NFL SURVIVOR
             </Link>
-            {weekNumber && <p className="text-xs tracking-widest uppercase mt-0.5" style={{ color: '#666' }}>Week {weekNumber}</p>}
+            {slateNumber && <p className="text-xs tracking-widest uppercase mt-0.5" style={{ color: '#666' }}>Slate {slateNumber}</p>}
           </div>
           <div className="flex items-center gap-4">
             <Link href="/history" className="text-xs tracking-widest uppercase" style={{ color: '#888' }}>My Picks</Link>

@@ -8,9 +8,9 @@ export default async function AdminEmailPage() {
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
 
-  const [{ data: players }, { data: week }] = await Promise.all([
+  const [{ data: players }, { data: slate }] = await Promise.all([
     supabase.from('players').select('id, email, status'),
-    supabase.from('weeks').select('id, week_number').eq('is_active', true).single(),
+    supabase.from('slates').select('id, slate_number').eq('is_active', true).single(),
   ])
 
   // Match the broadcast route's recipient logic so previewed counts are accurate
@@ -18,8 +18,8 @@ export default async function AdminEmailPage() {
   const aliveCount = real.filter((p) => p.status === 'alive').length
 
   let unpickedCount: number | null = null
-  if (week) {
-    const { data: picks } = await supabase.from('picks').select('player_id').eq('week_id', week.id)
+  if (slate) {
+    const { data: picks } = await supabase.from('picks').select('player_id').eq('slate_id', slate.id)
     const pickedIds = new Set((picks || []).map((p) => p.player_id))
     unpickedCount = real.filter((p) => p.status === 'alive' && !pickedIds.has(p.id)).length
   }
@@ -38,7 +38,7 @@ export default async function AdminEmailPage() {
           alive: aliveCount,
           unpicked: unpickedCount,
         }}
-        weekNumber={week?.week_number ?? null}
+        slateNumber={slate?.slate_number ?? null}
       />
     </div>
   )

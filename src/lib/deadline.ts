@@ -1,56 +1,94 @@
-import { toZonedTime, fromZonedTime } from 'date-fns-tz'
 import type { Game } from '@/types'
+
+// Only the lock instant is read, so callers can pass a narrow select without
+// casting a partial row to the full Slate type.
+export type SlateLock = { locks_at?: string | null } | null
 
 const CHICAGO_TZ = 'America/Chicago'
 
-// Parse a game's kickoff, returning null rather than an Invalid Date. Guards
-// against a caller that selected a narrower column set and left kickoff_central
-// out: an Invalid Date is truthy but compares false against every other date,
+// Parse a tip time, returning null rather than an Invalid Date. Guards
+// against a caller that selected a narrower column set and left tip_time out:
+// an Invalid Date is truthy but compares false against every other date,
 // which silently reads as "the deadline never passes".
-function kickoffOf(game: Game): Date | null {
-  const d = new Date(game?.kickoff_central)
+function tipOf(game: Game): Date | null {
+  const d = new Date(game?.tip_time)
   return isNaN(d.getTime()) ? null : d
 }
 
-// Given a game, return the UTC timestamp of when picks for that game lock.
-// Deadline is whichever comes first: the game's own kickoff, or that week's
-// Sunday 12:00 PM Central cutoff. This locks Thu/Fri/Sat games — and any
-// Sunday game that kicks off before noon Central (e.g. an early international
-// window) — at their own kickoff, while normal Sunday afternoon/SNF/MNF games
-// all share the Sunday-noon cutoff.
-export function getPickDeadline(game: Game): Date {
-  const kickoff = new Date(game.kickoff_central)
-  const chicagoKickoff = toZonedTime(kickoff, CHICAGO_TZ)
-
-  // Sunday of the week this game falls in: Wed/Thu/Fri/Sat (3/4/5/6) belong to
-  // the upcoming Sunday, Sun/Mon/Tue (0/1/2) belong to the Sunday already passed.
-  const dow = chicagoKickoff.getDay() // 0=Sun, 1=Mon, ..., 6=Sat
-  const daysToSunday = dow >= 3 ? 7 - dow : -dow
-  const sunday = new Date(chicagoKickoff)
-  sunday.setDate(chicagoKickoff.getDate() + daysToSunday)
-  sunday.setHours(12, 0, 0, 0) // 12:00 PM
-  const sundayNoon = fromZonedTime(sunday, CHICAGO_TZ)
-
-  return kickoff < sundayNoon ? kickoff : sundayNoon
+// The whole slate locks at once, on the day's first tip. This is the single
+// rule that replaced the NFL pool's per-game/Sunday-noon split: with games
+// every day, a per-game deadline would let someone watch the early window
+// before committing, and there is no weekly anchor to fall back on.
+export function getSlateDeadline(games: Game[]): Date | null {
+  let earliest: Date | null = null
+  for (const g of games) {
+    const tip = tipOf(g)
+    if (!tip) continue
+    if (!earliest || tip < earliest) earliest = tip
+  }
+  return earliest
 }
 
-// Given a week's games, find the deadline for a specific team's pick
-export function getTeamDeadline(team: string, games: Game[]): Date | null {
-  const game = games.find(g => g.home_team === team || g.away_team === team)
-  if (!game || !kickoffOf(game)) return null
-  return getPickDeadline(game)
+// Prefer the slate's cached `locks_at` (written at sync time) and fall back to
+// deriving it from the games. The cache exists so callers that only need the
+// deadline don't have to load the whole slate.
+export function slateDeadline(slate: SlateLock, games: Game[]): Date | null {
+  if (slate?.locks_at) {
+    const d = new Date(slate.locks_at)
+    if (!isNaN(d.getTime())) return d
+  }
+  return getSlateDeadline(games)
 }
 
-// A pick becomes public exactly when it locks — there is nothing left to give
-// away once the picker can no longer change it. That means a Thu/Fri/Sat pick
-// (and any Sunday game kicking off before noon) is revealed at its own kickoff,
-// while everything else is revealed at the shared Sunday 12 PM CT cutoff.
-// Falls back to the week cutoff if the picked team has no game on the slate,
-// which can happen to a stale pick after a schedule re-sync.
-export function isPickRevealed(team: string, games: Game[], now: Date): boolean {
-  const deadline = getTeamDeadline(team, games) ?? getWeekSundayDeadline(games)
+export function isSlateLocked(slate: SlateLock, games: Game[], now: Date): boolean {
+  const deadline = slateDeadline(slate, games)
   if (!deadline) return false
   return now >= deadline
+}
+
+// Picks become public exactly when they lock — there is nothing left to give
+// away once nobody can change their pick.
+export function isPickRevealed(slate: SlateLock, games: Game[], now: Date): boolean {
+  return isSlateLocked(slate, games, now)
+}
+
+// The game a team plays on this slate, if any.
+export function gameForTeam(team: string, games: Game[]): Game | undefined {
+  return games.find((g) => g.home_team === team || g.away_team === team)
+}
+
+// Tournament seed only. Outside the tournament ESPN's curatedRank is the AP
+// poll rank, which is stored on the game for display but must never reach a
+// pick's `seed` — the endgame tiebreak sums seeds, and counting a #20 AP
+// ranking as a 20-seed would wreck it.
+export function seedForTeam(team: string, games: Game[]): number | null {
+  const game = gameForTeam(team, games)
+  if (!game || !game.round_label) return null
+  if (game.home_team === team) return game.home_seed
+  if (game.away_team === team) return game.away_seed
+  return null
+}
+
+// Auto-assign fallback, in the spirit of the NFL pool's "SNF away team, then
+// MNF away team, then you're out": walk the slate from the last tip backwards
+// and take the first team the player hasn't already used, away side first.
+// Latest-tipping games are chosen deliberately — a player who missed the
+// deadline shouldn't be handed a game that has already finished.
+//
+// Returns null only when every team on the slate is already spent, which is
+// the one case that eliminates rather than assigns.
+export function autoAssignTeam(games: Game[], usedTeams: string[]): string | null {
+  const used = new Set(usedTeams)
+  const byLatest = games
+    .filter((g) => tipOf(g) !== null)
+    .slice()
+    .sort((a, b) => new Date(b.tip_time).getTime() - new Date(a.tip_time).getTime())
+
+  for (const game of byLatest) {
+    if (!used.has(game.away_team)) return game.away_team
+    if (!used.has(game.home_team)) return game.home_team
+  }
+  return null
 }
 
 // Format a UTC date as a human-readable Central time string
@@ -67,40 +105,14 @@ export function formatCentralTime(utcDate: Date | string): string {
   })
 }
 
-// Returns true if the pick deadline for a given team has passed
-export function isDeadlinePassed(team: string, games: Game[]): boolean {
-  const deadline = getTeamDeadline(team, games)
-  if (!deadline) return false
-  return new Date() >= deadline
-}
-
-// Find the SNF game in a week's schedule
-export function getSNFGame(games: Game[]): Game | undefined {
-  return games.find(g => g.is_snf)
-}
-
-// Find the MNF game in a week's schedule
-export function getMNFGame(games: Game[]): Game | undefined {
-  return games.find(g => g.is_mnf)
-}
-
-// Get the Sunday 12:00 PM Central deadline for a given week (from any game in that week).
-// This is the shared week-level cutoff used for reminders/auto-assign timing — unlike
-// getPickDeadline, it doesn't account for early-kickoff exceptions, so the result is the
-// same regardless of which game in the week is passed in (queries here aren't ordered).
-export function getWeekSundayDeadline(games: Game[]): Date | null {
-  const anyGame = games[0]
-  if (!anyGame) return null
-  const kickoff = kickoffOf(anyGame)
-  if (!kickoff) return null
-  const chicagoKickoff = toZonedTime(kickoff, CHICAGO_TZ)
-  const dow = chicagoKickoff.getDay() // 0=Sun, 1=Mon, ..., 6=Sat
-  // Wed/Thu/Fri/Sat (3/4/5/6): their own deadline is before this week's Sunday, so walk forward to it.
-  // Sun/Mon/Tue (0/1/2): the Sunday deadline already passed, so walk back to it.
-  const isEarlyDay = dow >= 3
-  const daysToSunday = isEarlyDay ? 7 - dow : dow === 0 ? 0 : -dow
-  const sunday = new Date(chicagoKickoff)
-  sunday.setDate(chicagoKickoff.getDate() + daysToSunday)
-  sunday.setHours(12, 0, 0, 0)
-  return fromZonedTime(sunday, CHICAGO_TZ)
+// "Sat, Mar 21" — the label for a slate, which is now the period name.
+export function formatSlateDate(slateDate: string): string {
+  // slate_date is a bare YYYY-MM-DD; parse as local noon so no timezone shift
+  // can roll it onto the adjacent day.
+  const d = new Date(`${slateDate}T12:00:00`)
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
 }

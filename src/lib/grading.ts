@@ -11,7 +11,7 @@ export interface GradeResult {
 
 // Teams that have already lost or tied in a decided (non-pending) game —
 // picking one of these means elimination once grading runs. Shared by
-// gradeWeekPicks (which acts on it) and countPendingEliminations (which
+// gradeSlatePicks (which acts on it) and countPendingEliminations (which
 // just previews it before the admin hits "Grade").
 function computeLosers(games: Game[]): Set<string> {
   const losers = new Set<string>() // includes both teams of a tie
@@ -33,15 +33,15 @@ export function countPendingEliminations(
   return picks.filter((p) => p.playerStatus === 'alive' && losers.has(p.team)).length
 }
 
-// Grade every pick for a week against its completed games: a loss or a tie
+// Grade every pick for a slate against its completed games: a loss
 // eliminates, a win advances, an unfinished game is skipped. Idempotent —
 // already-eliminated players are ignored, so re-running after each new final
 // (or after a manual result correction) is safe. Shared by the admin
-// grade-week endpoint and the sync-results cron.
-export async function gradeWeekPicks(
+// grade-slate endpoint and the sync-results cron.
+export async function gradeSlatePicks(
   db: SupabaseClient,
-  weekId: string,
-  weekNumber: number,
+  slateId: string,
+  slateNumber: number,
   completedGames: Game[]
 ): Promise<GradeResult> {
   const winners = new Set<string>()
@@ -54,7 +54,7 @@ export async function gradeWeekPicks(
   const { data: picks } = await db
     .from('picks')
     .select('id, player_id, team, players(id, full_name, email, status)')
-    .eq('week_id', weekId)
+    .eq('slate_id', slateId)
 
   const eliminated: string[] = []
   const advanced: string[] = []
@@ -74,12 +74,12 @@ export async function gradeWeekPicks(
     if (!game) continue // game not final yet — graded on a later run
 
     if (losers.has(pick.team)) {
-      const reason = `Week ${weekNumber}: picked ${pick.team} — ${
+      const reason = `Slate ${slateNumber}: picked ${pick.team} — ${
         game.result === 'tie' ? 'game ended in a tie' : 'lost'
       }`
       const { error: eliminateError } = await db
         .from('players')
-        .update({ status: 'eliminated', elimination_week: weekNumber, elimination_reason: reason })
+        .update({ status: 'eliminated', elimination_slate: slateNumber, elimination_reason: reason })
         .eq('id', player.id)
 
       if (eliminateError) {
@@ -96,12 +96,12 @@ export async function gradeWeekPicks(
         player_id: player.id,
         player_name: player.full_name,
         message: `${player.full_name} eliminated — ${reason}`,
-        details: { week_number: weekNumber, team: pick.team, result: game.result },
+        details: { slate_number: slateNumber, team: pick.team, result: game.result },
       })
       // Awaited: fire-and-forget sends can be dropped when the serverless
       // function is frozen after responding; paced for Resend's rate limit.
       if (player.email) {
-        await sendEliminationEmail(player.email, player.full_name, pick.team, weekNumber)
+        await sendEliminationEmail(player.email, player.full_name, pick.team, slateNumber)
         await sleep(SEND_DELAY_MS)
       }
     } else if (winners.has(pick.team)) {

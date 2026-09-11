@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
-import { gradeWeekPicks } from '@/lib/grading'
+import { gradeSlatePicks } from '@/lib/grading'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
 
@@ -47,18 +47,18 @@ export async function POST(req: NextRequest) {
     // nightly cron — mirrors what the sandbox's "Mark Final" already does.
     let grading = null
     if (result !== 'pending') {
-      const { data: week } = await supabase
-        .from('weeks')
-        .select('week_number')
-        .eq('id', game.week_id)
+      const { data: slate } = await supabase
+        .from('slates')
+        .select('slate_number')
+        .eq('id', game.slate_id)
         .single()
       const { data: weekGames } = await supabase
         .from('games')
         .select('*')
-        .eq('week_id', game.week_id)
+        .eq('slate_id', game.slate_id)
       const completedGames = ((weekGames || []) as Game[]).filter((g) => g.result !== 'pending')
-      if (week) {
-        grading = await gradeWeekPicks(supabase, game.week_id, week.week_number, completedGames)
+      if (slate) {
+        grading = await gradeSlatePicks(supabase, game.slate_id, slate.slate_number, completedGames)
       }
     }
 

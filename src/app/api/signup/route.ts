@@ -10,9 +10,9 @@ import { logAudit } from '@/lib/audit'
 export async function POST(req: NextRequest) {
   try {
     // Enforced server-side, not just hidden in the UI — the whole point is to
-    // stop late signups once Week 1's picks have locked.
+    // stop late signups once Slate 1's picks have locked.
     if (await haveSignupsClosed()) {
-      return NextResponse.json({ error: 'Signups are closed — Week 1 picks have locked.' }, { status: 403 })
+      return NextResponse.json({ error: 'Signups are closed — Slate 1 picks have locked.' }, { status: 403 })
     }
 
     const ip = await getIP()

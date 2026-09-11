@@ -2,21 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireCronOrAdmin, isCronRequest } from '@/lib/api'
-import { syncWeekFromEspn } from '@/lib/espnSync'
+import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
 
-const LAST_REGULAR_SEASON_WEEK = 18
+// How far ahead to look for the next day that actually has games. College
+// basketball has plenty of dark days mid-week, so advancing cannot just add
+// one to a slate number the way the NFL version incremented a week.
+const MAX_LOOKAHEAD_DAYS = 10
 
-// Vercel Cron (vercel.json) — fires Tuesday noon Central (17:00/18:00 UTC).
-// That timing alone assumes the active week's games already happened, which
-// only holds if the active week was set close to its own kickoff. The admin
-// can (and does, ahead of the season) sync a week active days or weeks
-// before it's actually played, so this also checks that the active week's
-// last kickoff has actually passed before advancing.
+// Vercel Cron (vercel.json) — fires daily. It never advances on the clock
+// alone: the active slate's last tip has to have happened first, because the
+// admin can sync a slate active days before it is played.
 //
-// Week N -> N+1 auto-advances all the way through Week 18; past that
-// (playoffs) it stops and requires a manual push.
+// Advancing means finding the next calendar day that has games and making it
+// active, skipping dark days.
 export async function GET(req: NextRequest) {
   const unauthorized = await requireCronOrAdmin(req)
   if (unauthorized) return unauthorized
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   // noon Central depending on DST. Unlike auto-assign (whose deadline check
   // makes the extra run a no-op), advancing is not idempotent — without this
   // guard the second run would advance a second time and the pool would skip
-  // a week. Only real cron traffic is gated: an admin hitting this route
+  // a slate. Only real cron traffic is gated: an admin hitting this route
   // (Testing panel / manual push) is deliberate and always allowed.
   if (isCronRequest(req)) {
     const centralHour = parseInt(
@@ -39,44 +39,56 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = await getDb()
-    const { data: week } = await supabase
-      .from('weeks')
-      .select('id, week_number, season_year')
+    const { data: slate } = await supabase
+      .from('slates')
+      .select('id, slate_number, slate_date, season_year')
       .eq('is_active', true)
       .single()
 
-    if (!week) return NextResponse.json({ ok: true, message: 'No active week' })
+    if (!slate) return NextResponse.json({ ok: true, message: 'No active slate' })
 
-    if (week.week_number >= LAST_REGULAR_SEASON_WEEK) {
-      return NextResponse.json({ ok: true, message: `Already at Week ${week.week_number} — post-Week ${LAST_REGULAR_SEASON_WEEK} advancement is manual` })
-    }
-
-    const { data: currentGames } = await supabase.from('games').select('kickoff_central').eq('week_id', week.id)
-    const lastKickoff = ((currentGames || []) as Pick<Game, 'kickoff_central'>[])
-      .map((g) => new Date(g.kickoff_central).getTime())
+    const { data: currentGames } = await supabase.from('games').select('tip_time').eq('slate_id', slate.id)
+    const lastTip = ((currentGames || []) as Pick<Game, 'tip_time'>[])
+      .map((g) => new Date(g.tip_time).getTime())
       .sort((a, b) => b - a)[0]
     const now = await getEffectiveNow()
-    if (lastKickoff && now.getTime() < lastKickoff) {
-      return NextResponse.json({ ok: true, message: `Week ${week.week_number}'s games haven't all kicked off yet — nothing to advance` })
+    if (lastTip && now.getTime() < lastTip) {
+      return NextResponse.json({ ok: true, message: `Slate ${slate.slate_number}'s games haven't all tipped off yet — nothing to advance` })
     }
 
-    const nextWeekNumber = week.week_number + 1
-
-    const result = await syncWeekFromEspn(supabase, nextWeekNumber, week.season_year)
-    if (!result.ok || !result.weekId) {
-      return NextResponse.json({ ok: false, error: result.error }, { status: 502 })
+    // Walk forward day by day until one has games. Each probe is a real sync,
+    // so the day that wins is already populated when it goes active.
+    const from = new Date(`${slate.slate_date}T12:00:00Z`)
+    let result: Awaited<ReturnType<typeof syncSlateFromEspn>> | null = null
+    let nextDate: string | null = null
+    for (let i = 1; i <= MAX_LOOKAHEAD_DAYS; i++) {
+      const day = new Date(from.getTime() + i * 86_400_000)
+      const yyyymmdd = day.toISOString().slice(0, 10).replace(/-/g, '')
+      const attempt = await syncSlateFromEspn(supabase, yyyymmdd, slate.season_year)
+      if (attempt.ok && attempt.slateId && (attempt.gamesSynced ?? 0) > 0) {
+        result = attempt
+        nextDate = day.toISOString().slice(0, 10)
+        break
+      }
     }
 
-    await supabase.from('weeks').update({ is_active: false }).gt('week_number', 0)
-    const { error: activateErr } = await supabase.from('weeks').update({ is_active: true }).eq('id', result.weekId)
+    if (!result || !result.slateId || !nextDate) {
+      return NextResponse.json({
+        ok: true,
+        message: `No games found in the next ${MAX_LOOKAHEAD_DAYS} days — staying on Slate ${slate.slate_number}`,
+      })
+    }
+
+    await supabase.from('slates').update({ is_active: false }).eq('is_active', true)
+    const { error: activateErr } = await supabase.from('slates').update({ is_active: true }).eq('id', result.slateId)
     if (activateErr) return NextResponse.json({ ok: false, error: activateErr.message }, { status: 500 })
 
-    const label = `Week ${nextWeekNumber}`
+    const label = nextDate
     await logAudit(supabase, {
-      event_type: 'week-advanced',
+      event_type: 'slate-advanced',
       actor: isCronRequest(req) ? 'system' : 'admin',
-      message: `Pool advanced from Week ${week.week_number} to ${label} (${result.gamesSynced} games synced)`,
-      details: { from_week: week.week_number, to_week: nextWeekNumber, games_synced: result.gamesSynced },
+      message: `Pool advanced from ${slate.slate_date} to ${label} (${result.gamesSynced} games synced)`,
+      details: { from_date: slate.slate_date, to_date: nextDate, games_synced: result.gamesSynced },
     })
 
     revalidatePath('/')
