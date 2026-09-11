@@ -10,6 +10,7 @@ import {
   centralDateOf,
   CONFERENCES,
 } from './espn'
+import { getOrCreateSlate, renumberSlates } from './slates'
 
 export interface SyncResult {
   ok: boolean
@@ -71,34 +72,9 @@ export async function syncSlateFromEspn(
   const requestedDate = `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
 
   for (const [slateDate, dayEvents] of byDate) {
-    const { data: existing } = await supabase
-      .from('slates')
-      .select('id')
-      .eq('slate_date', slateDate)
-      .eq('season_year', seasonYear)
-      .maybeSingle()
-
-    let slateId: string
-    if (existing) {
-      slateId = existing.id
-    } else {
-      const { data: created, error } = await supabase
-        .from('slates')
-        .insert({
-          // Provisional: renumberSlates below puts the whole season back in
-          // date order once every day of this sync has landed.
-          slate_number: 0,
-          slate_date: slateDate,
-          season_year: seasonYear,
-          is_active: !currentActive && slateDate === requestedDate,
-        })
-        .select('id')
-        .single()
-      if (error || !created) {
-        return { ok: false, error: `Failed to create slate ${slateDate}: ${error?.message}` }
-      }
-      slateId = created.id
-    }
+    const slate = await getOrCreateSlate(supabase, slateDate, seasonYear)
+    if ('error' in slate) return { ok: false, error: slate.error }
+    const slateId = slate.id
     if (slateDate === requestedDate) primarySlateId = slateId
 
     const rows = []
@@ -202,29 +178,5 @@ export async function syncSlateFromEspn(
     gamesSynced: totalGames,
     teamsSeen: teamRows.size,
     partial: failedGroups.length > 0 ? failedGroups : undefined,
-  }
-}
-
-// `slate_number` is the human-facing "Day N" label, so it has to follow the
-// calendar rather than insertion order — an admin who backfills last Tuesday
-// after syncing today must not end up with Day 2 before Day 1. Cheap enough
-// to redo wholesale: a season is a few hundred rows at most, and only the
-// rows whose number actually moved are written.
-async function renumberSlates(
-  supabase: SupabaseClient,
-  seasonYear: number
-): Promise<void> {
-  const { data: slates } = await supabase
-    .from('slates')
-    .select('id, slate_number, slate_date')
-    .eq('season_year', seasonYear)
-    .order('slate_date', { ascending: true })
-
-  if (!slates) return
-
-  for (let i = 0; i < slates.length; i++) {
-    const want = i + 1
-    if (slates[i].slate_number === want) continue
-    await supabase.from('slates').update({ slate_number: want }).eq('id', slates[i].id)
   }
 }

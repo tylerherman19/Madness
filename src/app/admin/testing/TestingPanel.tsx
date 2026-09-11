@@ -244,7 +244,7 @@ export default function TestingPanel({
             </div>
             <p className="text-slate-400 text-sm">
               Seeding creates test users (login with their name + PIN <span className="font-mono text-white">1234</span>)
-              and a one-slate slate anchored on next Sunday: a locked Thursday game, three Sunday games, SNF and MNF.
+              and one day of games anchored on tomorrow, tipping from 6:00 PM CT. The whole slate locks at that first tip.
               Prefer your own slate? Build it in{' '}
               <Link href="/admin/schedule" className="text-blue-400 underline">Schedule</Link> — while testing mode is
               on, every admin page edits the sandbox.
@@ -304,12 +304,12 @@ export default function TestingPanel({
               <button
                 onClick={async () => {
                   const data = await callTestMode('jump_to_next_kickoff')
-                  if (data) { setMessage(`Sandbox clock jumped to next kickoff: ${formatCt(data.simulated_now)}.`); setClockInput(toDatetimeLocal(data.simulated_now)); router.refresh() }
+                  if (data) { setMessage(`Sandbox clock jumped to next tip-off: ${formatCt(data.simulated_now)}.`); setClockInput(toDatetimeLocal(data.simulated_now)); router.refresh() }
                 }}
                 disabled={busy !== null || !snapshot.activeSlate}
                 className="rounded-lg border border-slate-600 bg-slate-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-600 transition-colors disabled:opacity-50"
               >
-                Jump to next kickoff
+                Jump to next tip-off
               </button>
               <button
                 onClick={async () => {
@@ -331,9 +331,9 @@ export default function TestingPanel({
                 Slate {snapshot.activeSlate.slate_number} Scores
               </p>
               <p className="text-slate-400 text-sm">
-                A game is <span className="text-slate-300 font-medium">not started</span> before its kickoff,{' '}
+                A game is <span className="text-slate-300 font-medium">not started</span> before its tip-off,{' '}
                 <span className="text-amber-400 font-medium">in progress</span> once the sandbox clock passes
-                kickoff, and only becomes <span className="text-green-400 font-medium">final</span> when you mark it
+                tip-off, and only becomes <span className="text-green-400 font-medium">final</span> when you mark it
                 — which grades every pick on that team and updates standings.
               </p>
               <div className="space-y-2">

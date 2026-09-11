@@ -4,8 +4,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Game, Slate } from '@/types'
 
-type GameDay = 'thursday' | 'friday' | 'saturday' | 'sunday' | 'monday' | 'tuesday'
-
 interface Props {
   slates: Slate[]
   activeSlate: Slate | null
@@ -14,35 +12,39 @@ interface Props {
 }
 
 interface NewGame {
+  date: string
+  time: string
   home_team: string
   away_team: string
-  game_day: GameDay
-  kickoff_date: string
-  kickoff_time: string
-  is_snf: boolean
-  is_mnf: boolean
 }
 
-const BLANK_GAME: NewGame = {
-  home_team: '',
-  away_team: '',
-  game_day: 'sunday',
-  kickoff_date: '',
-  kickoff_time: '13:00',
-  is_snf: false,
-  is_mnf: false,
+const BLANK_GAME: NewGame = { date: '', time: '19:00', home_team: '', away_team: '' }
+
+// The sync-espn-all route caps a single request at 45 days. A season is
+// roughly five months, so the browser walks it in chunks and reports
+// progress — one long request would hit the function timeout instead.
+const CHUNK_DAYS = 20
+
+function addDays(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  return new Date(d.getTime() + n * 86_400_000).toISOString().slice(0, 10)
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10)
 }
 
 export default function ScheduleForm({ slates, activeSlate, games, teams }: Props) {
   const router = useRouter()
-  const [slateNumber, setWeekNumber] = useState(
-    activeSlate ? activeSlate.slate_number : (slates.length > 0 ? slates[slates.length - 1].slate_number + 1 : 1)
-  )
-  const [seasonYear, setSeasonYear] = useState(activeSlate?.season_year || 2026)
+  const [seasonYear, setSeasonYear] = useState(activeSlate?.season_year ?? 2027)
+  const [syncDate, setSyncDate] = useState(activeSlate?.slate_date ?? today())
+  const [rangeStart, setRangeStart] = useState('2026-11-03')
+  const [rangeEnd, setRangeEnd] = useState('2027-04-06')
   const [newGames, setNewGames] = useState<NewGame[]>([{ ...BLANK_GAME }])
   const [submitting, setSubmitting] = useState(false)
   const [syncing, setSyncing] = useState(false)
-  const [syncingAll, setSyncingAll] = useState(false)
+  const [syncingRange, setSyncingRange] = useState(false)
+  const [progress, setProgress] = useState('')
   const [message, setMessage] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -54,50 +56,25 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     setNewGames((prev) => prev.filter((_, idx) => idx !== i))
   }
 
-  function updateGame(i: number, field: keyof NewGame, value: string | boolean) {
-    setNewGames((prev) =>
-      prev.map((g, idx) => {
-        if (idx !== i) return g
-        const updated = { ...g, [field]: value }
-        // Auto-set game_day from kickoff_date
-        if (field === 'kickoff_date' && typeof value === 'string') {
-          const d = new Date(value + 'T12:00:00')
-          const dayMap: Record<number, GameDay> = {
-            0: 'sunday',
-            1: 'monday',
-            2: 'tuesday',
-            4: 'thursday',
-            5: 'friday',
-            6: 'saturday',
-          }
-          updated.game_day = dayMap[d.getDay()] ?? 'sunday'
-        }
-        // Auto-unset SNF/MNF if day doesn't match
-        if (field === 'game_day') {
-          if (value !== 'sunday') updated.is_snf = false
-          if (value !== 'monday') updated.is_mnf = false
-        }
-        if (field === 'is_snf' && value) updated.is_mnf = false
-        if (field === 'is_mnf' && value) updated.is_snf = false
-        return updated
-      })
-    )
+  function updateGame(i: number, field: keyof NewGame, value: string) {
+    setNewGames((prev) => prev.map((g, idx) => (idx === i ? { ...g, [field]: value } : g)))
   }
 
-  async function syncFromESPN() {
+  async function syncOneDay() {
     setSyncing(true)
     setMessage('')
     try {
       const res = await fetch('/api/schedule/sync-espn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slate_number: slateNumber, season_year: seasonYear }),
+        body: JSON.stringify({ date: syncDate, season_year: seasonYear }),
       })
       const data = await res.json()
       if (!res.ok) {
         setMessage(`Error: ${data.error}`)
       } else {
-        setMessage(`✅ Synced ${data.games_synced} games from ESPN for Slate ${slateNumber} ${seasonYear}`)
+        const partial = data.partial ? ` — ${data.partial.join(', ')} did not respond` : ''
+        setMessage(`✅ ${syncDate}: ${data.games_synced} games, ${data.teams_seen} teams${partial}`)
         router.refresh()
       }
     } catch {
@@ -107,30 +84,63 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     }
   }
 
-  async function syncAllFromESPN() {
-    if (!confirm(`Sync every slate of the ${seasonYear} season from ESPN? This can take a minute.`)) return
-    setSyncingAll(true)
+  async function syncRange() {
+    if (rangeEnd < rangeStart) {
+      setMessage('Error: end date is before start date')
+      return
+    }
+    const totalDays =
+      Math.round(
+        (new Date(`${rangeEnd}T12:00:00Z`).getTime() - new Date(`${rangeStart}T12:00:00Z`).getTime()) /
+          86_400_000
+      ) + 1
+    if (!confirm(`Load ${totalDays} days (${rangeStart} → ${rangeEnd}) from ESPN? This runs in the background and can take a few minutes.`)) {
+      return
+    }
+
+    setSyncingRange(true)
     setMessage('')
+    let games = 0
+    let daysWithGames = 0
+    let emptyDays = 0
+    const failures: string[] = []
+
     try {
-      const res = await fetch('/api/schedule/sync-espn-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ season_year: seasonYear }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setMessage(`Error: ${data.error}`)
-      } else {
-        const slates = data.weeks_synced as number[]
-        const range = slates.length > 0 ? `Slates ${slates[0]}–${slates[slates.length - 1]}` : 'No slates'
-        const failedNote = data.failures ? ` (${data.failures.length} failed)` : ''
-        setMessage(`✅ ${range} synced, ${data.total_games} games total${failedNote}`)
-        router.refresh()
+      let cursor = rangeStart
+      let done = 0
+      while (cursor <= rangeEnd) {
+        const chunkEnd = addDays(cursor, CHUNK_DAYS - 1) > rangeEnd ? rangeEnd : addDays(cursor, CHUNK_DAYS - 1)
+        setProgress(`${cursor} → ${chunkEnd} (${done}/${totalDays} days)`)
+
+        const res = await fetch('/api/schedule/sync-espn-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ season_year: seasonYear, start_date: cursor, end_date: chunkEnd }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          failures.push(`${cursor}: ${data.error}`)
+        } else {
+          games += data.total_games ?? 0
+          daysWithGames += (data.days_synced ?? []).length
+          emptyDays += (data.empty_days ?? []).length
+          if (data.failures) failures.push(...data.failures.map((f: { date: string }) => f.date))
+        }
+
+        done += CHUNK_DAYS
+        cursor = addDays(chunkEnd, 1)
       }
+
+      const failNote = failures.length > 0 ? ` · ${failures.length} failed` : ''
+      setMessage(
+        `✅ ${daysWithGames} days loaded, ${games} games total · ${emptyDays} days with no games${failNote}`
+      )
+      router.refresh()
     } catch {
-      setMessage('Server error. Try again.')
+      setMessage('Server error partway through. Re-run — already-loaded days are skipped.')
     } finally {
-      setSyncingAll(false)
+      setProgress('')
+      setSyncingRange(false)
     }
   }
 
@@ -138,25 +148,17 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     e.preventDefault()
     setSubmitting(true)
     setMessage('')
-
     try {
       const res = await fetch('/api/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          slate_number: slateNumber,
-          season_year: seasonYear,
-          games: newGames.map((g) => ({
-            ...g,
-            tip_time: `${g.kickoff_date}T${g.kickoff_time}:00`,
-          })),
-        }),
+        body: JSON.stringify({ season_year: seasonYear, games: newGames }),
       })
       const data = await res.json()
       if (!res.ok) {
         setMessage(`Error: ${data.error}`)
       } else {
-        setMessage(`✅ Slate ${slateNumber} schedule saved!`)
+        setMessage(`✅ Saved ${data.games_saved} game(s) across ${data.dates.length} day(s)`)
         setNewGames([{ ...BLANK_GAME }])
         router.refresh()
       }
@@ -178,15 +180,20 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     }
   }
 
+  const busy = syncing || syncingRange
+
   return (
     <div className="space-y-8">
-
-      {/* ESPN Auto-Sync — primary action */}
+      {/* ESPN Auto-Sync — the normal way a slate gets built */}
       <div className="rounded-xl border border-green-700 bg-green-950/40 p-5 space-y-4">
         <div>
           <h2 className="text-base font-bold text-green-400 tracking-wide">⚡ Auto-Sync from ESPN</h2>
-          <p className="text-xs text-slate-400 mt-1">Pulls schedule directly from ESPN — no manual entry. Also auto-detects SNF/MNF.</p>
+          <p className="text-xs text-slate-400 mt-1">
+            Pulls one day at a time across the ACC, Big Ten, Big 12, SEC, Pac-12 and the NCAA
+            tournament. Seeds, regions, round labels, venue and TV come with it.
+          </p>
         </div>
+
         <div className="flex flex-wrap gap-3 items-end">
           <div>
             <label className="block text-xs text-slate-400 mb-1">Season</label>
@@ -198,31 +205,59 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Slate</label>
+            <label className="block text-xs text-slate-400 mb-1">Day</label>
             <input
-              type="number"
-              value={slateNumber}
-              min={1}
-              max={22}
-              onChange={(e) => setWeekNumber(Number(e.target.value))}
-              className="w-20 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-green-500 focus:outline-none"
+              type="date"
+              value={syncDate}
+              onChange={(e) => setSyncDate(e.target.value)}
+              className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-green-500 focus:outline-none"
             />
           </div>
           <button
-            onClick={syncFromESPN}
-            disabled={syncing || syncingAll}
+            onClick={syncOneDay}
+            disabled={busy}
             className="rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-50 px-6 py-2 text-sm font-bold text-white transition-colors"
           >
-            {syncing ? 'Syncing…' : 'SYNC FROM ESPN'}
-          </button>
-          <button
-            onClick={syncAllFromESPN}
-            disabled={syncing || syncingAll}
-            className="rounded-lg border border-green-700 hover:bg-green-950 disabled:opacity-50 px-6 py-2 text-sm font-bold text-green-400 transition-colors"
-          >
-            {syncingAll ? 'Syncing all…' : 'SYNC ALL WEEKS'}
+            {syncing ? 'Syncing…' : 'SYNC THIS DAY'}
           </button>
         </div>
+
+        <div className="border-t border-green-900 pt-4 space-y-3">
+          <p className="text-xs text-slate-400">
+            Load a whole stretch of the calendar at once. Days with no games in these conferences
+            are skipped, not treated as errors. Re-running is safe — existing days are updated in
+            place, never duplicated.
+          </p>
+          <div className="flex flex-wrap gap-3 items-end">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">From</label>
+              <input
+                type="date"
+                value={rangeStart}
+                onChange={(e) => setRangeStart(e.target.value)}
+                className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-green-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">To</label>
+              <input
+                type="date"
+                value={rangeEnd}
+                onChange={(e) => setRangeEnd(e.target.value)}
+                className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-green-500 focus:outline-none"
+              />
+            </div>
+            <button
+              onClick={syncRange}
+              disabled={busy}
+              className="rounded-lg border border-green-700 hover:bg-green-950 disabled:opacity-50 px-6 py-2 text-sm font-bold text-green-400 transition-colors"
+            >
+              {syncingRange ? 'Loading…' : 'LOAD DATE RANGE'}
+            </button>
+          </div>
+          {progress && <p className="text-xs text-slate-400 tnum">Loading {progress}…</p>}
+        </div>
+
         {message && (
           <p className={`text-sm ${message.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>
             {message}
@@ -230,14 +265,42 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
         )}
       </div>
 
-      {/* Existing games */}
+      {/* Loaded days */}
+      <div>
+        <h2 className="text-lg font-semibold text-white mb-3">
+          Loaded Days <span className="text-slate-500 text-sm font-normal">({slates.length})</span>
+        </h2>
+        {slates.length === 0 ? (
+          <p className="text-slate-400 text-sm">
+            Nothing loaded yet. Use the date range above to pull the season in.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {slates.map((s) => (
+              <span
+                key={s.id}
+                className={`rounded-lg border px-2.5 py-1 text-xs font-mono ${
+                  s.is_active
+                    ? 'border-green-600 bg-green-950/60 text-green-300'
+                    : 'border-slate-700 bg-slate-800 text-slate-400'
+                }`}
+                title={s.is_active ? 'Active slate' : undefined}
+              >
+                {s.slate_date}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Active slate's games */}
       {activeSlate && (
         <div>
           <h2 className="text-lg font-semibold text-white mb-3">
-            Slate {activeSlate.slate_number} Current Schedule
+            {activeSlate.slate_date} — Games
           </h2>
           {games.length === 0 ? (
-            <p className="text-slate-400 text-sm">No games entered yet for this slate.</p>
+            <p className="text-slate-400 text-sm">No games loaded for this day.</p>
           ) : (
             <div className="space-y-2">
               {games.map((g) => (
@@ -247,18 +310,17 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
                 >
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="text-white font-medium font-mono">
-                      {g.away_team} @ {g.home_team}
+                      {g.away_seed ? `(${g.away_seed}) ` : ''}
+                      {g.away_team} @ {g.home_seed ? `(${g.home_seed}) ` : ''}
+                      {g.home_team}
                     </span>
                     {g.round_label && (
                       <span className="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">
                         {g.round_label}
+                        {g.region ? ` · ${g.region}` : ''}
                       </span>
                     )}
-                    {(g.home_seed || g.away_seed) && (
-                      <span className="text-slate-400 text-sm">
-                        ({g.away_seed ?? '—'}) v ({g.home_seed ?? '—'})
-                      </span>
-                    )}
+                    {g.tv && <span className="text-slate-500 text-xs">{g.tv}</span>}
                     <span className="text-slate-500 text-xs">
                       {new Date(g.tip_time).toLocaleString('en-US', {
                         timeZone: 'America/Chicago',
@@ -276,7 +338,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
                     disabled={deletingId === g.id}
                     className="text-red-400 hover:text-red-300 text-sm disabled:opacity-50"
                   >
-                    {deletingId === g.id ? '…' : 'Delete'}
+                    {deletingId === g.id ? 'Deleting…' : 'Delete'}
                   </button>
                 </div>
               ))}
@@ -285,31 +347,14 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
         </div>
       )}
 
-      {/* Add new slate/games */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <h2 className="text-lg font-semibold text-white">Add Games</h2>
-
-        <div className="flex flex-wrap gap-4">
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Season Year</label>
-            <input
-              type="number"
-              value={seasonYear}
-              onChange={(e) => setSeasonYear(Number(e.target.value))}
-              className="w-28 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Slate Number</label>
-            <input
-              type="number"
-              value={slateNumber}
-              min={1}
-              max={22}
-              onChange={(e) => setWeekNumber(Number(e.target.value))}
-              className="w-24 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
-            />
-          </div>
+      {/* Manual entry — the fallback when ESPN doesn't carry a game */}
+      <form onSubmit={handleSubmit} className="space-y-5 border-t border-slate-800 pt-8">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Add Games by Hand</h2>
+          <p className="text-xs text-slate-400 mt-1">
+            Only needed for a game ESPN doesn&rsquo;t list. Each game files itself under its own
+            date — you don&rsquo;t pick a slate.
+          </p>
         </div>
 
         <div className="space-y-4">
@@ -331,119 +376,78 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Away Team</label>
-                  <select
+                  <input
+                    list="team-list"
                     value={g.away_team}
-                    onChange={(e) => updateGame(i, 'away_team', e.target.value)}
+                    onChange={(e) => updateGame(i, 'away_team', e.target.value.toUpperCase())}
                     required
+                    placeholder="e.g. DUKE"
                     className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="">Select…</option>
-                    {teams.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Home Team</label>
-                  <select
+                  <input
+                    list="team-list"
                     value={g.home_team}
-                    onChange={(e) => updateGame(i, 'home_team', e.target.value)}
+                    onChange={(e) => updateGame(i, 'home_team', e.target.value.toUpperCase())}
                     required
+                    placeholder="e.g. UNC"
                     className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="">Select…</option>
-                    {teams.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Date (Central)</label>
                   <input
                     type="date"
-                    value={g.kickoff_date}
-                    onChange={(e) => updateGame(i, 'kickoff_date', e.target.value)}
+                    value={g.date}
+                    onChange={(e) => updateGame(i, 'date', e.target.value)}
                     required
                     className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Kickoff (Central)</label>
+                  <label className="block text-xs text-slate-400 mb-1">Tip-off (Central)</label>
                   <input
                     type="time"
-                    value={g.kickoff_time}
-                    onChange={(e) => updateGame(i, 'kickoff_time', e.target.value)}
+                    value={g.time}
+                    onChange={(e) => updateGame(i, 'time', e.target.value)}
                     required
                     className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Day</label>
-                  <select
-                    value={g.game_day}
-                    onChange={(e) => updateGame(i, 'game_day', e.target.value)}
-                    className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    {(['thursday','friday','saturday','sunday','monday','tuesday'] as GameDay[]).map((d) => (
-                      <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={g.is_snf}
-                    onChange={(e) => updateGame(i, 'is_snf', e.target.checked)}
-                    className="accent-yellow-500"
-                  />
-                  <span className="text-sm text-yellow-400">Sunday Night Football (SNF)</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={g.is_mnf}
-                    onChange={(e) => updateGame(i, 'is_mnf', e.target.checked)}
-                    className="accent-blue-500"
-                  />
-                  <span className="text-sm text-blue-400">Monday Night Football (MNF)</span>
-                </label>
               </div>
             </div>
           ))}
         </div>
 
+        {/* Teams already seen in the feed — a hint, not a restriction, since a
+            manual game may involve a team that hasn't synced yet. */}
+        <datalist id="team-list">
+          {teams.map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
+
         <div className="flex gap-3">
           <button
             type="button"
             onClick={addGame}
-            className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:border-slate-400 hover:text-white transition-colors"
+            className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
           >
-            + Add Another Game
+            + Add another
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
+            className="rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-50 px-6 py-2 text-sm font-bold text-white"
           >
-            {submitting ? 'Saving…' : 'Save Schedule'}
+            {submitting ? 'Saving…' : 'SAVE GAMES'}
           </button>
         </div>
-
-        {message && (
-          <p className={`text-sm ${message.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>
-            {message}
-          </p>
-        )}
       </form>
     </div>
   )

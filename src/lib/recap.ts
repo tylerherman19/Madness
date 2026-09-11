@@ -29,7 +29,7 @@ export function generateRecap(input: RecapInput): string {
 
   const lines: string[] = []
 
-  lines.push(`🏈 NFL SURVIVOR POOL — WEEK ${slate.slate_number} RECAP`)
+  lines.push(`🏈 MADNESS POOL — WEEK ${slate.slate_number} RECAP`)
   lines.push('─'.repeat(40))
 
   // Results

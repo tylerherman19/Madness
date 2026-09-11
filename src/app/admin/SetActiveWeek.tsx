@@ -3,14 +3,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-interface WeekOption {
+interface SlateOption {
   id: string
   slate_number: number
+  slate_date: string
   season_year: number
   is_active: boolean
 }
 
-export default function SetActiveWeek({ slates }: { slates: WeekOption[] }) {
+export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
   const router = useRouter()
   const [selected, setSelected] = useState('')
   const [loading, setLoading] = useState(false)
@@ -22,7 +23,7 @@ export default function SetActiveWeek({ slates }: { slates: WeekOption[] }) {
   async function handleActivate() {
     const slate = slates.find((w) => w.id === selected)
     if (!slate) return
-    if (!confirm(`Set Slate ${slate.slate_number} (${slate.season_year}) as the active slate? Players will immediately see it on the pick page.`)) return
+    if (!confirm(`Make ${slate.slate_date} the active day? Players will immediately see it on the pick page.`)) return
     setLoading(true)
     setMessage('')
     try {
@@ -33,7 +34,7 @@ export default function SetActiveWeek({ slates }: { slates: WeekOption[] }) {
       })
       const data = await res.json()
       if (res.ok) {
-        setMessage(`✅ Slate ${data.slate_number} is now active`)
+        setMessage(`✅ ${slate.slate_date} is now active`)
         setSelected('')
         router.refresh()
       } else {
@@ -48,9 +49,9 @@ export default function SetActiveWeek({ slates }: { slates: WeekOption[] }) {
 
   return (
     <div className="rounded-xl border border-red-900/60 bg-slate-800 p-4 space-y-3">
-      <p className="text-sm font-semibold text-red-300">Set Active Slate</p>
+      <p className="text-sm font-semibold text-red-300">Set Active Day</p>
       <p className="text-xs text-slate-400">
-        Manually switch which slate is active. Use this to roll back or jump ahead — normally you should use Advance Season instead.
+        Manually switch which day is active. Use this to roll back or jump ahead — normally Advance to Next Day is the one you want.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <select
@@ -58,10 +59,10 @@ export default function SetActiveWeek({ slates }: { slates: WeekOption[] }) {
           onChange={(e) => setSelected(e.target.value)}
           className="w-full sm:w-auto rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
         >
-          <option value="">Select a slate…</option>
+          <option value="">Select a day…</option>
           {inactive.map((w) => (
             <option key={w.id} value={w.id}>
-              Slate {w.slate_number} · {w.season_year}
+              {w.slate_date}
             </option>
           ))}
         </select>

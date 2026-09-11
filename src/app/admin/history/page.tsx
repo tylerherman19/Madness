@@ -102,7 +102,7 @@ export default async function AdminHistoryPage() {
                 <thead>
                   <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wide text-slate-400">
                     <th className="py-1.5 font-medium">Game</th>
-                    <th className="py-1.5 font-medium hidden sm:table-cell">Kickoff (CT)</th>
+                    <th className="py-1.5 font-medium hidden sm:table-cell">Tip (CT)</th>
                     <th className="py-1.5 font-medium text-right">Result</th>
                   </tr>
                 </thead>

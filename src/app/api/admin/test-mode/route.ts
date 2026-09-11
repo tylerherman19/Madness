@@ -13,17 +13,18 @@ const CHICAGO_TZ = 'America/Chicago'
 // Every seeded test user logs in with this PIN (sandbox-only accounts).
 const TEST_USER_PIN = '1234'
 
-// A one-slate slate spread across the survivor deadline rules: a Thursday game
-// (locks at kickoff), three Sunday-slot games (lock Sunday 12 PM CT), SNF and
-// MNF (auto-assign fallbacks). 12 distinct teams, so seeded players have
-// plenty of untouched teams for multi-slate testing.
+// One day of games, tomorrow, spread across an evening. The whole slate
+// locks at the first tip (6:00 PM CT here), so the sandbox clock can be
+// parked before it to test picking and after it to test the lock,
+// auto-assign and grading. 12 distinct teams, so seeded players have plenty
+// of untouched teams for multi-day testing.
 const TEST_SLATE = [
-  { away: 'DAL', home: 'PHI', day: 'thursday', offsetDays: -3, hour: 19, minute: 15, snf: false, mnf: false },
-  { away: 'GB', home: 'CHI', day: 'sunday', offsetDays: 0, hour: 12, minute: 0, snf: false, mnf: false },
-  { away: 'DET', home: 'MIN', day: 'sunday', offsetDays: 0, hour: 15, minute: 25, snf: false, mnf: false },
-  { away: 'SF', home: 'LAR', day: 'sunday', offsetDays: 0, hour: 15, minute: 25, snf: false, mnf: false },
-  { away: 'KC', home: 'BUF', day: 'sunday', offsetDays: 0, hour: 19, minute: 20, snf: true, mnf: false },
-  { away: 'NYJ', home: 'MIA', day: 'monday', offsetDays: 1, hour: 19, minute: 15, snf: false, mnf: true },
+  { away: 'DUKE', home: 'UNC', hour: 18, minute: 0 },
+  { away: 'MICH', home: 'OSU', hour: 18, minute: 30 },
+  { away: 'KU', home: 'BAY', hour: 20, minute: 0 },
+  { away: 'UK', home: 'FLA', hour: 20, minute: 30 },
+  { away: 'UCLA', home: 'ARIZ', hour: 21, minute: 0 },
+  { away: 'GONZ', home: 'CREI', hour: 21, minute: 30 },
 ] as const
 
 export async function POST(req: NextRequest) {
@@ -204,33 +205,40 @@ export async function POST(req: NextRequest) {
       const seasonYear = latest?.season_year ?? new Date().getFullYear()
       const slateNumber = (latest?.slate_number ?? 0) + 1
 
-      await sandboxSupabase.from('slates').update({ is_active: false }).gt('slate_number', 0)
+      // Anchor the slate on tomorrow (CT) so its lock is genuinely upcoming
+      // and the sandbox clock can be walked across it.
+      const nowCt = toZonedTime(new Date(), CHICAGO_TZ)
+      const dayCt = new Date(nowCt)
+      dayCt.setDate(nowCt.getDate() + 1)
+      const slateDate = `${dayCt.getFullYear()}-${String(dayCt.getMonth() + 1).padStart(2, '0')}-${String(dayCt.getDate()).padStart(2, '0')}`
+
+      await sandboxSupabase.from('slates').update({ is_active: false }).eq('is_active', true)
       const { data: newWeek, error: weekErr } = await sandboxSupabase
         .from('slates')
-        .insert({ slate_number: slateNumber, season_year: seasonYear, is_active: true })
+        .insert({
+          slate_number: slateNumber,
+          slate_date: slateDate,
+          season_year: seasonYear,
+          is_active: true,
+        })
         .select('id')
         .single()
       if (weekErr || !newWeek) {
         return NextResponse.json({ error: `Failed to create test slate: ${weekErr?.message}` }, { status: 500 })
       }
 
-      // Anchor the slate on the next Sunday (CT) so the Sunday 12 PM deadline
-      // is genuinely upcoming; the Thursday game lands in the past, which
-      // exercises the locked-at-kickoff path.
-      const nowCt = toZonedTime(new Date(), CHICAGO_TZ)
-      const daysToSunday = (7 - nowCt.getDay()) % 7 || 7
       const games = TEST_SLATE.map((g) => {
-        const kickoffCt = new Date(nowCt)
-        kickoffCt.setDate(nowCt.getDate() + daysToSunday + g.offsetDays)
-        kickoffCt.setHours(g.hour, g.minute, 0, 0)
+        const tipCt = new Date(dayCt)
+        tipCt.setHours(g.hour, g.minute, 0, 0)
         return {
           slate_id: newWeek.id,
+          // Sandbox games never come from ESPN, but the column is NOT NULL
+          // and unique, so they get a synthetic id in their own namespace.
+          espn_event_id: `sandbox:${slateDate}:${g.away}@${g.home}`,
           home_team: g.home,
           away_team: g.away,
-          game_day: g.day,
-          tip_time: fromZonedTime(kickoffCt, CHICAGO_TZ).toISOString(),
-          is_snf: g.snf,
-          is_mnf: g.mnf,
+          tip_time: fromZonedTime(tipCt, CHICAGO_TZ).toISOString(),
+          status_state: 'pre',
           result: 'pending',
         }
       })
@@ -238,6 +246,13 @@ export async function POST(req: NextRequest) {
       if (gamesErr) {
         return NextResponse.json({ error: `Failed to create test games: ${gamesErr.message}` }, { status: 500 })
       }
+
+      // The slate locks at its first tip, and the pick page reads that off
+      // the cached column rather than re-deriving it.
+      const firstTip = games
+        .map((g) => g.tip_time)
+        .sort()[0]
+      await sandboxSupabase.from('slates').update({ locks_at: firstTip }).eq('id', newWeek.id)
 
       return NextResponse.json({
         ok: true,

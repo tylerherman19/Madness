@@ -135,7 +135,7 @@ function Shell({ children, session, slateNumber }: { children: React.ReactNode; 
           <div>
             <Link href="/" className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
               <LogoMark size={64} />
-              NFL SURVIVOR
+              MADNESS
             </Link>
             {slateNumber && <p className="text-xs tracking-widest uppercase mt-0.5" style={{ color: '#666' }}>Slate {slateNumber}</p>}
           </div>

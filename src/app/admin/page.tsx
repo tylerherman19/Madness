@@ -16,7 +16,7 @@ export default async function AdminDashboard() {
   const [{ data: slate }, { data: players }, { data: allWeeks }, signupAnchor, now] = await Promise.all([
     supabase.from('slates').select('*').eq('is_active', true).single(),
     supabase.from('players').select('id, full_name, email, status, paid'),
-    supabase.from('slates').select('id, slate_number, season_year, is_active').order('slate_number'),
+    supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active').order('slate_date'),
     getSignupCutoff(),
     getEffectiveNow(),
   ])
@@ -109,15 +109,12 @@ export default async function AdminDashboard() {
         <div className="rounded-xl border border-amber-500/40 bg-slate-800 p-4">
           <p className="text-amber-400 font-medium">No active slate set.</p>
           <p className="text-slate-400 text-sm mt-1">
-            Go to <Link href="/admin/schedule" className="text-blue-400 underline">Schedule</Link> to create Slate 1 and add games.
+            Go to <Link href="/admin/schedule" className="text-blue-400 underline">Schedule</Link> to load days from ESPN.
           </p>
         </div>
       )}
       {slate && (
-        <AdvanceWeekButton
-          currentWeekNumber={slate.slate_number}
-          seasonYear={slate.season_year}
-        />
+        <AdvanceWeekButton currentSlateDate={slate.slate_date} />
       )}
 
       {slate && (
@@ -204,7 +201,7 @@ export default async function AdminDashboard() {
         <AdminCard
           href="/admin/schedule"
           title="📅 Enter Schedule"
-          desc="Add or update this slate's game slate (teams, kickoff times, SNF/MNF flags)"
+          desc="Load days from ESPN, or add a game by hand"
         />
         <AdminCard
           href="/admin/results"

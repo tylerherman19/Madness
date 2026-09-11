@@ -40,7 +40,7 @@ export default function LoginPage() {
         <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
             <LogoMark size={64} />
-            NFL SURVIVOR
+            MADNESS
           </Link>
         </div>
       </header>

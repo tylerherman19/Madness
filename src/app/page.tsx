@@ -499,11 +499,12 @@ export default async function DashboardPage() {
           <Section id="rules" title="How It Works">
             <div className="card p-5 sm:p-6 grid sm:grid-cols-2 gap-x-10 gap-y-4">
               <Rule n="1" text="Pay $25 entry via Venmo to @griffinsell." />
-              <Rule n="2" text="Each slate, pick one NFL team to win their game." />
+              <Rule n="2" text="Every day there are games, pick one team to win." />
               <Rule n="3" text="You can't pick the same team twice all season." />
-              <Rule n="4" text="Your team wins, you survive. Loses or ties, you're out." />
-              <Rule n="5" text="Wed/Thu/Fri/Sat games lock at kickoff. All other picks lock Sunday 12 PM CT." />
-              <Rule n="6" text="Miss the deadline and you'll be auto-assigned the SNF away team, but if already picked, then the MNF away team. If both have already been picked, you're eliminated." />
+              <Rule n="4" text="Your team wins, you survive. Loses and you're out." />
+              <Rule n="5" text="Picks lock when the first game of the day tips off — all of them, at once." />
+              <Rule n="6" text="Miss the lock and you're auto-assigned a team from the day's last game. If every team on the slate is already used, you're eliminated." />
+              <Rule n="7" text="Last one standing wins. If more than one survives, the highest total of seeds picked in the tournament takes it." />
             </div>
           </Section>
         </main>

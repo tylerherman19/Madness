@@ -53,7 +53,7 @@ const LOGO_HEADER = `
   <table role="presentation" align="center" style="margin: 0 auto 20px;" cellpadding="0" cellspacing="0" border="0">
     <tr>
       <td style="padding-right: 12px;"><img src="${APP_URL}/logo.png" width="64" height="64" alt="Pick and Pray" style="border-radius: 50%; display: block;" /></td>
-      <td style="font-family: Arial, Helvetica, sans-serif; font-weight: 900; font-size: 22px; letter-spacing: 1px; color: #1a1a1a; white-space: nowrap;">NFL SURVIVOR</td>
+      <td style="font-family: Arial, Helvetica, sans-serif; font-weight: 900; font-size: 22px; letter-spacing: 1px; color: #1a1a1a; white-space: nowrap;">MADNESS</td>
     </tr>
   </table>
 `

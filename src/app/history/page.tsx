@@ -88,7 +88,7 @@ export default async function HistoryPage() {
           <div>
             <Link href="/" className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
               <LogoMark size={64} />
-              NFL SURVIVOR
+              MADNESS
             </Link>
           </div>
           <div className="flex items-center gap-4">

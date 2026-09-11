@@ -36,7 +36,7 @@ export default function SiteHeader({ signupsClosed = false }: { signupsClosed?: 
       <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
         <span className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
           <LogoMark size={64} />
-          NFL SURVIVOR
+          MADNESS
         </span>
 
         {/* Desktop nav */}
