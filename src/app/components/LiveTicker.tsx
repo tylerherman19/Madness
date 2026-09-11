@@ -5,6 +5,20 @@ import type { LiveGame, LiveScoresResponse } from '@/app/api/live-scores/route'
 
 const TICKER_PX_PER_SECOND = 40
 
+function TickerTeam({ name, logo, color }: { name: string; logo?: string | null; color?: string | null }) {
+  return (
+    <span className="flex items-center gap-1.5 font-bold">
+      <span className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white" style={{ border: `1px solid ${color ?? 'var(--line)'}` }}>
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt="" width={16} height={16} className="h-4 w-4 object-contain" />
+        ) : <span style={{ fontSize: 7 }}>{name.slice(0, 2)}</span>}
+      </span>
+      {name}
+    </span>
+  )
+}
+
 function scoreColor(myScore: number, theirScore: number, state: string): string {
   if (state === 'pre') return 'var(--dark)'
   if (myScore > theirScore) return 'var(--green)'
@@ -18,14 +32,14 @@ function GameCard({ game }: { game: LiveGame }) {
   // A schedule-sourced game can be decided without the numbers being known —
   // its statusText carries the winner instead, so don't print a fake 0–0.
   const showScores = !isPre && game.scoresKnown !== false
-
   return (
     <div
       className="shrink-0 border px-3 py-2 text-xs"
       style={{
         borderColor: isLive ? 'var(--red)' : 'var(--border)',
         background: 'white',
-        minWidth: 140,
+        minWidth: 176,
+        borderRadius: 4,
       }}
     >
       {/* Live indicator */}
@@ -48,9 +62,7 @@ function GameCard({ game }: { game: LiveGame }) {
       {/* Away team row */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
-          <span className="font-bold font-mono" style={{ color: isPre ? 'var(--dark)' : scoreColor(game.awayScore, game.homeScore, game.state) }}>
-            {game.awayTeam}
-          </span>
+          <span style={{ color: isPre ? 'var(--dark)' : scoreColor(game.awayScore, game.homeScore, game.state) }}><TickerTeam name={game.awayTeam} logo={game.awayLogo} color={game.awayColor} /></span>
           {game.awayPicks !== undefined && (
             <span style={{ fontSize: 9, color: 'var(--muted)' }}>{game.awayPicks} {game.awayPicks === 1 ? 'Pick' : 'Picks'}</span>
           )}
@@ -65,9 +77,7 @@ function GameCard({ game }: { game: LiveGame }) {
       {/* Home team row */}
       <div className="flex items-center justify-between gap-3 mt-0.5">
         <div className="flex items-center gap-1.5">
-          <span className="font-bold font-mono" style={{ color: isPre ? 'var(--dark)' : scoreColor(game.homeScore, game.awayScore, game.state) }}>
-            {game.homeTeam}
-          </span>
+          <span style={{ color: isPre ? 'var(--dark)' : scoreColor(game.homeScore, game.awayScore, game.state) }}><TickerTeam name={game.homeTeam} logo={game.homeLogo} color={game.homeColor} /></span>
           {game.homePicks !== undefined && (
             <span style={{ fontSize: 9, color: 'var(--muted)' }}>{game.homePicks} {game.homePicks === 1 ? 'Pick' : 'Picks'}</span>
           )}
@@ -100,8 +110,6 @@ function GameCard({ game }: { game: LiveGame }) {
 // back to the raw slate index would reintroduce the internal vocabulary the
 // rest of the product no longer uses.
 export default function LiveTicker({
-  slateNumber,
-  season,
   label,
 }: {
   slateNumber?: number | null
@@ -158,12 +166,12 @@ export default function LiveTicker({
   const liveCount = data.games.filter((g) => g.state === 'in').length
 
   return (
-    <div style={{ borderBottom: '1px solid var(--border)', background: 'var(--cream)' }}>
-      <div className="mx-auto max-w-5xl px-4 py-2">
+    <div style={{ borderBottom: '1px solid var(--border)', background: 'rgba(251,253,249,.92)' }}>
+      <div className="content-width py-2">
         {/* Header row */}
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="whitespace-nowrap text-xs font-bold tracking-widest uppercase" style={{ color: 'var(--muted)' }}>
+            <span className="whitespace-nowrap text-xs font-bold" style={{ color: 'var(--muted)' }}>
               {label ?? `Slate ${data.slateNumber}`} Scores
             </span>
             {liveCount > 0 && (

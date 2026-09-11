@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import LogoMark from '@/app/components/LogoMark'
+import AuthShell from '@/app/components/AuthShell'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -34,26 +34,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
-      {/* Header */}
-      <header style={{ background: 'var(--dark)' }}>
-        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
-            <LogoMark size={64} />
-            MADNESS
-          </Link>
-        </div>
-      </header>
-
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm">
-          <div className="card p-6 sm:p-8">
-            <h1 className="font-display text-5xl mb-1" style={{ color: 'var(--dark)' }}>LOG IN</h1>
-            <p className="text-sm mb-7" style={{ color: 'var(--muted)' }}>Enter your name and 6-digit PIN to submit your pick.</p>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
+    <AuthShell eyebrow="Player access" title="Log in" description="Enter your name and six-digit PIN to make or change your pick.">
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="eyebrow block mb-2" style={{ color: 'var(--dark)' }}>Full Name</label>
+                <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Full name</label>
                 <input
                   type="text"
                   value={fullName}
@@ -66,7 +50,7 @@ export default function LoginPage() {
                 />
               </div>
               <div>
-                <label className="eyebrow block mb-2" style={{ color: 'var(--dark)' }}>PIN</label>
+                <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>PIN</label>
                 <input
                   type="password"
                   inputMode="numeric"
@@ -87,25 +71,21 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="btn-primary w-full font-display tracking-wider py-3"
+                className="btn-primary w-full py-3"
               >
-                {loading ? 'LOGGING IN…' : 'LOG IN'}
+                {loading ? 'Logging in…' : 'Log in'}
               </button>
             </form>
-          </div>
-
-          <div className="mt-6 space-y-2.5 text-center">
-            <Link href="/forgot-pin" className="block eyebrow underline" style={{ color: 'var(--muted)' }}>
+          <div className="mt-6 space-y-3 text-center">
+            <Link href="/forgot-pin" className="block text-sm font-bold underline" style={{ color: 'var(--muted)' }}>
               Forgot your PIN?
             </Link>
             <p className="text-xs" style={{ color: 'var(--muted)' }}>
               New to the pool?{' '}
               <Link href="/signup" className="underline" style={{ color: 'var(--dark)' }}>Sign up here</Link>
             </p>
-            <Link href="/" className="block eyebrow" style={{ color: 'var(--muted)' }}>Standings</Link>
+            <Link href="/" className="block text-sm font-bold" style={{ color: 'var(--muted)' }}>Back to the pool</Link>
           </div>
-        </div>
-      </main>
-    </div>
+    </AuthShell>
   )
 }

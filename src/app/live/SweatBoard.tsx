@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { teamColor } from '@/lib/teamColors'
+import type { TeamBrandDirectory } from '@/lib/teamBrand'
 import { capabilitiesFor } from '@/lib/competition'
 import type { SweatResponse, SweatGame } from '@/app/api/sweat/route'
+import TeamMark from '@/app/components/TeamMark'
 
 function scoreColor(myScore: number, theirScore: number, state: string): string {
   if (state === 'pre') return 'var(--dark)'
@@ -27,11 +28,13 @@ function TeamRow({
   side,
   fieldSize,
   tournament,
+  teamBrands,
 }: {
   game: SweatGame
   side: 'home' | 'away'
   fieldSize: number
   tournament: boolean
+  teamBrands: TeamBrandDirectory
 }) {
   const team = side === 'home' ? game.homeTeam : game.awayTeam
   const seed = side === 'home' ? game.homeSeed : game.awaySeed
@@ -49,8 +52,7 @@ function TeamRow({
           {seed != null && (
             <span className="tnum shrink-0" style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>{seed}</span>
           )}
-          <span className="team-chip-swatch" style={{ background: teamColor(team).primary }}>{team.slice(0, 3)}</span>
-          <span className="font-bold" style={{ color }}>{team}</span>
+          <span style={{ color }}><TeamMark team={team} directory={teamBrands} size={34} showName /></span>
         </div>
         {!isPre && (
           <span className="font-display text-2xl tnum leading-none shrink-0" style={{ color }}>{my}</span>
@@ -69,10 +71,12 @@ function GameCard({
   game,
   fieldSize,
   tournament,
+  teamBrands,
 }: {
   game: SweatGame
   fieldSize: number
   tournament: boolean
+  teamBrands: TeamBrandDirectory
 }) {
   const isLive = game.state === 'in'
   const sweatCount = game.homePlayers.length + game.awayPlayers.length
@@ -119,9 +123,9 @@ function GameCard({
             </span>
           )}
         </div>
-        <TeamRow game={game} side="away" fieldSize={fieldSize} tournament={tournament} />
+        <TeamRow game={game} side="away" fieldSize={fieldSize} tournament={tournament} teamBrands={teamBrands} />
         <div style={{ borderTop: '1px solid var(--border)' }} />
-        <TeamRow game={game} side="home" fieldSize={fieldSize} tournament={tournament} />
+        <TeamRow game={game} side="home" fieldSize={fieldSize} tournament={tournament} teamBrands={teamBrands} />
 
         {/* Survivor impact — the reason anyone watches a game they have no
             stake in. Only shown once the picks are on the board and the game
@@ -170,7 +174,7 @@ function CountLine({ title, count, color, note }: { title: string; count: number
 
 const GAME_ORDER: Record<string, number> = { in: 0, pre: 1, post: 2 }
 
-export default function SweatBoard() {
+export default function SweatBoard({ teamBrands }: { teamBrands: TeamBrandDirectory }) {
   const [data, setData] = useState<SweatResponse | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
@@ -240,9 +244,10 @@ export default function SweatBoard() {
   return (
     <div>
       {/* Hero */}
-      <div className="py-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 border-b" style={{ borderColor: 'var(--border)' }}>
+      <div className="py-8 sm:py-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 border-b-2" style={{ borderColor: 'var(--ink)' }}>
         <div>
-          <h1 className="font-display text-7xl leading-none" style={{ color: 'var(--dark)' }}>SWEAT BOARD</h1>
+          <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>Every pick. Every possession.</p>
+          <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--dark)' }}>Sweat board</h1>
           <p className="mt-1 eyebrow">
             {data.periodLabel ?? `Slate ${data.slateNumber}`} · {fieldSize} {fieldSize === 1 ? 'survivor' : 'survivors'}
             {data.hasLiveGames && (
@@ -280,7 +285,7 @@ export default function SweatBoard() {
       {/* Games with pickers */}
       <div className="mt-8 grid sm:grid-cols-2 gap-3">
         {games.map((g) => (
-          <GameCard key={g.id} game={g} fieldSize={fieldSize} tournament={tournament} />
+          <GameCard key={g.id} game={g} fieldSize={fieldSize} tournament={tournament} teamBrands={teamBrands} />
         ))}
       </div>
 

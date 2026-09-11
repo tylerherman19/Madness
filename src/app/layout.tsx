@@ -1,18 +1,19 @@
 import type { Metadata } from 'next'
-import { Anton } from 'next/font/google'
+import { Geist } from 'next/font/google'
 import './globals.css'
 import TestModeBanner from './components/TestModeBanner'
 
-const anton = Anton({ weight: '400', subsets: ['latin'], variable: '--font-anton' })
+const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
 
 export const metadata: Metadata = {
-  title: 'Madness',
-  description: "Pick one team per slate. One loss and you're out.",
+  title: { default: 'Madness', template: '%s | Madness' },
+  description: "College basketball survivor. Pick one team each game day. Win and advance. Lose and you're out.",
+  icons: { icon: '/mark.svg' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={anton.variable}>
+    <html lang="en" className={geist.variable}>
       <body className="min-h-full antialiased">
         <TestModeBanner />
         {children}

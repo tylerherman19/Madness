@@ -14,21 +14,23 @@ export default function Wordmark({
   href = '/',
   size = 64,
   showTagline = true,
+  tone = 'light',
 }: {
   mode: CompetitionMode
   href?: string | null
   size?: number
   showTagline?: boolean
+  tone?: 'light' | 'dark'
 }) {
   const inner = (
-    <span className="flex items-center gap-3">
+    <span className="flex items-center gap-2.5">
       <LogoMark size={size} />
       <span className="flex flex-col leading-none">
-        <span className="font-display text-white text-xl tracking-wider">MADNESS</span>
+        <span className="font-display text-[19px] tracking-[-0.035em]" style={{ color: tone === 'dark' ? 'var(--ink)' : '#fff' }}>MADNESS</span>
         {showTagline && (
           <span
-            className="mt-1 text-[10px] tracking-[0.18em] uppercase"
-            style={{ color: '#8a8a8a' }}
+            className="brand-tagline mt-1 text-[10px] font-semibold tracking-[0.02em]"
+            style={{ color: tone === 'dark' ? 'var(--muted)' : '#aeb8b2' }}
           >
             {copyFor(mode).tagline}
           </span>
@@ -39,7 +41,7 @@ export default function Wordmark({
 
   if (!href) return inner
   return (
-    <Link href={href} className="shrink-0">
+    <Link href={href} className="shrink-0" aria-label="Madness home">
       {inner}
     </Link>
   )

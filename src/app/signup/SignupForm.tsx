@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import LogoMark from '@/app/components/LogoMark'
+import AuthShell from '@/app/components/AuthShell'
 
 export default function SignupForm() {
   const [fullName, setFullName] = useState('')
@@ -34,37 +34,23 @@ export default function SignupForm() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
-      <header style={{ background: 'var(--dark)' }}>
-        <div className="mx-auto max-w-5xl px-4 py-4">
-          <Link href="/" className="flex items-center gap-3 font-display text-white text-xl tracking-wider">
-            <LogoMark size={64} />
-            MADNESS
-          </Link>
-        </div>
-      </header>
-
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm">
+    <AuthShell eyebrow="Open registration" title="Join the pool" description="$25 entry. One pick each game day. One loss and your run is over.">
           {done ? (
             <div className="card p-6 sm:p-8 text-center space-y-4">
-              <p className="font-display text-5xl" style={{ color: 'var(--green)' }}>YOU&apos;RE IN!</p>
+              <p className="font-display text-5xl" style={{ color: 'var(--green)' }}>You&apos;re in</p>
               <p className="text-sm" style={{ color: 'var(--dark)' }}>
                 Check your email — your 6-digit PIN is on its way. You&apos;ll need it to log in and submit picks each slate.
               </p>
               <p className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--dark)', background: 'var(--green-tint)' }}>
                 Venmo <strong>@griffinsell</strong> $25 to lock in your spot.
               </p>
-              <Link href="/login" className="btn-primary inline-block font-display tracking-wider px-6 py-3 mt-1">
-                LOG IN
+              <Link href="/login" className="btn-primary inline-flex px-6 py-3 mt-1">
+                Log in
               </Link>
             </div>
           ) : (
             <>
-              <div className="card p-6 sm:p-8">
-                <h1 className="font-display text-5xl mb-1" style={{ color: 'var(--dark)' }}>JOIN THE POOL</h1>
-                <p className="text-sm mb-7" style={{ color: 'var(--muted)' }}>$25 entry via Venmo to @griffinsell.</p>
-
+              <div>
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {[
                     { label: 'Full Name', type: 'text', val: fullName, set: setFullName, placeholder: 'e.g. John Smith', required: true, autoComplete: 'name' },
@@ -73,7 +59,7 @@ export default function SignupForm() {
                     { label: 'Venmo Handle', type: 'text', val: venmo, set: setVenmo, placeholder: '@yourhandle', required: true },
                   ].map(({ label, type, val, set, placeholder, required, autoComplete, note }) => (
                     <div key={label}>
-                      <label className="eyebrow block mb-2" style={{ color: 'var(--dark)' }}>{label}</label>
+                      <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>{label}</label>
                       <input
                         type={type}
                         value={val}
@@ -93,9 +79,9 @@ export default function SignupForm() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="btn-primary w-full font-display tracking-wider py-3"
+                    className="btn-primary w-full py-3"
                   >
-                    {loading ? 'SIGNING UP…' : 'SIGN UP & GET MY PIN'}
+                    {loading ? 'Joining…' : 'Join and get my PIN'}
                   </button>
                 </form>
               </div>
@@ -105,12 +91,10 @@ export default function SignupForm() {
                   Already have an account?{' '}
                   <Link href="/login" className="underline" style={{ color: 'var(--dark)' }}>Log in</Link>
                 </p>
-                <Link href="/" className="block eyebrow" style={{ color: 'var(--muted)' }}>Standings</Link>
+                <Link href="/" className="block text-sm font-bold" style={{ color: 'var(--muted)' }}>Back to the pool</Link>
               </div>
             </>
           )}
-        </div>
-      </main>
-    </div>
+    </AuthShell>
   )
 }

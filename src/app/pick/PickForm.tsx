@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { teamColor } from '@/lib/teamColors'
+import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
 import { capabilitiesFor, roundDisplay, type CompetitionMode } from '@/lib/competition'
+import TeamMark from '@/app/components/TeamMark'
 
 export interface GameSide {
   team: string
@@ -40,6 +42,7 @@ interface Props {
   gameRows: GameRow[]
   usedTeams: string[]
   currentPick?: CurrentPick | null
+  teamBrands: TeamBrandDirectory
 }
 
 const CT = 'America/Chicago'
@@ -92,6 +95,7 @@ function TeamHalf({
   disabled,
   selected,
   isCurrentPick,
+  teamBrands,
   onClick,
 }: {
   side: GameSide
@@ -99,9 +103,11 @@ function TeamHalf({
   selected: boolean
   isCurrentPick: boolean
   onClick: () => void
+  teamBrands: TeamBrandDirectory
 }) {
   const { team, used } = side
-  const c = teamColor(team).primary
+  const c = teamColor(team, teamBrands).primary
+  const brand = brandFor(team, teamBrands)
   const clickable = !disabled && !used
   return (
     <button
@@ -109,22 +115,23 @@ function TeamHalf({
       onClick={clickable ? onClick : undefined}
       disabled={!clickable}
       aria-label={used ? `${team} — already used${side.usedOn ? ` on ${side.usedOn}` : ''}` : team}
-      className="flex-1 text-left transition-all relative"
+      className="flex-1 text-left transition-all relative min-w-0"
       style={{
         padding: '12px 14px',
         cursor: clickable ? 'pointer' : 'not-allowed',
         opacity: used || disabled ? 0.45 : 1,
-        background: selected ? 'var(--surface-sunken)' : undefined,
+        background: selected ? `color-mix(in srgb, ${c} 10%, white)` : undefined,
+        boxShadow: selected ? `inset 0 -3px 0 ${c}` : undefined,
       }}
     >
       <div className="flex items-center gap-2">
         <SeedMark seed={side.seed} rank={side.rank} />
-        <span className="team-chip-swatch" style={{ background: used || disabled ? 'var(--muted)' : c }}>{team.slice(0, 3)}</span>
-        <span className="font-bold text-sm" style={{ color: used || disabled ? 'var(--muted)' : 'var(--dark)' }}>{team}</span>
+        <TeamMark team={team} directory={teamBrands} size={36} />
         {selected && <span className="ml-auto text-sm" style={{ color: c }}>✓</span>}
         {isCurrentPick && !selected && <span className="ml-auto text-xs font-bold" style={{ color: 'var(--green)' }}>PICKED</span>}
       </div>
       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+        {brand.shortName !== brand.abbreviation && <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>{brand.shortName}</span>}
         {side.record && <span className="text-xs tnum" style={{ color: 'var(--muted)' }}>{side.record}</span>}
         {used && (
           <span className="text-xs font-semibold tracking-wider" style={{ color: 'var(--red)' }}>
@@ -144,6 +151,7 @@ export default function PickForm({
   gameRows,
   usedTeams,
   currentPick,
+  teamBrands,
 }: Props) {
   const router = useRouter()
   const caps = capabilitiesFor(mode)
@@ -224,7 +232,7 @@ export default function PickForm({
 
   if (success) return (
     <div className="text-center py-16">
-      <p className="font-display text-6xl" style={{ color: 'var(--green)' }}>{isChange ? 'PICK UPDATED!' : 'LOCKED IN!'}</p>
+      <p className="font-display text-4xl" style={{ color: 'var(--green)' }}>{isChange ? 'Pick updated' : 'Locked in'}</p>
       <p className="text-sm mt-4" style={{ color: 'var(--muted)' }}>
         {selected} — {periodLabel}.
       </p>
@@ -241,20 +249,18 @@ export default function PickForm({
   return (
     <div className="space-y-8">
       <div>
-        <p className="font-display text-4xl leading-tight" style={{ color: 'var(--dark)' }}>{periodLabel.toUpperCase()}</p>
-        <p className="mt-1 eyebrow">{gameRows.length} eligible {gameRows.length === 1 ? 'game' : 'games'}</p>
+        <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>Make your pick</p>
+        <h1 className="font-display text-4xl leading-tight" style={{ color: 'var(--dark)' }}>{periodLabel}</h1>
+        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>{gameRows.length} eligible {gameRows.length === 1 ? 'game' : 'games'} · one team advances with you</p>
       </div>
 
       {currentPick && (
         <div className="border p-6" style={{ borderColor: 'var(--green)', borderWidth: 2 }}>
-          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: 'var(--green)' }}>
-            ✓ Your Pick
+          <p className="text-sm font-bold" style={{ color: 'var(--green)' }}>
+            Current pick
           </p>
           <div className="flex items-center gap-3 mt-3">
-            <span className="team-chip-swatch" style={{ background: teamColor(currentPick.team).primary, width: 32, height: 32, fontSize: 11, borderRadius: 7 }}>{currentPick.team.slice(0, 3)}</span>
-            <p className="font-display text-3xl leading-none" style={{ color: 'var(--dark)' }}>
-              {currentPick.team}
-            </p>
+            <TeamMark team={currentPick.team} directory={teamBrands} size={48} showName />
           </div>
           <p className="text-xs mt-3" style={{ color: 'var(--muted)' }}>
             You can still change this pick{currentPick.deadline ? ` until it locks ${formatLockTime(currentPick.deadline)}` : ''}. Select a different team below to switch.
@@ -284,7 +290,7 @@ export default function PickForm({
                   type="button"
                   aria-pressed={on}
                   onClick={() => setFilter(f)}
-                  className="px-3 py-1.5 text-xs font-bold tracking-wider uppercase"
+                  className="px-3 py-2 text-xs font-bold"
                   style={{
                     background: on ? 'var(--dark)' : 'transparent',
                     color: on ? 'var(--cream)' : 'var(--muted)',
@@ -343,6 +349,7 @@ export default function PickForm({
                             selected={selected === row.away.team}
                             isCurrentPick={currentPick?.team === row.away.team}
                             onClick={() => { setSelected(row.away.team); setConfirmed(false) }}
+                            teamBrands={teamBrands}
                           />
                           <div style={{ width: 1, background: 'var(--border)' }} />
                           <TeamHalf
@@ -351,6 +358,7 @@ export default function PickForm({
                             selected={selected === row.home.team}
                             isCurrentPick={currentPick?.team === row.home.team}
                             onClick={() => { setSelected(row.home.team); setConfirmed(false) }}
+                            teamBrands={teamBrands}
                           />
                         </div>
                         <div className="px-3 py-1.5 text-xs flex items-center justify-between gap-2" style={{ background: 'var(--surface-sunken)', color: 'var(--muted)' }}>
@@ -373,13 +381,10 @@ export default function PickForm({
       </div>
 
       {selected && (
-        <div className="card p-5 space-y-4" style={{ borderColor: teamColor(selected).primary, boxShadow: `0 0 0 2px ${teamColor(selected).primary}` }}>
-          <div className="flex items-center gap-3">
-            <span className="team-chip-swatch" style={{ background: teamColor(selected).primary, width: 32, height: 32, fontSize: 11, borderRadius: 7 }}>{selected.slice(0, 3)}</span>
-            <div>
-              <p className="eyebrow" style={{ color: 'var(--muted)' }}>{isChange ? 'New Pick' : 'Your Pick'}</p>
-              <p className="font-display text-2xl leading-none" style={{ color: 'var(--dark)' }}>{selected}</p>
-            </div>
+        <div className="mobile-pick-dock card p-5 space-y-4" style={{ borderColor: teamColor(selected, teamBrands).primary, boxShadow: `0 0 0 2px ${teamColor(selected, teamBrands).primary}` }}>
+          <div>
+            <p className="eyebrow mb-2" style={{ color: 'var(--muted)' }}>{isChange ? 'New pick' : 'Your pick'}</p>
+            <TeamMark team={selected} directory={teamBrands} size={44} showName />
           </div>
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5" />
@@ -391,9 +396,9 @@ export default function PickForm({
           <button
             onClick={handleSubmit}
             disabled={!confirmed || submitting}
-            className="btn-primary w-full font-display tracking-wider py-3"
+            className="btn-primary w-full py-3"
           >
-            {submitting ? 'LOCKING IN…' : isChange ? `SWITCH TO ${selected}` : `LOCK IN ${selected}`}
+            {submitting ? 'Saving pick…' : isChange ? `Switch to ${selected}` : `Lock in ${selected}`}
           </button>
         </div>
       )}
