@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Madness">
+  <rect width="64" height="64" rx="8" fill="#101714"/>
+  <path d="M13 47V17h9l10 15 10-15h9v30h-9V31L32 45 22 31v16z" fill="#fff"/>
+  <path d="M50 12 14 52" stroke="#f2552c" stroke-width="5" stroke-linecap="square"/>
+</svg>

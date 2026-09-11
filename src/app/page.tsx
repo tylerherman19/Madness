@@ -15,6 +15,7 @@ import Countdown from './components/Countdown'
 import LiveTicker from './components/LiveTicker'
 import SiteHeader from './components/SiteHeader'
 import TeamChip from './components/TeamChip'
+import { getTeamBrandDirectory } from '@/lib/teamBrand'
 import {
   BurnMap,
   ChalkFigure,
@@ -187,7 +188,10 @@ async function getDashboardData() {
 
     const { getTeamAbbrs } = await import('@/lib/teams')
     const { getDb } = await import('@/lib/testMode')
-    const teamUniverse = await getTeamAbbrs(await getDb())
+    const [teamUniverse, teamBrands] = await Promise.all([
+      getTeamAbbrs(await getDb()),
+      getTeamBrandDirectory(),
+    ])
 
     // Count slates survived per player from this season's picks (including current slate)
     const weeksSurvivedByPlayer: Record<string, number> = {}
@@ -292,6 +296,7 @@ async function getDashboardData() {
       picksMade,
       picksPending,
       insights,
+      teamBrands,
     }
   } catch {
     return null
@@ -330,7 +335,7 @@ export default async function DashboardPage() {
   for (const p of data?.periods ?? []) periodLabels[p.number] = p.shortLabel
 
   return (
-    <div style={{ background: 'var(--cream)', minHeight: '100vh' }}>
+    <div className="site-shell">
       {/* Header */}
       <SiteHeader signupsClosed={signupsClosed} mode={mode} />
 
@@ -343,7 +348,7 @@ export default async function DashboardPage() {
 
       {data && data.aliveCount === 1 && aliveRows.length === 1 && (
         <div style={{ background: 'var(--dark)', borderBottom: '4px solid var(--green)' }}>
-          <div className="mx-auto max-w-5xl px-4 py-10 text-center">
+          <div className="content-width py-10 text-center">
             <p className="eyebrow mb-2" style={{ color: 'var(--green)' }}>Survivor Champion</p>
             <p className="font-display text-7xl sm:text-8xl" style={{ color: 'var(--cream)' }}>{aliveRows[0].full_name.toUpperCase()}</p>
             <p className="mt-3 eyebrow" style={{ color: 'var(--green)' }}>Winner Takes ${data.potSize}</p>
@@ -352,48 +357,49 @@ export default async function DashboardPage() {
       )}
 
       {!data ? (
-        <main className="mx-auto max-w-5xl px-4 py-24 text-center">
-          <p className="font-display text-6xl" style={{ color: 'var(--dark)' }}>POOL SETUP IN PROGRESS</p>
-          <p className="mt-4 eyebrow">Check back soon</p>
+        <main className="content-width py-24 text-center">
+          <p className="font-display text-6xl" style={{ color: 'var(--dark)' }}>The court is being set</p>
+          <p className="mt-4 text-sm" style={{ color: 'var(--muted)' }}>The pool will appear here when the first game day is ready.</p>
         </main>
       ) : (
-        <main className="mx-auto max-w-5xl px-4 pb-4">
+        <main className="content-width pb-4">
           {/* Masthead: the pick period and the deadline. Regular season leads
               with the day, because the day is the unit of play; the tournament
               leads with the round, because that is what everyone is talking
               about. Same layout either way — the product should still read as
               MADNESS. */}
-          <div className="pt-9 pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5">
+          <section className="game-hero px-5 py-7 sm:px-8 sm:py-9">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-7">
               <div className="min-w-0">
-                <p className="eyebrow" style={{ color: 'var(--red)' }}>{eyebrow}</p>
-                <h1 className="mt-1.5 font-display text-6xl sm:text-7xl leading-[0.88]" style={{ color: 'var(--dark)' }}>
+                <p className="text-sm font-bold" style={{ color: 'var(--orange)' }}>{eyebrow}</p>
+                <h1 className="mt-1 font-display text-4xl sm:text-5xl leading-[0.95]" style={{ color: 'var(--ink)' }}>
                   {headline}
                 </h1>
                 <div className="mt-3 flex items-center gap-3 flex-wrap">
-                  <span className="eyebrow">{subhead}</span>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--muted)' }}>{subhead}</span>
                   {!caps.showTournamentRounds && data.slate && (
                     <span className="hidden sm:block h-1.5 w-40 rounded-full overflow-hidden" style={{ background: 'var(--surface-sunken)' }}>
-                      <span className="block h-full rounded-full" style={{ background: 'var(--dark)', width: `${Math.min(100, ((data.slate?.slate_number ?? 0) / TOTAL_SLATES_ESTIMATE) * 100)}%` }} />
+                      <span className="block h-full rounded-full" style={{ background: 'var(--orange)', width: `${Math.min(100, ((data.slate?.slate_number ?? 0) / TOTAL_SLATES_ESTIMATE) * 100)}%` }} />
                     </span>
                   )}
                 </div>
               </div>
               {data.nextDeadline && (
-                <div className="card px-5 py-4 sm:min-w-[240px] shrink-0" style={{ borderColor: 'var(--border-strong)' }}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="pill-dot" style={{ background: 'var(--red)' }} />
-                    <p className="eyebrow" style={{ color: 'var(--red)' }}>Pick Deadline</p>
+                <div className="deadline-board shrink-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="pill-dot" style={{ background: 'var(--orange)' }} />
+                    <p className="text-xs font-bold" style={{ color: 'var(--muted)' }}>Pick deadline</p>
                   </div>
-                  <p className="font-bold text-[15px]" style={{ color: 'var(--dark)' }}>{data.nextDeadlineFormatted}</p>
+                  <p className="font-bold text-base" style={{ color: 'var(--ink)' }}>{data.nextDeadlineFormatted}</p>
                   <Countdown deadline={data.nextDeadline} />
+                  <Link href="/pick" className="btn-primary mt-4 w-full px-5">Make your pick</Link>
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
           {/* Scoreboard: the four numbers, set as a ruled strip rather than four boxes */}
-          <div className="card grid grid-cols-2 sm:grid-cols-5 overflow-hidden">
+          <div className="score-rail grid grid-cols-2 sm:grid-cols-5 overflow-hidden">
             <Figure value={data.aliveCount} label="Still Alive" accent="var(--green)" />
             <Figure value={data.eliminatedCount} label="Eliminated" accent="var(--red)" />
             <Figure value={data.gameCount} label={caps.showTournamentRounds ? 'Tournament Games' : "Today's Games"} accent="var(--ink)" />
@@ -454,7 +460,7 @@ export default async function DashboardPage() {
                       <td className="py-3 pl-4 pr-4">
                         {row.current_pick ? (
                           row.pick_revealed ? (
-                            <TeamChip team={row.current_pick} size={18} />
+                            <TeamChip team={row.current_pick} size={28} directory={data.teamBrands} />
                           ) : (
                             <span className="pill pill-alive">✓ Pick In</span>
                           )
@@ -566,7 +572,7 @@ export default async function DashboardPage() {
                   <tbody>
                     {data.teamStats.map((stat) => (
                       <tr key={stat.team} className="row-hover border-t" style={{ borderColor: 'var(--border)' }}>
-                        <td className="py-2.5 pl-4 pr-3"><TeamChip team={stat.team} showName size={18} /></td>
+                        <td className="py-2.5 pl-4 pr-3"><TeamChip team={stat.team} showName size={30} directory={data.teamBrands} /></td>
                         <td className="py-2.5 px-3 text-right tnum" style={{ color: 'var(--dark)' }}>{stat.times_picked}</td>
                         <td className="py-2.5 px-3">
                           <div className="flex items-center justify-end gap-2">
@@ -601,13 +607,13 @@ export default async function DashboardPage() {
 
       {/* Footer */}
       <footer style={{ background: 'var(--dark)' }} className="mt-10">
-        <div className="mx-auto max-w-5xl px-4 py-6 flex items-center justify-between">
-          <span className="text-xs tracking-widest uppercase text-gray-500">$25 Entry · Venmo @griffinsell</span>
+        <div className="content-width py-7 flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-400">$25 entry · Venmo @griffinsell</span>
           <div className="flex items-center gap-6">
             {!signupsClosed && (
-              <Link href="/signup" className="text-xs tracking-widest uppercase text-gray-500 hover:text-white transition-colors">Sign Up</Link>
+              <Link href="/signup" className="text-xs font-semibold text-gray-400 hover:text-white transition-colors">Join pool</Link>
             )}
-            <Link href="/admin/login" className="text-xs tracking-widest uppercase text-gray-500 hover:text-white transition-colors">Admin</Link>
+            <Link href="/admin/login" className="text-xs font-semibold text-gray-400 hover:text-white transition-colors">Admin</Link>
           </div>
         </div>
       </footer>
@@ -618,7 +624,7 @@ export default async function DashboardPage() {
 function Section({ id, title, children, className }: { id?: string; title: string; children: React.ReactNode; className?: string }) {
   return (
     <section id={id} className={`pt-10 ${className ?? ''}`}>
-      <p className="eyebrow mb-3">{title}</p>
+      <div className="section-heading mb-3"><h2>{title}</h2></div>
       {children}
     </section>
   )
@@ -626,9 +632,9 @@ function Section({ id, title, children, className }: { id?: string; title: strin
 
 function Figure({ value, label, accent }: { value: string | number; label: string; accent: string }) {
   return (
-    <div className="px-4 py-4 sm:px-5 border-t sm:border-t-0 sm:border-l first:border-t-0 sm:first:border-l-0 [&:nth-child(2)]:border-t-0 sm:[&:nth-child(2)]:border-l" style={{ borderColor: 'var(--border)' }}>
+    <div className="px-4 py-4 sm:px-5 border-t sm:border-t-0 sm:border-l first:border-t-0 sm:first:border-l-0 [&:nth-child(2)]:border-t-0 sm:[&:nth-child(2)]:border-l" style={{ borderColor: 'var(--line)' }}>
       <p className="figure-num text-4xl sm:text-5xl" style={{ color: accent }}>{value}</p>
-      <p className="mt-2 eyebrow">{label}</p>
+      <p className="mt-2 text-xs font-bold" style={{ color: 'var(--muted)' }}>{label}</p>
     </div>
   )
 }

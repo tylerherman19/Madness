@@ -17,6 +17,8 @@ import Wordmark from '../components/Wordmark'
 import { slateDeadline } from '@/lib/deadline'
 import { fetchDayScoreboard } from '@/lib/espn'
 import Link from 'next/link'
+import { getTeamBrandDirectory, type TeamBrandDirectory } from '@/lib/teamBrand'
+import TeamMark from '../components/TeamMark'
 
 // Everything the pick page needs, loaded in one place. Kept separate from the
 // render so no JSX is constructed inside the try/catch — React renders
@@ -34,6 +36,7 @@ type PickPageData =
       slateId: string
       lockedPick: { team: string; autoAssigned: boolean } | null
       currentPick: { team: string; deadline: string | null } | null
+      teamBrands: TeamBrandDirectory
     }
 
 async function loadPickData(playerId: string, mode: CompetitionMode): Promise<PickPageData> {
@@ -50,12 +53,13 @@ async function loadPickData(playerId: string, mode: CompetitionMode): Promise<Pi
       .single()
     if (!player) return { kind: 'no-session' }
 
-    const [{ data: pastPicks }, { data: allSlates }] = await Promise.all([
+    const [{ data: pastPicks }, { data: allSlates }, teamBrands] = await Promise.all([
       supabase.from('picks').select('team, slate_id').eq('player_id', playerId),
       supabase
         .from('slates')
         .select('id, slate_number, slate_date, locks_at')
         .eq('season_year', slate.season_year),
+      getTeamBrandDirectory(),
     ])
 
     // Teams burned on previous pick periods — this period's pick isn't "used"
@@ -159,6 +163,7 @@ async function loadPickData(playerId: string, mode: CompetitionMode): Promise<Pi
       currentPick: currentPick
         ? { team: currentPick.team, deadline: lockTime?.toISOString() ?? null }
         : null,
+      teamBrands,
     }
   } catch (err) {
     console.error('pick page load failed', err)
@@ -218,10 +223,10 @@ export default async function PickPage() {
       <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
         <div className="space-y-6">
           <div className="border p-8 text-center" style={{ borderColor: 'var(--green)', borderWidth: 2 }}>
-            <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: 'var(--green)' }}>
-              ✓ {data.periodLabel} — Pick Locked In
+            <p className="text-sm font-bold mb-4" style={{ color: 'var(--green)' }}>
+              Pick locked · {data.periodLabel}
             </p>
-            <p className="font-display text-5xl" style={{ color: 'var(--dark)' }}>{data.lockedPick.team}</p>
+            <TeamMark team={data.lockedPick.team} directory={data.teamBrands} size={64} showName />
             {data.lockedPick.autoAssigned && (
               <p className="text-xs mt-3" style={{ color: 'var(--red)' }}>Auto-assigned (missed deadline)</p>
             )}
@@ -244,6 +249,7 @@ export default async function PickPage() {
         gameRows={data.gameRows}
         usedTeams={data.usedTeams}
         currentPick={data.currentPick}
+        teamBrands={data.teamBrands}
       />
     </Shell>
   )
@@ -261,23 +267,23 @@ function Shell({
   periodLabel?: string
 }) {
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
-      <header style={{ background: 'var(--dark)' }}>
-        <div className="mx-auto max-w-2xl px-4 py-4 flex items-center justify-between gap-4">
+    <div className="site-shell flex min-h-screen flex-col">
+      <header className="site-header">
+        <div className="content-width site-header-inner max-w-4xl">
           <div className="min-w-0">
-            <Wordmark mode={mode} />
+            <Wordmark mode={mode} size={42} />
             {periodLabel && (
-              <p className="text-xs tracking-widest uppercase mt-1 truncate" style={{ color: '#666' }}>{periodLabel}</p>
+              <p className="mt-1 truncate text-[10px] font-semibold text-white/50">{periodLabel}</p>
             )}
           </div>
           <div className="flex items-center gap-4 shrink-0">
-            <Link href="/history" className="text-xs tracking-widest uppercase" style={{ color: '#888' }}>My Picks</Link>
-            <span className="hidden sm:inline text-xs tracking-widest uppercase" style={{ color: '#888' }}>{session.full_name}</span>
+            <Link href="/history" className="text-sm font-bold text-white/70 hover:text-white">My picks</Link>
+            <span className="hidden sm:inline text-sm font-semibold text-white/50">{session.full_name}</span>
             <LogoutButton />
           </div>
         </div>
       </header>
-      <main className="flex-1 mx-auto w-full max-w-2xl px-4 py-10">
+      <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-8 sm:py-10">
         {children}
       </main>
     </div>

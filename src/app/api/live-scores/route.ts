@@ -17,6 +17,10 @@ export interface LiveGame {
   // NCAA tournament seeds, when the feed carries them.
   homeSeed?: number | null
   awaySeed?: number | null
+  homeLogo?: string | null
+  awayLogo?: string | null
+  homeColor?: string | null
+  awayColor?: string | null
   homePicks?: number
   awayPicks?: number
   // False when the game's outcome is known but the numbers aren't — a
@@ -42,7 +46,7 @@ const EMPTY: LiveScoresResponse = {
 // Turn a row from our own `games` table into a ticker card. Sandbox rows carry
 // admin-entered scores; production rows don't have score columns at all, so
 // those show as a schedule card until ESPN takes over.
-function gameFromSchedule(g: Game, now: Date): LiveGame {
+function gameFromSchedule(g: Game, now: Date, teams: Record<string, { logo: string | null }>): LiveGame {
   const kickoff = new Date(g.tip_time)
   const started = !isNaN(kickoff.getTime()) && now >= kickoff
   const state: 'pre' | 'in' | 'post' =
@@ -68,6 +72,8 @@ function gameFromSchedule(g: Game, now: Date): LiveGame {
     statusText,
     kickoff: g.tip_time,
     scoresKnown,
+    homeLogo: teams[g.home_team]?.logo ?? null,
+    awayLogo: teams[g.away_team]?.logo ?? null,
   }
 }
 
@@ -93,8 +99,9 @@ export async function GET() {
       return NextResponse.json(EMPTY, { headers: { 'Cache-Control': cacheHeader(60) } })
     }
 
-    const [dbGamesRes, events, now] = await Promise.all([
+    const [dbGamesRes, teamsRes, events, now] = await Promise.all([
       supabase.from('games').select('*').eq('slate_id', slate.id),
+      supabase.from('teams').select('abbr, logo'),
       // Sandbox matchups are fabricated, so there is nothing to look up on the
       // real scoreboard — skip the network call entirely and read the sandbox
       // schedule (with its admin-entered scores) below.
@@ -113,6 +120,7 @@ export async function GET() {
     ])
 
     const dbGames = (dbGamesRes.data ?? []) as Game[]
+    const teamRows = Object.fromEntries((teamsRes.data ?? []).map((team) => [team.abbr, team]))
 
     let games: LiveGame[] = []
     let source: LiveScoresResponse['source'] = 'none'
@@ -135,6 +143,10 @@ export async function GET() {
         kickoff: event.date,
         homeSeed: seedOf(teams.home),
         awaySeed: seedOf(teams.away),
+        homeLogo: teams.home.team.logo ?? teams.home.team.logos?.[0]?.href ?? null,
+        awayLogo: teams.away.team.logo ?? teams.away.team.logos?.[0]?.href ?? null,
+        homeColor: teams.home.team.color ? `#${teams.home.team.color}` : null,
+        awayColor: teams.away.team.color ? `#${teams.away.team.color}` : null,
       })
     }
 
@@ -144,7 +156,7 @@ export async function GET() {
       // No ESPN coverage (sandbox, or a slate it can't serve): show this pool's
       // own slate so the ticker still carries the schedule and any result the
       // admin has entered, instead of disappearing entirely.
-      games = dbGames.map((g) => gameFromSchedule(g, now))
+      games = dbGames.map((g) => gameFromSchedule(g, now, teamRows))
       source = 'schedule'
     }
 

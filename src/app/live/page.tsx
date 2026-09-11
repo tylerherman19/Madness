@@ -1,7 +1,7 @@
-import Link from 'next/link'
 import SweatBoard from './SweatBoard'
-import Wordmark from '@/app/components/Wordmark'
+import SiteHeader from '@/app/components/SiteHeader'
 import { getPoolConfig } from '@/lib/pool'
+import { getTeamBrandDirectory } from '@/lib/teamBrand'
 
 export const metadata = { title: 'Sweat Board — MADNESS' }
 
@@ -14,22 +14,17 @@ export const revalidate = 60
 export default async function LivePage() {
   // The sweat board runs year-round; the header just has to agree with the
   // competition the pool is actually playing.
-  const { competition_mode: mode } = await getPoolConfig()
+  const [{ competition_mode: mode }, teamBrands] = await Promise.all([
+    getPoolConfig(),
+    getTeamBrandDirectory(),
+  ])
 
   return (
-    <div style={{ background: 'var(--cream)', minHeight: '100vh' }}>
-      <header style={{ background: 'var(--dark)' }}>
-        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between gap-4">
-          <Wordmark mode={mode} />
-          <nav className="flex items-center gap-4 sm:gap-6 shrink-0">
-            <Link href="/" className="text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors">Standings</Link>
-            <Link href="/schedule" className="hidden sm:inline text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors">Schedule</Link>
-          </nav>
-        </div>
-      </header>
+    <div className="site-shell">
+      <SiteHeader mode={mode} />
 
-      <main className="mx-auto max-w-5xl px-4 pb-16">
-        <SweatBoard />
+      <main className="content-width pb-16">
+        <SweatBoard teamBrands={teamBrands} />
       </main>
     </div>
   )

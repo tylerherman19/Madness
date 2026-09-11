@@ -4,8 +4,7 @@ import { getPoolConfig } from '@/lib/pool'
 import { buildPickPeriods, capabilitiesFor, type PickPeriod } from '@/lib/competition'
 import { getTeamAbbrs } from '@/lib/teams'
 import type { Game } from '@/types'
-import Link from 'next/link'
-import Wordmark from '@/app/components/Wordmark'
+import SiteHeader from '@/app/components/SiteHeader'
 
 // Cache the render for 60s (like the homepage) so 1k concurrent viewers are
 // served from the CDN instead of each triggering the full query set. Current-slate
@@ -151,17 +150,13 @@ export default async function GridPage() {
   })
 
   return (
-    <div style={{ background: 'var(--cream)', minHeight: '100vh' }}>
-      <header style={{ background: 'var(--dark)' }}>
-        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-          <Wordmark mode={mode} />
-          <Link href="/" className="text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors">Standings</Link>
-        </div>
-      </header>
+    <div className="site-shell">
+      <SiteHeader mode={mode} />
 
-      <main className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="font-display text-6xl leading-none" style={{ color: 'var(--dark)' }}>PICK GRID</h1>
-        <p className="mt-2 mb-6 eyebrow">
+      <main className="content-width py-9 sm:py-12">
+        <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>The full pool at a glance</p>
+        <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--dark)' }}>Pick grid</h1>
+        <p className="mt-2 mb-6 text-sm" style={{ color: 'var(--muted)' }}>
           {caps.showTournamentRounds ? 'Every round' : 'Every game day'} · green won · red lost · ? hidden until it locks
         </p>
 
@@ -170,7 +165,7 @@ export default async function GridPage() {
             No {caps.showTournamentRounds ? 'tournament rounds' : 'game days'} scheduled yet.
           </p>
         ) : (
-          <div className="card overflow-x-auto p-1">
+          <div className="card overflow-x-auto p-1" role="region" aria-label="Pool pick history" tabIndex={0}>
             <table className="text-sm" style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--border)' }}>

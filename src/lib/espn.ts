@@ -39,6 +39,9 @@ export interface EspnCompetitor {
     displayName?: string
     shortDisplayName?: string
     logo?: string
+    color?: string
+    alternateColor?: string
+    logos?: Array<{ href?: string; rel?: string[] }>
   }
 }
 

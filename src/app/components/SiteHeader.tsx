@@ -2,24 +2,22 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import Wordmark from './Wordmark'
 import { type CompetitionMode } from '@/lib/competition'
 
 const BASE_NAV_LINKS = [
-  { label: 'Standings', href: '/#standings' },
-  { label: 'Rules', href: '/#rules' },
+  { label: 'Pool', href: '/' },
   { label: 'Pick Grid', href: '/grid' },
   { label: 'Schedule', href: '/schedule' },
-  { label: 'Sweat Board', href: '/live' },
-  { label: 'Log In', href: '/login' },
+  { label: 'Live', href: '/live' },
 ]
 
 function RedButton({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <Link
       href={href}
-      className="font-display text-sm tracking-wider px-4 py-2 text-white"
-      style={{ background: 'var(--red)' }}
+      className="btn-primary px-4"
     >
       {children}
     </Link>
@@ -34,55 +32,57 @@ export default function SiteHeader({
   mode?: CompetitionMode
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const pathname = usePathname()
   // Sign Up only makes sense until the first pick period locks — signups
   // close for good then (enforced server-side too, this just matches).
   const showSignUp = !signupsClosed
 
   return (
-    <header style={{ background: 'var(--dark)' }}>
-      <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-        <Wordmark mode={mode} />
+    <header className="site-header">
+      <div className="content-width site-header-inner">
+        <Wordmark mode={mode} size={38} tone="dark" />
 
         {/* Desktop nav */}
-        <nav className="hidden sm:flex items-center gap-6">
+        <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
           {BASE_NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors"
+              className={`nav-link ${pathname === link.href ? 'nav-link-active' : ''}`}
             >
               {link.label}
             </Link>
           ))}
-          {showSignUp && <RedButton href="/signup">SIGN UP</RedButton>}
-          <RedButton href="/pick">SUBMIT PICK</RedButton>
+          <Link href="/login" className={`nav-link ${pathname === '/login' ? 'nav-link-active' : ''}`}>Log in</Link>
+          {showSignUp && <Link href="/signup" className="nav-link">Join pool</Link>}
+          <RedButton href="/pick">Make a pick</RedButton>
         </nav>
 
         {/* Mobile: SUBMIT PICK button + hamburger */}
-        <div className="sm:hidden flex items-center gap-3">
-          <RedButton href="/pick">SUBMIT PICK</RedButton>
+        <div className="md:hidden flex items-center gap-2">
+          <RedButton href="/pick">Make a pick</RedButton>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             aria-label="Menu"
             aria-expanded={menuOpen}
-            className="flex flex-col gap-1 p-2"
+            className="flex h-11 w-11 flex-col items-center justify-center gap-1.5 rounded-sm"
           >
-            <span className="w-6 h-0.5 bg-gray-400"></span>
-            <span className="w-6 h-0.5 bg-gray-400"></span>
-            <span className="w-6 h-0.5 bg-gray-400"></span>
+            <span className="w-5 h-0.5 bg-gray-600"></span>
+            <span className="w-5 h-0.5 bg-gray-600"></span>
+            <span className="w-5 h-0.5 bg-gray-600"></span>
           </button>
         </div>
       </div>
 
       {/* Mobile menu dropdown */}
       {menuOpen && (
-        <nav className="sm:hidden" style={{ background: 'var(--dark)' }}>
-          <div className="mx-auto max-w-5xl px-4 py-2 flex flex-col">
+        <nav className="md:hidden border-t border-[var(--line)]" aria-label="Mobile navigation">
+          <div className="content-width py-2 flex flex-col">
             {BASE_NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="py-3 text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors"
+                className="py-3 text-sm font-bold text-[var(--muted)] hover:text-[var(--ink)]"
                 onClick={() => setMenuOpen(false)}
               >
                 {link.label}
@@ -91,13 +91,14 @@ export default function SiteHeader({
             {showSignUp && (
               <Link
                 href="/signup"
-                className="py-3 text-xs tracking-widest uppercase font-bold transition-colors"
-                style={{ color: 'var(--red)' }}
+                className="py-3 text-sm font-bold"
+                style={{ color: 'var(--orange)' }}
                 onClick={() => setMenuOpen(false)}
               >
                 Sign Up
               </Link>
             )}
+            <Link href="/login" className="py-3 text-sm font-bold text-[var(--muted)]" onClick={() => setMenuOpen(false)}>Log in</Link>
           </div>
         </nav>
       )}

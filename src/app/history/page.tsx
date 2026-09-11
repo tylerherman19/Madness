@@ -13,6 +13,8 @@ import type { Slate, Game } from '@/types'
 import Link from 'next/link'
 import LogoutButton from '../components/LogoutButton'
 import Wordmark from '../components/Wordmark'
+import TeamMark from '../components/TeamMark'
+import { getTeamBrandDirectory } from '@/lib/teamBrand'
 
 export default async function HistoryPage() {
   const session = await getSession()
@@ -23,12 +25,13 @@ export default async function HistoryPage() {
   const mode = pool.competition_mode
   const caps = capabilitiesFor(mode)
 
-  const [picksRes, weeksRes, gamesRes, playersRes, allPicksRes] = await Promise.all([
+  const [picksRes, weeksRes, gamesRes, playersRes, allPicksRes, teamBrands] = await Promise.all([
     supabase.from('picks').select('team, auto_assigned, slate_id').eq('player_id', session.player_id),
     supabase.from('slates').select('id, slate_number, slate_date, season_year, locks_at'),
     supabase.from('games').select('slate_id, home_team, away_team, result, round_label'),
     supabase.from('players').select('id, status, email'),
     supabase.from('picks').select('player_id, slate_id'),
+    getTeamBrandDirectory(),
   ])
 
   const picksData = picksRes.data ?? []
@@ -124,20 +127,21 @@ export default async function HistoryPage() {
   }).length
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
-      <header style={{ background: 'var(--dark)' }}>
-        <div className="mx-auto max-w-2xl px-4 py-4 flex items-center justify-between">
-          <Wordmark mode={mode} />
+    <div className="site-shell min-h-screen flex flex-col">
+      <header className="site-header">
+        <div className="content-width site-header-inner max-w-4xl">
+          <Wordmark mode={mode} size={42} />
           <div className="flex items-center gap-4">
-            <Link href="/pick" className="text-xs tracking-widest uppercase" style={{ color: '#888' }}>Make Pick</Link>
-            <span className="text-xs tracking-widest uppercase" style={{ color: '#888' }}>{session.full_name}</span>
+            <Link href="/pick" className="btn-primary px-4">Make a pick</Link>
+            <span className="hidden sm:inline text-sm font-semibold text-white/50">{session.full_name}</span>
             <LogoutButton />
           </div>
         </div>
       </header>
 
-      <main className="flex-1 mx-auto w-full max-w-2xl px-4 py-10">
-        <p className="font-display text-5xl mb-8" style={{ color: 'var(--dark)' }}>MY PICK HISTORY</p>
+      <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-10">
+        <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>Your season</p>
+        <h1 className="font-display text-5xl mb-8" style={{ color: 'var(--dark)' }}>Pick history</h1>
 
         {/* Season summary */}
         <div className="grid grid-cols-3 border mb-8" style={{ borderColor: 'var(--border)', background: 'white' }}>
@@ -146,7 +150,7 @@ export default async function HistoryPage() {
               className="font-display text-3xl leading-none"
               style={{ color: myStatus === 'alive' ? 'var(--green)' : 'var(--red)' }}
             >
-              {myStatus === 'alive' ? 'ALIVE' : 'OUT'}
+            {myStatus === 'alive' ? 'Alive' : 'Out'}
             </p>
             <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Status</p>
           </div>
@@ -180,14 +184,7 @@ export default async function HistoryPage() {
                   </p>
                 </div>
                 <div className="flex-1">
-                  <p
-                    className="font-bold font-mono text-base"
-                    style={{
-                      color: pick.outcome === 'won' ? 'var(--green)' : pick.outcome === 'lost' ? 'var(--red)' : 'var(--dark)',
-                    }}
-                  >
-                    {pick.team}
-                  </p>
+                  <TeamMark team={pick.team} directory={teamBrands} size={40} showName />
                 </div>
                 <div className="text-right">
                   <span
@@ -221,7 +218,7 @@ export default async function HistoryPage() {
                   style={{ borderColor: 'var(--border)', color: 'var(--dark)', background: 'white' }}
                   title={t}
                 >
-                  {t}
+                  <TeamMark team={t} directory={teamBrands} size={24} />
                 </span>
               ))}
             </div>

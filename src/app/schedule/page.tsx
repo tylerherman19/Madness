@@ -1,5 +1,4 @@
-import Link from 'next/link'
-import Wordmark from '@/app/components/Wordmark'
+import SiteHeader from '@/app/components/SiteHeader'
 import { getDb } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
 import {
@@ -14,7 +13,8 @@ import {
   type CompetitionMode,
   type TournamentRound,
 } from '@/lib/competition'
-import { teamColor } from '@/lib/teamColors'
+import { getTeamBrandDirectory, type TeamBrandDirectory } from '@/lib/teamBrand'
+import TeamMark from '@/app/components/TeamMark'
 import { fetchDayScoreboard, eventCompetitors, toEspnDate, isTimeTbd, parseRound } from '@/lib/espn'
 
 export const revalidate = 3600
@@ -222,7 +222,10 @@ export default async function SchedulePage() {
   const mode = pool.competition_mode
   const caps = capabilitiesFor(mode)
   const copy = copyFor(mode)
-  const { days, season, activeDate } = await getScheduleData(mode)
+  const [{ days, season, activeDate }, teamBrands] = await Promise.all([
+    getScheduleData(mode),
+    getTeamBrandDirectory(),
+  ])
   const hasAnyGames = days.some((d) => d.games.length > 0)
 
   // In the tournament the round is the organising unit and the date is detail
@@ -231,24 +234,16 @@ export default async function SchedulePage() {
   const rounds = caps.groupScheduleByRound ? groupByRound(days) : []
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--cream)' }}>
-      <header style={{ background: 'var(--dark)' }}>
-        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between gap-4">
-          <Wordmark mode={mode} />
-          <nav className="flex items-center gap-4 sm:gap-6 shrink-0">
-            <Link href="/" className="text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors">Standings</Link>
-            <Link href="/login" className="hidden sm:inline text-xs tracking-widest uppercase text-gray-400 hover:text-white transition-colors">Log In</Link>
-            <Link href="/pick" className="btn-primary font-display text-sm tracking-wider px-4 py-2">SUBMIT PICK</Link>
-          </nav>
-        </div>
-      </header>
+    <div className="site-shell flex min-h-screen flex-col">
+      <SiteHeader mode={mode} />
 
-      <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-10">
-        <div className="pb-2">
-          <h1 className="font-display text-6xl sm:text-7xl leading-none" style={{ color: 'var(--dark)' }}>
-            {copy.scheduleHeading.toUpperCase()}
+      <main className="content-width flex-1 py-9 sm:py-12">
+        <div className="max-w-3xl pb-3">
+          <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>Plan your path</p>
+          <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--dark)' }}>
+            {copy.scheduleHeading}
           </h1>
-          <p className="mt-2 eyebrow">
+          <p className="mt-2 text-sm font-semibold" style={{ color: 'var(--muted)' }}>
             {season} {caps.showTournamentRounds ? 'Tournament' : 'Season'}
             {activeDate ? ` · Currently playing ${dayWithin(activeDate)}` : ''}
           </p>
@@ -298,7 +293,7 @@ export default async function SchedulePage() {
                 {roundDays.map((day) => (
                   <div key={day.date} className="pt-5">
                     <p className="eyebrow mb-2">{day.label === 'Today' || day.label === 'Tomorrow' ? `${day.label} · ${dayWithin(day.date)}` : day.label}</p>
-                    <GameTable games={day.games} mode={mode} />
+                    <GameTable games={day.games} mode={mode} teamBrands={teamBrands} />
                   </div>
                 ))}
               </section>
@@ -314,7 +309,7 @@ export default async function SchedulePage() {
                 {day.label === 'Today' || day.label === 'Tomorrow' ? (
                   <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>{dayWithin(day.date)}</p>
                 ) : null}
-                <GameTable games={day.games} mode={mode} />
+                <GameTable games={day.games} mode={mode} teamBrands={teamBrands} />
               </section>
             )
           )
@@ -352,7 +347,7 @@ function groupByRound(days: ScheduleDay[]): { round: TournamentRound; days: Sche
     .map((round) => ({ round, days: byRound.get(round)! }))
 }
 
-function GameTable({ games, mode }: { games: ScheduleGame[]; mode: CompetitionMode }) {
+function GameTable({ games, mode, teamBrands }: { games: ScheduleGame[]; mode: CompetitionMode; teamBrands: TeamBrandDirectory }) {
   const caps = capabilitiesFor(mode)
   return (
     <div className="card overflow-hidden">
@@ -376,9 +371,9 @@ function GameTable({ games, mode }: { games: ScheduleGame[]; mode: CompetitionMo
                 <tr key={`${g.awayAbbr}@${g.homeAbbr}-${i}`} className="row-hover border-t" style={{ borderColor: 'var(--border)' }}>
                   <td className="py-3 pl-4">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Side abbr={g.awayAbbr} seed={awaySeed} />
+                      <Side abbr={g.awayAbbr} seed={awaySeed} teamBrands={teamBrands} />
                       <span className="text-xs" style={{ color: 'var(--muted)' }}>vs.</span>
-                      <Side abbr={g.homeAbbr} seed={homeSeed} />
+                      <Side abbr={g.homeAbbr} seed={homeSeed} teamBrands={teamBrands} />
                     </div>
                     <span className="block sm:hidden text-xs mt-1" style={{ color: 'var(--muted)' }}>
                       {tip}
@@ -402,14 +397,13 @@ function GameTable({ games, mode }: { games: ScheduleGame[]; mode: CompetitionMo
 }
 
 // Seed ahead of the name, compact and sports-native — not a decorative badge.
-function Side({ abbr, seed }: { abbr: string; seed: number | null }) {
+function Side({ abbr, seed, teamBrands }: { abbr: string; seed: number | null; teamBrands: TeamBrandDirectory }) {
   return (
     <span className="flex items-center gap-1.5">
       {seed != null && (
         <span className="tnum" style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>{seed}</span>
       )}
-      <span className="team-chip-swatch" style={{ background: teamColor(abbr).primary }}>{abbr.slice(0, 3)}</span>
-      <span className="font-bold" style={{ color: 'var(--dark)' }}>{abbr}</span>
+      <TeamMark team={abbr} directory={teamBrands} size={34} showName />
     </span>
   )
 }
