@@ -375,7 +375,7 @@ export function ChalkFigure({
                     className="text-[10px] font-bold uppercase tracking-wider"
                     style={{ color: lost ? 'var(--red)' : w.outcome === 'won' ? 'var(--green)' : 'var(--muted)' }}
                   >
-                    {lost ? '✕ lost' : w.outcome === 'won' ? '✓ won' : '—'}
+                    {lost ? 'lost' : w.outcome === 'won' ? 'won' : '—'}
                   </span>
                 </div>
                 <div className="mt-1.5 flex items-center gap-2">

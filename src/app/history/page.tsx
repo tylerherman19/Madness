@@ -183,7 +183,7 @@ export default async function HistoryPage() {
                       color: pick.outcome === 'won' ? 'var(--green)' : pick.outcome === 'lost' ? 'var(--red)' : 'var(--muted)',
                     }}
                   >
-                    {pick.outcome === 'won' ? '✓ SURVIVED' : pick.outcome === 'lost' ? '✗ ELIMINATED' : 'PENDING'}
+                    {pick.outcome === 'won' ? 'SURVIVED' : pick.outcome === 'lost' ? 'ELIMINATED' : 'PENDING'}
                     {pick.auto_assigned ? ' (auto)' : ''}
                   </span>
                 </div>

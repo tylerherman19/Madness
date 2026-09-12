@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
 
 const CONFIRM_PHRASE = 'RESET POOL'
 
@@ -9,13 +10,13 @@ export default function ResetPoolButton() {
   const router = useRouter()
   const [typed, setTyped] = useState('')
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState<StatusMessage | null>(null)
 
   async function handleReset() {
     if (typed !== CONFIRM_PHRASE) return
     if (!confirm('This permanently deletes every player, slate, game, and pick in production. There is no undo. Proceed?')) return
     setLoading(true)
-    setMessage('')
+    setMessage(null)
     try {
       const res = await fetch('/api/admin/reset-pool', {
         method: 'POST',
@@ -24,14 +25,14 @@ export default function ResetPoolButton() {
       })
       const data = await res.json()
       if (res.ok) {
-        setMessage('✅ Pool reset to zero.')
+        setMessage({ tone: 'ok', text: 'Pool reset to zero.' })
         setTyped('')
         router.refresh()
       } else {
-        setMessage(`Error: ${data.error}`)
+        setMessage({ tone: 'error', text: `Error: ${data.error}` })
       }
     } catch {
-      setMessage('Server error. Try again.')
+      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setLoading(false)
     }
@@ -39,7 +40,7 @@ export default function ResetPoolButton() {
 
   return (
     <div className="rounded-xl border border-red-600 bg-red-950/30 p-4 space-y-3">
-      <p className="text-sm font-semibold text-red-300">⚠ Reset Pool to Zero</p>
+      <p className="text-sm font-semibold text-red-300">Reset Pool to Zero</p>
       <p className="text-xs text-slate-400">
         Permanently deletes every player, slate, game, and pick in production. Cannot be undone.
       </p>
@@ -60,7 +61,7 @@ export default function ResetPoolButton() {
         </button>
       </div>
       {message && (
-        <p className={`text-xs ${message.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>{message}</p>
+        <p className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
     </div>
   )

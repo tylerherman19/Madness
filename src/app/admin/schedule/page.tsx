@@ -35,7 +35,7 @@ export default async function SchedulePage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
-      <h1 className="text-2xl font-bold text-white">📅 Schedule</h1>
+      <h1 className="text-2xl font-bold text-white">Schedule</h1>
       <ScheduleForm
         slates={(slates || []) as Slate[]}
         activeSlate={activeSlate as Slate | null}

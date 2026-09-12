@@ -30,7 +30,7 @@ export default function RecapClient({ slateNumber, recapText }: Props) {
             onClick={copyToClipboard}
             className="absolute top-3 right-3 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-600 hover:text-white transition-colors"
           >
-            {copied ? '✓ Copied!' : 'Copy'}
+            {copied ? 'Copied' : 'Copy'}
           </button>
         )}
       </div>

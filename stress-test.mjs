@@ -70,14 +70,14 @@ async function testHomepage() {
 
   const ok = result.byStatus[200] || 0
   const rate = pct(ok, CONCURRENCY)
-  console.log(`    ✓ Success rate: ${rate} (${ok}/${CONCURRENCY} got 200)`)
+  console.log(`    OK Success rate: ${rate} (${ok}/${CONCURRENCY} got 200)`)
 
   if (result.stats.p99 > 5000) {
-    console.log(`    ⚠ p99 latency ${result.stats.p99}ms is HIGH — dashboard DB queries need caching`)
+    console.log(`    WARN p99 latency ${result.stats.p99}ms is HIGH — dashboard DB queries need caching`)
   } else if (result.stats.p95 > 3000) {
-    console.log(`    ⚠ p95 latency ${result.stats.p95}ms — acceptable but monitor at peak`)
+    console.log(`    WARN p95 latency ${result.stats.p95}ms — acceptable but monitor at peak`)
   } else {
-    console.log(`    ✓ Latency within acceptable range under 1k concurrent load`)
+    console.log(`    OK Latency within acceptable range under 1k concurrent load`)
   }
   return result
 }
@@ -98,7 +98,7 @@ async function testLoginRateLimit() {
       body: JSON.stringify({ full_name: 'Nonexistent Person', pin: '000000' }),
     }))
     results.push(r)
-    process.stdout.write(r.status === 429 ? '🚫' : r.status === 401 ? '✗' : `[${r.status}]`)
+    process.stdout.write(r.status === 429 ? '!' : r.status === 401 ? 'x' : `[${r.status}]`)
   }
   console.log()
 
@@ -107,9 +107,9 @@ async function testLoginRateLimit() {
   console.log(`    Attempts: 15 | Auth failures (401): ${rejected} | Rate limited (429): ${blocked}`)
   if (blocked > 0) {
     const firstBlock = results.findIndex(r => r.status === 429) + 1
-    console.log(`    ✓ Rate limit triggered at attempt #${firstBlock} (limit: 10/15min)`)
+    console.log(`    OK Rate limit triggered at attempt #${firstBlock} (limit: 10/15min)`)
   } else {
-    console.log(`    ✗ Rate limit did NOT trigger in 15 attempts — check rateLimit.ts`)
+    console.log(`    FAIL Rate limit did NOT trigger in 15 attempts — check rateLimit.ts`)
   }
   return { blocked, rejected }
 }
@@ -127,7 +127,7 @@ async function testAdminRateLimit() {
       body: JSON.stringify({ password: `wrongpassword${i}` }),
     }))
     results.push(r)
-    process.stdout.write(r.status === 429 ? '🚫' : r.status === 401 ? '✗' : `[${r.status}]`)
+    process.stdout.write(r.status === 429 ? '!' : r.status === 401 ? 'x' : `[${r.status}]`)
   }
   console.log()
 
@@ -136,9 +136,9 @@ async function testAdminRateLimit() {
   console.log(`    Attempts: 8 | Wrong pass (401): ${rejected} | Rate limited (429): ${blocked}`)
   if (blocked > 0) {
     const firstBlock = results.findIndex(r => r.status === 429) + 1
-    console.log(`    ✓ Admin rate limit triggered at attempt #${firstBlock} (limit: 5/15min)`)
+    console.log(`    OK Admin rate limit triggered at attempt #${firstBlock} (limit: 5/15min)`)
   } else if (rejected === 8) {
-    console.log(`    ✓ All rejected with 401 (under the 5-attempt threshold)`)
+    console.log(`    OK All rejected with 401 (under the 5-attempt threshold)`)
   }
   return { blocked, rejected }
 }
@@ -161,7 +161,7 @@ async function testForgotPinRateLimit() {
     process.stdout.write(`[${r.status}]`)
   }
   console.log()
-  console.log(`    ✓ All return 200 (email enumeration protection active)`)
+  console.log(`    OK All return 200 (email enumeration protection active)`)
   console.log(`    Rate limit enforced silently after 5/hr per IP`)
   return results
 }
@@ -180,7 +180,7 @@ async function testUnauthenticatedPicks() {
   )
   const result = await batch('unauth-picks', requests)
   const got401 = result.byStatus[401] || 0
-  console.log(`    ${got401 === 200 ? '✓' : '✗'} All 200 unauthenticated pick attempts returned 401 (got: ${got401}/200)`)
+  console.log(`    ${got401 === 200 ? 'OK' : 'FAIL'} All 200 unauthenticated pick attempts returned 401 (got: ${got401}/200)`)
   return result
 }
 
@@ -299,7 +299,7 @@ async function testBadInputRejection() {
     if (c.expectStatus && r.status === c.expectStatus) pass = true
     if (c.expectNotStatus && r.status !== c.expectNotStatus) pass = true
 
-    const icon = pass ? '✓' : '✗'
+    const icon = pass ? 'OK' : 'FAIL'
     const expected = c.expectStatus ? `want ${c.expectStatus}` : `want not-${c.expectNotStatus}`
     console.log(`    ${icon} ${c.label}: got ${r.status} (${expected}) — ${r.ms}ms`)
     if (pass) passed++; else failed++
@@ -337,7 +337,7 @@ async function testApiResponseHeaders() {
   for (const [header, expected] of Object.entries(headers)) {
     const val = res.headers.get(header)
     const ok = val?.toLowerCase().includes(expected.toLowerCase())
-    console.log(`    ${ok ? '✓' : '✗'} ${header}: ${val ?? '(missing)'}`)
+    console.log(`    ${ok ? 'OK' : 'FAIL'} ${header}: ${val ?? '(missing)'}`)
     if (ok) passed++
   }
   console.log(`\n    Result: ${passed}/${Object.keys(headers).length} security headers present`)
@@ -370,13 +370,13 @@ async function testHighLoadApi() {
   console.log(`    5xx errors (bad): ${got5xx}`)
 
   if (got5xx > 0) {
-    console.log(`    ✗ Server returned ${got5xx} 5xx errors under load — check Supabase connection limits`)
+    console.log(`    FAIL Server returned ${got5xx} 5xx errors under load — check Supabase connection limits`)
   } else {
-    console.log(`    ✓ Zero 5xx errors under 500 concurrent login attempts`)
+    console.log(`    OK Zero 5xx errors under 500 concurrent login attempts`)
   }
 
   if (result.stats.p99 > 10000) {
-    console.log(`    ⚠ p99 latency ${result.stats.p99}ms is very high — bcrypt at rounds=12 under concurrent load`)
+    console.log(`    WARN p99 latency ${result.stats.p99}ms is very high — bcrypt at rounds=12 under concurrent load`)
     console.log(`      Consider rounds=10 for player PINs (still 100ms+ per attempt, brute force infeasible)`)
   }
   return result
@@ -415,15 +415,15 @@ async function main() {
   const adminBlocked = results.adminRateLimit.blocked > 0 || results.adminRateLimit.rejected === 8
   const headersPassed = results.headers
 
-  console.log(`\n  Homepage under 1k users:  ${homepageOk >= 0.95 ? '✓ PASS' : '✗ FAIL'} (${(homepageOk * 100).toFixed(1)}% success rate)`)
-  console.log(`  Homepage p99 latency:     ${results.homepage.stats.p99 < 5000 ? '✓ PASS' : '⚠ SLOW'} (${results.homepage.stats.p99}ms)`)
-  console.log(`  Login rate limiting:      ${loginBlocked ? '✓ PASS' : '✗ FAIL'}`)
-  console.log(`  Admin rate limiting:      ${adminBlocked ? '✓ PASS' : '✗ FAIL'}`)
-  console.log(`  Unauthenticated picks:    ${(results.unauthPicks.byStatus[401] || 0) === 200 ? '✓ PASS' : '✗ FAIL'}`)
+  console.log(`\n  Homepage under 1k users:  ${homepageOk >= 0.95 ? 'PASS' : 'FAIL'} (${(homepageOk * 100).toFixed(1)}% success rate)`)
+  console.log(`  Homepage p99 latency:     ${results.homepage.stats.p99 < 5000 ? 'PASS' : 'SLOW'} (${results.homepage.stats.p99}ms)`)
+  console.log(`  Login rate limiting:      ${loginBlocked ? 'PASS' : 'FAIL'}`)
+  console.log(`  Admin rate limiting:      ${adminBlocked ? 'PASS' : 'FAIL'}`)
+  console.log(`  Unauthenticated picks:    ${(results.unauthPicks.byStatus[401] || 0) === 200 ? 'PASS' : 'FAIL'}`)
   console.log(`  Input validation:         ${badInputPassed}/${results.badInput.total} checks passed`)
   console.log(`  Security headers:         ${headersPassed}/4 present`)
-  console.log(`  500-user login flood:     ${results.loadTest.stats.p99 < 15000 ? '✓ PASS' : '⚠ SLOW'} (p99: ${loadP99}ms)`)
-  console.log(`  5xx under load:           ${Object.entries(results.loadTest.byStatus).filter(([s]) => parseInt(s) >= 500).reduce((sum, [, v]) => sum + v, 0) === 0 ? '✓ PASS' : '✗ FAIL'}`)
+  console.log(`  500-user login flood:     ${results.loadTest.stats.p99 < 15000 ? 'PASS' : 'SLOW'} (p99: ${loadP99}ms)`)
+  console.log(`  5xx under load:           ${Object.entries(results.loadTest.byStatus).filter(([s]) => parseInt(s) >= 500).reduce((sum, [, v]) => sum + v, 0) === 0 ? 'PASS' : 'FAIL'}`)
 
   console.log('\n  Notes:')
   console.log('  • Rate limits share the same IP bucket in tests (your real IP)')

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
 
 interface Props {
   currentSlateDate: string | null
@@ -15,17 +16,17 @@ interface Props {
 export default function AdvanceSlateButton({ currentSlateDate }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState<StatusMessage | null>(null)
 
   async function handleAdvance() {
     if (!confirm('Advance the pool to the next day with games? The schedule for that day is pulled from ESPN and set active.')) return
     setLoading(true)
-    setMessage('')
+    setMessage(null)
     try {
       const res = await fetch('/api/cron/auto-advance')
       const data = await res.json()
       if (!res.ok) {
-        setMessage(`Error: ${data.error}`)
+        setMessage({ tone: 'error', text: `Error: ${data.error}` })
         return
       }
       // The route answers ok:true with a message when it declines to advance
@@ -33,12 +34,12 @@ export default function AdvanceSlateButton({ currentSlateDate }: Props) {
       // rather than claiming success.
       setMessage(
         data.advanced_to
-          ? `✅ Advanced to ${data.advanced_to} — ${data.games_synced} games synced`
-          : `ℹ️ ${data.message}`
+          ? { tone: 'ok', text: `Advanced to ${data.advanced_to} — ${data.games_synced} games synced` }
+          : { tone: 'info', text: data.message }
       )
       router.refresh()
     } catch {
-      setMessage('Server error. Try again.')
+      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setLoading(false)
     }
@@ -60,7 +61,7 @@ export default function AdvanceSlateButton({ currentSlateDate }: Props) {
         {loading ? 'Advancing…' : 'Advance to next day'}
       </button>
       {message && (
-        <p className={`text-xs ${message.startsWith('✅') ? 'text-green-400' : message.startsWith('ℹ️') ? 'text-slate-300' : 'text-red-400'}`}>{message}</p>
+        <p className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
     </div>
   )

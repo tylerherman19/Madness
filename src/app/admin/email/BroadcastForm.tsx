@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
 
 type Audience = 'all' | 'alive' | 'unpicked'
 
@@ -14,20 +15,20 @@ export default function BroadcastForm({ counts, slateNumber }: Props) {
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState<StatusMessage | null>(null)
 
   const audienceCount =
     audience === 'all' ? counts.all : audience === 'alive' ? counts.alive : counts.unpicked ?? 0
 
   async function handleSend() {
     if (!subject.trim() || !message.trim()) {
-      setStatus('Error: subject and message are both required.')
+      setStatus({ tone: 'error', text: 'Error: subject and message are both required.' })
       return
     }
     if (!confirm(`Send this email to ${audienceCount} player${audienceCount === 1 ? '' : 's'}? This cannot be undone.`)) return
 
     setSending(true)
-    setStatus('Sending… this can take a minute for large audiences.')
+    setStatus({ tone: 'info', text: 'Sending… this can take a minute for large audiences.' })
     try {
       const res = await fetch('/api/admin/broadcast', {
         method: 'POST',
@@ -36,14 +37,17 @@ export default function BroadcastForm({ counts, slateNumber }: Props) {
       })
       const data = await res.json()
       if (res.ok) {
-        setStatus(`✅ Sent to ${data.sent}/${data.total} players${data.failures ? ` — failed: ${data.failures.join(', ')}` : ''}`)
+        setStatus({
+          tone: 'ok',
+          text: `Sent to ${data.sent}/${data.total} players${data.failures ? ` — failed: ${data.failures.join(', ')}` : ''}`,
+        })
         setSubject('')
         setMessage('')
       } else {
-        setStatus(`Error: ${data.error}`)
+        setStatus({ tone: 'error', text: `Error: ${data.error}` })
       }
     } catch {
-      setStatus('Server error. Try again.')
+      setStatus({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setSending(false)
     }
@@ -110,9 +114,7 @@ export default function BroadcastForm({ counts, slateNumber }: Props) {
       </button>
 
       {status && (
-        <p className={`text-sm ${status.startsWith('✅') ? 'text-green-400' : status.startsWith('Sending') ? 'text-slate-400' : 'text-red-400'}`}>
-          {status}
-        </p>
+        <p className={`text-sm ${TONE_TEXT_CLASS[status.tone]}`}>{status.text}</p>
       )}
     </div>
   )

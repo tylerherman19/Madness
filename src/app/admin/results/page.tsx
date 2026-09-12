@@ -39,7 +39,7 @@ export default async function ResultsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
-      <h1 className="text-2xl font-bold text-white">🏆 Enter Results</h1>
+      <h1 className="text-2xl font-bold text-white">Enter Results</h1>
       {!activeSlate ? (
         <p className="text-slate-400">No active slate. Set up the schedule first.</p>
       ) : (

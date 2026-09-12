@@ -389,6 +389,70 @@ export function shortRound(round: TournamentRound): string {
   return SHORT_ROUND[round]
 }
 
+// ------------------------------------------------- round of 64 countdown
+
+const CENTRAL_TZ = 'America/Chicago'
+const MARCH = 2
+const THURSDAY = 4
+const MS_PER_DAY = 86_400_000
+
+// The Round of 64 — the bracket's first full round, and the day this pool
+// really begins — tips on the third Thursday of March. That has held for every
+// tournament the committee has scheduled (Mar 16 2023, Mar 21 2024, Mar 20
+// 2025, Mar 19 2026, Mar 18 2027, Mar 16 2028), so the date is derived rather
+// than kept as a table someone has to remember to extend.
+//
+// Returned at noon UTC: the countdown only ever reads the calendar date off
+// it, and noon keeps that date the same in every timezone it gets formatted in.
+export function roundOf64Date(tournamentYear: number): Date {
+  const marchFirst = new Date(Date.UTC(tournamentYear, MARCH, 1, 12))
+  const daysToFirstThursday = (THURSDAY - marchFirst.getUTCDay() + 7) % 7
+  return new Date(Date.UTC(tournamentYear, MARCH, 1 + daysToFirstThursday + 14, 12))
+}
+
+export interface RoundOf64Countdown {
+  /** Whole days from today (Central) until the Round of 64. 0 means today. */
+  days: number
+  /** "March 18, 2027" */
+  dateLabel: string
+  /** The calendar year the countdown is pointing at. */
+  year: number
+}
+
+// Today's date in Central time, as noon UTC — the same shape roundOf64Date
+// returns, so subtracting the two gives whole days with no DST remainder.
+function centralToday(now: Date): Date {
+  const [year, month, day] = now
+    .toLocaleDateString('en-CA', { timeZone: CENTRAL_TZ })
+    .split('-')
+    .map(Number)
+  return new Date(Date.UTC(year, month - 1, day, 12))
+}
+
+// How long until the round of 64 tips. `seasonYear` is the pool's own season
+// (a 2027 season plays its tournament in March 2027); once that tournament is
+// behind us the countdown rolls to the next one rather than going negative.
+export function roundOf64Countdown(now: Date, seasonYear?: number | null): RoundOf64Countdown {
+  const today = centralToday(now)
+  let year = seasonYear ?? today.getUTCFullYear()
+  let tipoff = roundOf64Date(year)
+  while (tipoff.getTime() < today.getTime()) {
+    year += 1
+    tipoff = roundOf64Date(year)
+  }
+
+  return {
+    days: Math.round((tipoff.getTime() - today.getTime()) / MS_PER_DAY),
+    dateLabel: tipoff.toLocaleDateString('en-US', {
+      timeZone: 'UTC',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+    year,
+  }
+}
+
 // Seed only means something inside a bracket. Outside it, ESPN's curatedRank
 // is the AP poll position, and rendering a #20 team as a 20-seed would be a
 // lie the tiebreak would then compound.

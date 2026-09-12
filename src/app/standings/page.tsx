@@ -124,7 +124,7 @@ export default async function DashboardPage() {
                           row.pick_revealed ? (
                             <TeamChip team={row.current_pick} size={28} directory={data.teamBrands} />
                           ) : (
-                            <span className="pill pill-alive">✓ Pick In</span>
+                            <span className="pill pill-alive"><span className="pill-dot" />Pick In</span>
                           )
                         ) : (
                           <span className="text-xs italic" style={{ color: 'var(--red)' }}>no pick yet</span>
@@ -136,7 +136,7 @@ export default async function DashboardPage() {
                   {elimRows.length > 0 && (
                     <tr>
                       <td colSpan={3} className="pt-6 pb-1.5 pl-4">
-                        <span className="pill pill-out">♦ {elimRows.length} Eliminated</span>
+                        <span className="pill pill-out"><span className="pill-dot" />{elimRows.length} Eliminated</span>
                       </td>
                     </tr>
                   )}

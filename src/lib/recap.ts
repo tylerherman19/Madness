@@ -35,7 +35,7 @@ export function generateRecap(input: RecapInput): string {
   const lines: string[] = []
 
   lines.push(
-    `🏀 MADNESS POOL — ${(periodLabel ?? `DAY ${slate.slate_number}`).toUpperCase()} RECAP`
+    `MADNESS POOL — ${(periodLabel ?? `DAY ${slate.slate_number}`).toUpperCase()} RECAP`
   )
   lines.push('─'.repeat(40))
 
@@ -43,7 +43,7 @@ export function generateRecap(input: RecapInput): string {
   const completedGames = games.filter(g => g.result !== 'pending')
   if (completedGames.length > 0) {
     lines.push('')
-    lines.push('📊 RESULTS:')
+    lines.push('RESULTS:')
     for (const game of completedGames) {
       const resultStr =
         game.result === 'home_win'
@@ -58,7 +58,7 @@ export function generateRecap(input: RecapInput): string {
   // Eliminations this slate
   if (eliminatedThisWeek.length > 0) {
     lines.push('')
-    lines.push('❌ ELIMINATED:')
+    lines.push('ELIMINATED:')
     for (const p of eliminatedThisWeek) {
       const reason = p.elimination_reason ? ` (${p.elimination_reason})` : ''
       lines.push(`  ${p.full_name}${reason}`)
@@ -67,14 +67,14 @@ export function generateRecap(input: RecapInput): string {
 
   // Still alive
   lines.push('')
-  lines.push(`✅ STILL ALIVE (${aliveCount}/${totalPlayers}):`)
+  lines.push(`STILL ALIVE (${aliveCount}/${totalPlayers}):`)
   for (const p of alivePlayers) {
     lines.push(`  ${p.full_name}`)
   }
 
   // Pot info
   lines.push('')
-  lines.push('💰 POT:')
+  lines.push('POT:')
   lines.push(`  Total: $${potSize}`)
   if (aliveCount > 1) {
     lines.push(
@@ -87,7 +87,7 @@ export function generateRecap(input: RecapInput): string {
   // Next deadline
   if (nextDeadline) {
     lines.push('')
-    lines.push(`⏰ NEXT DEADLINE: ${formatCentralTime(nextDeadline)}`)
+    lines.push(`NEXT DEADLINE: ${formatCentralTime(nextDeadline)}`)
   }
 
   lines.push('')

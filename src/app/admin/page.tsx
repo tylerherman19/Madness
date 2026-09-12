@@ -178,7 +178,7 @@ export default async function AdminDashboard() {
               Haven&apos;t Picked Yet ({notPickedYet.length})
             </p>
             {notPickedYet.length === 0 ? (
-              <p className="text-green-400 text-sm">Everyone alive has picked. 🎉</p>
+              <p className="text-green-400 text-sm">Everyone alive has picked.</p>
             ) : (
               <>
                 <p className="text-sm text-slate-300 leading-relaxed">{notPickedYet.join(', ')}</p>
@@ -216,7 +216,7 @@ export default async function AdminDashboard() {
               Unpaid Players ({unpaidPlayers.length})
             </p>
             {unpaidPlayers.length === 0 ? (
-              <p className="text-green-400 text-sm">Everyone has paid. 💰</p>
+              <p className="text-green-400 text-sm">Everyone has paid.</p>
             ) : (
               <p className="text-sm text-slate-300 leading-relaxed">
                 {unpaidPlayers.map((p: { full_name: string }) => p.full_name).sort().join(', ')}
@@ -229,42 +229,42 @@ export default async function AdminDashboard() {
       <div className="grid gap-4 sm:grid-cols-2">
         <AdminCard
           href="/admin/config"
-          title="⚙️ Pool Configuration"
+          title="Pool Configuration"
           desc="Competition format, season, pick frequency, deadlines, reuse and tiebreak rules"
         />
         <AdminCard
           href="/admin/schedule"
-          title="📅 Enter Schedule"
+          title="Enter Schedule"
           desc="Load days from ESPN, or add a game by hand"
         />
         <AdminCard
           href="/admin/results"
-          title="🏆 Enter Results"
+          title="Enter Results"
           desc="Enter game outcomes — the app auto-grades picks and eliminates players"
         />
         <AdminCard
           href="/admin/players"
-          title="👥 Manage Players"
+          title="Manage Players"
           desc="Import CSV, toggle paid status, regen PINs, correct eliminations, submit picks"
         />
         <AdminCard
           href="/admin/recap"
-          title="📋 Weekly Recap"
+          title="Weekly Recap"
           desc="Generate copy-pasteable recap text for GroupMe"
         />
         <AdminCard
           href="/admin/history"
-          title="📜 Season History"
+          title="Season History"
           desc="Every slate's games, results, pick counts, and eliminations in one view"
         />
         <AdminCard
           href="/admin/email"
-          title="✉️ Email Players"
+          title="Email Players"
           desc="Broadcast a message to everyone, alive players, or those missing a pick"
         />
         <AdminCard
           href="/admin/testing"
-          title="🧪 Testing Mode"
+          title="Testing Mode"
           desc="Black-box sandbox with its own test users and schedule — rehearse the full game flow without touching real data"
         />
       </div>
@@ -277,13 +277,13 @@ export default async function AdminDashboard() {
             href="/api/admin/export?type=players"
             className="rounded-lg border border-slate-600 bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600 transition-colors"
           >
-            ⬇ Export Players CSV
+            Export Players CSV
           </a>
           <a
             href="/api/admin/export?type=picks"
             className="rounded-lg border border-slate-600 bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600 transition-colors"
           >
-            ⬇ Export Picks CSV
+            Export Picks CSV
           </a>
         </div>
       </div>
