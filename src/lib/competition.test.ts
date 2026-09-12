@@ -6,6 +6,8 @@ import {
   normalizeRound,
   roundDisplay,
   roundOrder,
+  roundOf64Countdown,
+  roundOf64Date,
   seedToShow,
   ROUND_SEQUENCE,
   type PickPeriodGame,
@@ -179,4 +181,35 @@ test('out-of-range seeds are rejected rather than rendered', () => {
   assert.equal(seedToShow('march-madness', undefined, '1st Round'), null)
   assert.equal(seedToShow('march-madness', 1, '1st Round'), 1)
   assert.equal(seedToShow('march-madness', 16, '1st Round'), 16)
+})
+
+test('the round of 64 is the third Thursday of March', () => {
+  // The dates the committee has actually scheduled.
+  assert.equal(roundOf64Date(2023).toISOString().slice(0, 10), '2023-03-16')
+  assert.equal(roundOf64Date(2024).toISOString().slice(0, 10), '2024-03-21')
+  assert.equal(roundOf64Date(2025).toISOString().slice(0, 10), '2025-03-20')
+  assert.equal(roundOf64Date(2026).toISOString().slice(0, 10), '2026-03-19')
+  assert.equal(roundOf64Date(2027).toISOString().slice(0, 10), '2027-03-18')
+  assert.equal(roundOf64Date(2028).toISOString().slice(0, 10), '2028-03-16')
+})
+
+test('the countdown measures whole Central days to tipoff', () => {
+  const countdown = roundOf64Countdown(new Date('2026-09-12T18:00:00Z'), 2027)
+  assert.equal(countdown.days, 187)
+  assert.equal(countdown.dateLabel, 'March 18, 2027')
+  assert.equal(countdown.year, 2027)
+
+  // Late evening Central is still the same Central day, so the count holds
+  // even though UTC has already rolled over.
+  assert.equal(roundOf64Countdown(new Date('2027-03-18T04:00:00Z'), 2027).days, 1)
+  assert.equal(roundOf64Countdown(new Date('2027-03-18T17:00:00Z'), 2027).days, 0)
+})
+
+test('a finished tournament rolls the countdown to the next one', () => {
+  // The day after this season's round of 64 there is nothing left to count
+  // down to — the pool's next first round is a year out.
+  const countdown = roundOf64Countdown(new Date('2027-03-19T17:00:00Z'), 2027)
+  assert.equal(countdown.year, 2028)
+  assert.equal(countdown.dateLabel, 'March 16, 2028')
+  assert.ok(countdown.days > 0)
 })

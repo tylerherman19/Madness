@@ -75,7 +75,7 @@ export default async function RecapPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
-      <h1 className="text-2xl font-bold text-white">📋 Pool Recap</h1>
+      <h1 className="text-2xl font-bold text-white">Pool Recap</h1>
       {!activeSlate ? (
         <p className="text-slate-400">No active pick period.</p>
       ) : (

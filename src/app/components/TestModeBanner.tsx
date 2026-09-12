@@ -12,7 +12,7 @@ export default async function TestModeBanner() {
       style={{ background: 'repeating-linear-gradient(135deg, #b45309, #b45309 12px, #92400e 12px, #92400e 24px)' }}
     >
       <span className="text-xs font-bold tracking-widest uppercase text-white">
-        🧪 Testing Mode — sandbox data, nothing here touches the real pool
+        Testing Mode — sandbox data, nothing here touches the real pool
       </span>
       {/* Plain <a>: a prefetched Link would clear the cookies just by hovering */}
       <a

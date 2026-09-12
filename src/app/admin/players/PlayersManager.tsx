@@ -234,7 +234,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           onClick={() => setShowImport(!showImport)}
           className="btn-primary text-sm font-semibold px-4 py-2"
         >
-          📥 Import Players from CSV
+          Import Players from CSV
         </button>
 
         {showImport && (

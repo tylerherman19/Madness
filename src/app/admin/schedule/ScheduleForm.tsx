@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Game, Slate } from '@/types'
+import { TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
 
 interface Props {
   slates: Slate[]
@@ -52,7 +53,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
   const [syncing, setSyncing] = useState(false)
   const [syncingRange, setSyncingRange] = useState(false)
   const [progress, setProgress] = useState('')
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState<StatusMessage | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   function addGame() {
@@ -69,7 +70,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
 
   async function syncOneDay() {
     setSyncing(true)
-    setMessage('')
+    setMessage(null)
     try {
       const res = await fetch('/api/schedule/sync-espn', {
         method: 'POST',
@@ -78,14 +79,17 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
       })
       const data = await res.json()
       if (!res.ok) {
-        setMessage(`Error: ${data.error}`)
+        setMessage({ tone: 'error', text: `Error: ${data.error}` })
       } else {
         const partial = data.partial ? ` — ${data.partial.join(', ')} did not respond` : ''
-        setMessage(`✅ ${syncDate}: ${data.games_synced} games, ${data.teams_seen} teams${partial}`)
+        setMessage({
+          tone: 'ok',
+          text: `${syncDate}: ${data.games_synced} games, ${data.teams_seen} teams${partial}`,
+        })
         router.refresh()
       }
     } catch {
-      setMessage('Server error. Try again.')
+      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setSyncing(false)
     }
@@ -106,7 +110,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
 
   async function runRange(start: string, end: string, label: string) {
     if (end < start) {
-      setMessage('Error: end date is before start date')
+      setMessage({ tone: 'error', text: 'Error: end date is before start date' })
       return
     }
     const totalDays =
@@ -119,7 +123,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     }
 
     setSyncingRange(true)
-    setMessage('')
+    setMessage(null)
     let games = 0
     let daysWithGames = 0
     let emptyDays = 0
@@ -153,12 +157,16 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
       }
 
       const failNote = failures.length > 0 ? ` · ${failures.length} failed` : ''
-      setMessage(
-        `✅ ${daysWithGames} days loaded, ${games} games total · ${emptyDays} days with no games${failNote}`
-      )
+      setMessage({
+        tone: 'ok',
+        text: `${daysWithGames} days loaded, ${games} games total · ${emptyDays} days with no games${failNote}`,
+      })
       router.refresh()
     } catch {
-      setMessage('Server error partway through. Re-run — already-loaded days are skipped.')
+      setMessage({
+        tone: 'error',
+        text: 'Server error partway through. Re-run — already-loaded days are skipped.',
+      })
     } finally {
       setProgress('')
       setSyncingRange(false)
@@ -168,7 +176,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
-    setMessage('')
+    setMessage(null)
     try {
       const res = await fetch('/api/schedule', {
         method: 'POST',
@@ -177,14 +185,17 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
       })
       const data = await res.json()
       if (!res.ok) {
-        setMessage(`Error: ${data.error}`)
+        setMessage({ tone: 'error', text: `Error: ${data.error}` })
       } else {
-        setMessage(`✅ Saved ${data.games_saved} game(s) across ${data.dates.length} day(s)`)
+        setMessage({
+          tone: 'ok',
+          text: `Saved ${data.games_saved} game(s) across ${data.dates.length} day(s)`,
+        })
         setNewGames([{ ...BLANK_GAME }])
         router.refresh()
       }
     } catch {
-      setMessage('Server error. Try again.')
+      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setSubmitting(false)
     }
@@ -195,7 +206,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     try {
       const res = await fetch(`/api/schedule?id=${gameId}`, { method: 'DELETE' })
       if (res.ok) router.refresh()
-      else setMessage('Failed to delete game')
+      else setMessage({ tone: 'error', text: 'Failed to delete game' })
     } finally {
       setDeletingId(null)
     }
@@ -208,7 +219,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
       {/* ESPN Auto-Sync — the normal way a slate gets built */}
       <div className="rounded-xl border border-green-700 bg-green-950/40 p-5 space-y-4">
         <div>
-          <h2 className="text-base font-bold text-green-400 tracking-wide">⚡ Auto-Sync from ESPN</h2>
+          <h2 className="text-base font-bold text-green-400 tracking-wide">Auto-Sync from ESPN</h2>
           <p className="text-xs text-slate-400 mt-1">
             Pulls one day at a time across the ACC, Big Ten, Big 12, SEC, Pac-12 and the NCAA
             tournament. Seeds, regions, round labels, venue and TV come with it.
@@ -297,11 +308,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
           )}
         </div>
 
-        {message && (
-          <p className={`text-sm ${message.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>
-            {message}
-          </p>
-        )}
+        {message && <p className={`text-sm ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>}
       </div>
 
       {/* Loaded days */}

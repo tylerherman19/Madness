@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
 
 interface SlateOption {
   id: string
@@ -15,7 +16,7 @@ export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
   const router = useRouter()
   const [selected, setSelected] = useState('')
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState<StatusMessage | null>(null)
 
   const inactive = slates.filter((w) => !w.is_active)
   if (inactive.length === 0) return null
@@ -25,7 +26,7 @@ export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
     if (!slate) return
     if (!confirm(`Make ${slate.slate_date} the active day? Players will immediately see it on the pick page.`)) return
     setLoading(true)
-    setMessage('')
+    setMessage(null)
     try {
       const res = await fetch('/api/admin/set-active-slate', {
         method: 'POST',
@@ -34,14 +35,14 @@ export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
       })
       const data = await res.json()
       if (res.ok) {
-        setMessage(`✅ ${slate.slate_date} is now active`)
+        setMessage({ tone: 'ok', text: `${slate.slate_date} is now active` })
         setSelected('')
         router.refresh()
       } else {
-        setMessage(`Error: ${data.error}`)
+        setMessage({ tone: 'error', text: `Error: ${data.error}` })
       }
     } catch {
-      setMessage('Server error. Try again.')
+      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setLoading(false)
     }
@@ -75,7 +76,7 @@ export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
         </button>
       </div>
       {message && (
-        <p className={`text-xs ${message.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>{message}</p>
+        <p className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
     </div>
   )

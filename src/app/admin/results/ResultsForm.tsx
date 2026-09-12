@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Game, Slate } from '@/types'
+import { TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
 
 interface Props {
   slate: Slate
@@ -18,7 +19,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
     Object.fromEntries(games.map((g) => [g.id, g.result as GameResult]))
   )
   const [submitting, setSubmitting] = useState(false)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState<StatusMessage | null>(null)
   const [gradingResult, setGradingResult] = useState<null | {
     eliminated: string[]
     advanced: string[]
@@ -26,7 +27,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
 
   async function saveResult(gameId: string, result: GameResult) {
     setResults((prev) => ({ ...prev, [gameId]: result }))
-    setMessage('')
+    setMessage(null)
 
     try {
       const res = await fetch('/api/results', {
@@ -37,7 +38,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
       const data = await res.json()
 
       if (!res.ok) {
-        setMessage(`Error: ${data.error}`)
+        setMessage({ tone: 'error', text: `Error: ${data.error}` })
         return
       }
 
@@ -46,13 +47,13 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
         router.refresh()
       }
     } catch {
-      setMessage('Server error. Try again.')
+      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     }
   }
 
   async function gradeAllPending() {
     setSubmitting(true)
-    setMessage('')
+    setMessage(null)
     try {
       const res = await fetch('/api/results/grade-slate', {
         method: 'POST',
@@ -62,13 +63,16 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
       const data = await res.json()
       if (res.ok && data.grading) {
         setGradingResult(data.grading)
-        setMessage(`✅ Graded ${slate.slate_number}. ${data.grading.eliminated.length} eliminated.`)
+        setMessage({
+          tone: 'ok',
+          text: `Graded ${slate.slate_number}. ${data.grading.eliminated.length} eliminated.`,
+        })
         router.refresh()
       } else {
-        setMessage(data.error || 'Grading failed')
+        setMessage({ tone: 'error', text: data.error || 'Grading failed' })
       }
     } catch {
-      setMessage('Server error')
+      setMessage({ tone: 'error', text: 'Server error' })
     } finally {
       setSubmitting(false)
     }
@@ -138,9 +142,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
       </p>
 
       {message && (
-        <p className={`text-sm ${message.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>
-          {message}
-        </p>
+        <p className={`text-sm ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
 
       {gradingResult && (
