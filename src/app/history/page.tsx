@@ -11,6 +11,7 @@ import {
 } from '@/lib/competition'
 import type { Slate, Game } from '@/types'
 import SiteHeader from '../components/SiteHeader'
+import { Footer } from '@/app/components/Sports'
 import TeamMark from '../components/TeamMark'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
 
@@ -214,6 +215,7 @@ export default async function HistoryPage() {
           )}
         </div>
       </main>
+      <Footer />
     </div>
   )
 }

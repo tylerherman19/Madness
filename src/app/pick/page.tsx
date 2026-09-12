@@ -18,6 +18,7 @@ import { fetchDayScoreboard } from '@/lib/espn'
 import Link from 'next/link'
 import { getTeamBrandDirectory, type TeamBrandDirectory } from '@/lib/teamBrand'
 import TeamMark from '../components/TeamMark'
+import { Footer } from '../components/Sports'
 
 // Everything the pick page needs, loaded in one place. Kept separate from the
 // render so no JSX is constructed inside the try/catch — React renders
@@ -267,9 +268,10 @@ function Shell({
   return (
     <div className="site-shell flex min-h-screen flex-col">
       <SiteHeader mode={mode} account={session.full_name} />
-      <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-8 sm:py-10">
+      <main className="content-width flex-1 py-8 sm:py-10">
         {children}
       </main>
+      <Footer />
     </div>
   )
 }

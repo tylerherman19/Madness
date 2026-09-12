@@ -1,114 +1,8 @@
 'use client'
-
-import { useEffect, useRef, useState } from 'react'
-import type { LiveGame, LiveScoresResponse } from '@/app/api/live-scores/route'
-
-const TICKER_PX_PER_SECOND = 40
-
-function TickerTeam({ name, logo, color }: { name: string; logo?: string | null; color?: string | null }) {
-  return (
-    <span className="flex items-center gap-1.5 font-bold">
-      <span className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white" style={{ border: `1px solid ${color ?? 'var(--line)'}` }}>
-        {logo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logo} alt="" width={16} height={16} className="h-4 w-4 object-contain" />
-        ) : <span style={{ fontSize: 7 }}>{name.slice(0, 2)}</span>}
-      </span>
-      {name}
-    </span>
-  )
-}
-
-function scoreColor(myScore: number, theirScore: number, state: string): string {
-  if (state === 'pre') return 'var(--dark)'
-  if (myScore > theirScore) return 'var(--green)'
-  if (myScore < theirScore) return 'var(--red)'
-  return 'var(--dark)' // tie
-}
-
-function GameCard({ game }: { game: LiveGame }) {
-  const isLive = game.state === 'in'
-  const isPre = game.state === 'pre'
-  // A schedule-sourced game can be decided without the numbers being known —
-  // its statusText carries the winner instead, so don't print a fake 0–0.
-  const showScores = !isPre && game.scoresKnown !== false
-  return (
-    <div
-      className="shrink-0 border px-3 py-2 text-xs"
-      style={{
-        borderColor: isLive ? 'var(--red)' : 'var(--border)',
-        background: 'white',
-        minWidth: 176,
-        borderRadius: 4,
-      }}
-    >
-      {/* Live indicator */}
-      {isLive && (
-        <div className="flex items-center gap-1 mb-1">
-          <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--red)' }} />
-          <span className="font-bold tracking-widest uppercase" style={{ fontSize: 9, color: 'var(--red)' }}>
-            {game.statusText}
-          </span>
-        </div>
-      )}
-      {/* Pre-game kickoff time is rendered below in Central — avoid showing
-          ESPN's raw statusText here too, which bakes in Eastern time. */}
-      {!isLive && !isPre && (
-        <div className="mb-1 tracking-wider uppercase" style={{ fontSize: 9, color: 'var(--muted)' }}>
-          {game.statusText}
-        </div>
-      )}
-
-      {/* Away team row */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
-          <span style={{ color: isPre ? 'var(--dark)' : scoreColor(game.awayScore, game.homeScore, game.state) }}><TickerTeam name={game.awayTeam} logo={game.awayLogo} color={game.awayColor} /></span>
-          {game.awayPicks !== undefined && (
-            <span style={{ fontSize: 9, color: 'var(--muted)' }}>{game.awayPicks} {game.awayPicks === 1 ? 'Pick' : 'Picks'}</span>
-          )}
-        </div>
-        {showScores && (
-          <span className="font-bold font-mono tabular-nums" style={{ color: scoreColor(game.awayScore, game.homeScore, game.state) }}>
-            {game.awayScore}
-          </span>
-        )}
-      </div>
-
-      {/* Home team row */}
-      <div className="flex items-center justify-between gap-3 mt-0.5">
-        <div className="flex items-center gap-1.5">
-          <span style={{ color: isPre ? 'var(--dark)' : scoreColor(game.homeScore, game.awayScore, game.state) }}><TickerTeam name={game.homeTeam} logo={game.homeLogo} color={game.homeColor} /></span>
-          {game.homePicks !== undefined && (
-            <span style={{ fontSize: 9, color: 'var(--muted)' }}>{game.homePicks} {game.homePicks === 1 ? 'Pick' : 'Picks'}</span>
-          )}
-        </div>
-        {showScores && (
-          <span className="font-bold font-mono tabular-nums" style={{ color: scoreColor(game.homeScore, game.awayScore, game.state) }}>
-            {game.homeScore}
-          </span>
-        )}
-      </div>
-
-      {/* Pre-game: show kickoff time */}
-      {isPre && (
-        <div className="mt-1" style={{ fontSize: 9, color: 'var(--muted)' }}>
-          {game.timeTbd ? 'Time TBD' : new Date(game.kickoff).toLocaleString('en-US', {
-            timeZone: 'America/Chicago',
-            weekday: 'short',
-            hour: 'numeric',
-            minute: '2-digit',
-            timeZoneName: 'short',
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// `label` names the pick period the scores belong to — "Saturday, January
-// 17" in a regular-season pool, "First Round" in a tournament one. Falling
-// back to the raw slate index would reintroduce the internal vocabulary the
-// rest of the product no longer uses.
+import {useEffect,useRef,useState} from 'react'
+import type {LiveScoresResponse} from '@/app/api/live-scores/route'
+import s from './sports.module.css'
+const TICKER_PX_PER_SECOND=35
 export default function LiveTicker({
   label,
 }: {
@@ -117,7 +11,6 @@ export default function LiveTicker({
   label?: string | null
 }) {
   const [data, setData] = useState<LiveScoresResponse | null>(null)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const trackRef = useRef<HTMLDivElement>(null)
   const [duration, setDuration] = useState(30)
   const [paused, setPaused] = useState(false)
@@ -134,7 +27,6 @@ export default function LiveTicker({
         const json = await res.json()
         if (cancelled) return
         setData(json)
-        setLastUpdated(new Date())
       } catch {
         // silently fail — scores are non-critical
       }
@@ -164,50 +56,12 @@ export default function LiveTicker({
   // Don't render if no active slate or no games
   if (!data || data.games.length === 0) return null
 
-  const liveCount = data.games.filter((g) => g.state === 'in').length
 
-  return (
-    <section aria-label="Score scroll" className="live-score-scroll" style={{ borderBottom: '1px solid var(--border)', background: '#fff' }}>
-      <div className="content-width py-2">
-        {/* Header row */}
-        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="whitespace-nowrap text-xs font-bold" style={{ color: 'var(--muted)' }}>
-              {label ?? `Slate ${data.slateNumber}`} Scores
-            </span>
-            {liveCount > 0 && (
-              <span className="flex items-center gap-1 whitespace-nowrap text-xs font-bold tracking-wider" style={{ color: 'var(--red)' }}>
-                <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse shrink-0" style={{ background: 'var(--red)' }} />
-                {liveCount} {liveCount === 1 ? 'GAME' : 'GAMES'} LIVE
-              </span>
-            )}
-            {data.picksVisible && (
-              <span className="hidden sm:inline whitespace-nowrap tracking-wider" style={{ color: 'var(--muted)', fontSize: 10 }}>
-                · pick counts shown
-              </span>
-            )}
-          </div>
-          <button type="button" onClick={() => setPaused(!paused)} aria-label={paused ? 'Resume score scroll' : 'Pause score scroll'} className="text-[11px] font-semibold px-2 py-1 border border-[var(--line)] rounded">{paused ? 'Resume' : 'Pause'}</button>
-          {lastUpdated && (
-            <span className="hidden sm:inline whitespace-nowrap" style={{ fontSize: 10, color: 'var(--muted)' }}>
-              Updated {lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short', timeZone: 'America/Chicago' })}
-            </span>
-          )}
-        </div>
-
-        {/* Auto-scrolling game card ticker */}
-        <div className="overflow-hidden">
-          <div
-            ref={trackRef}
-            className="flex gap-2 pb-1 ticker-track"
-            style={{ width: 'max-content', animationDuration: `${duration}s`, animationPlayState: paused ? 'paused' : undefined }}
-          >
-            {[...data.games, ...data.games].map((game, i) => (
-              <GameCard key={`${game.id}-${i}`} game={game} />
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  )
+ return <section className={s.ticker} aria-label="Live score scroll"><div className={s.tickerLabel}><span>Scoreboard</span><small>{data.hasLiveGames?'Games in progress':'College basketball'}</small><button onClick={()=>setPaused(!paused)} aria-label={paused?'Resume score scroll':'Pause score scroll'}>{paused?'Resume':'Pause'}</button></div><div className={s.tickerViewport} tabIndex={0} aria-label={label??'Game scores'}><div ref={trackRef} className={s.tickerTrack} style={{animationDuration:duration+'s',animationPlayState:paused?'paused':'running'}}>
+ {[...data.games,...data.games].map((game,index)=><div className={s.tickerGame} key={game.id+'-'+index} aria-hidden={index>=data.games.length?true:undefined}><span className={s.tickerStatus} style={game.state==='in'?{color:'#b7443e'}:undefined}>{game.state==='pre'?(game.timeTbd?'Time TBD':new Date(game.kickoff).toLocaleString('en-US',{timeZone:'America/Chicago',hour:'numeric',minute:'2-digit'})+' CT'):game.statusText}</span>{(['away','home'] as const).map(side=><div key={side}><span className={s.logo} style={{width:20,height:20}}>
+ {game[side+'Logo' as 'awayLogo'|'homeLogo']?(
+ // eslint-disable-next-line @next/next/no-img-element
+ <img src={game[side+'Logo' as 'awayLogo'|'homeLogo']!} width={20} height={20} alt=""/>
+ ):null}</span><b>{side==='away'?game.awayTeam:game.homeTeam}</b><strong>{game.state!=='pre'&&game.scoresKnown!==false?(side==='away'?game.awayScore:game.homeScore):'—'}</strong></div>)}</div>)}
+ </div></div></section>
 }

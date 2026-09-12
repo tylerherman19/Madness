@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+
 :root {
   --paper: #f2f4f7;
   --paper-bright: #ffffff;
@@ -212,3 +213,24 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .mobile-pool-glance { display: grid; width: 100%; grid-template-columns: repeat(3, 1fr); gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }.mobile-pool-glance dt { font-size: 10px; color: var(--muted); }.mobile-pool-glance dd { font-size: 17px; font-weight: 700; margin-top: 4px; }
   .game-center-layout { display: flex; flex-direction: column; gap: 20px; }.game-center-main { width: 100%; }.pool-sidebar { width: 100%; grid-template-columns: 1fr; }.workspace-heading { padding: 23px 0 20px; }.workspace-heading h1 { font-size: 28px; }.workspace-heading > a { display: none; }.matchup-grid { gap: 12px; grid-template-columns: 1fr; }.team-search { flex: 1; }.team-search input { width: 100%; }.board-toolbar { gap: 10px; }.board-filters { width: 100%; }.matchup-meta { padding-top: 14px; }.matchup-bottom a { min-height: 30px; }.pick-panel { padding: 20px; }.workspace-context { margin-bottom: 7px; }.matchup-board .board-note { line-height: 1.6; }
 }
+
+
+/* Approved light sports design: shared across all public routes. */
+:root { --paper:#fafbfc; --ink:#18202d; --muted:#737b87; --line:#e5e7ec; --court:#f5f6f9; --orange:#3454df; --orange-dark:#3454df; --c-ink:#18202d; --c-muted:#737b87; --c-blue:#3454df; --c-line:#e5e7ec; }
+body { font-family:var(--concept-text),sans-serif; }
+.site-shell { padding-left:0!important; padding-bottom:30px; }
+.content-width { max-width:1180px; padding-inline:20px; }
+.font-display { font-family:var(--concept-text),sans-serif; }
+.btn-primary { background:#3454df; border-color:#3454df; font-family:inherit; border-radius:7px; }
+.btn-primary:hover { background:#2843be; border-color:#2843be; }
+.btn-secondary { font-family:inherit; border-radius:7px; }
+.team-mark-logo { border:0!important; background:transparent!important; border-radius:0!important; }
+.account-menu { position:relative; margin-left:auto; }
+.account-links { position:absolute; top:calc(100% + 16px); right:0; z-index:60; width:230px; padding:10px; background:white; border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 30px #18202d16; }
+.account-links a,.account-links button { display:block; width:100%; padding:12px; text-align:left; font-size:12px; border-radius:5px; }
+.account-links a:hover { background:#f1f4ff; }
+.sweat-pickers { margin:0 20px 10px 72px; font-size:11px; color:var(--muted); }
+.sweat-pickers summary { cursor:pointer; padding-block:6px; }
+.sweat-pickers p { padding:8px 0; line-height:1.9; }
+.site-shell footer:not([class]) { background:white; }
+@media(max-width:760px) { .site-shell { padding-bottom:90px; }.content-width { padding-inline:18px; } }

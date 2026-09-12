@@ -3,18 +3,15 @@ import { getDb } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
 import {
   capabilitiesFor,
-  copyFor,
   normalizeRound,
-  ROUND_DISPLAY,
-  ROUND_SEQUENCE,
-  roundOrder,
-  seedToShow,
-  shortRound,
   type CompetitionMode,
   type TournamentRound,
 } from '@/lib/competition'
-import { getTeamBrandDirectory, type TeamBrandDirectory } from '@/lib/teamBrand'
-import TeamMark from '@/app/components/TeamMark'
+import { getTeamBrandDirectory } from '@/lib/teamBrand'
+import ScheduleBoard from './ScheduleBoard'
+import LiveTicker from '@/app/components/LiveTicker'
+import { Footer } from '@/app/components/Sports'
+import s from '@/app/components/sports.module.css'
 import { fetchDayScoreboard, eventCompetitors, toEspnDate, isTimeTbd, parseRound } from '@/lib/espn'
 
 export const revalidate = 3600
@@ -25,7 +22,7 @@ export const revalidate = 3600
 const REGULAR_SEASON_DAYS_AHEAD = 7
 const TOURNAMENT_DAYS_AHEAD = 24
 
-interface ScheduleGame {
+export interface ScheduleGame {
   homeAbbr: string
   awayAbbr: string
   homeSeed: number | null
@@ -39,7 +36,7 @@ interface ScheduleGame {
   tv: string | null
 }
 
-interface ScheduleDay {
+export interface ScheduleDay {
   date: string // YYYY-MM-DD, Central
   label: string
   games: ScheduleGame[]
@@ -158,7 +155,7 @@ async function getScheduleData(mode: CompetitionMode): Promise<{
   // legible with all of its games on screen. The rolling regular-season view
   // starts tomorrow, because today's board lives on the pick page.
   const anchor = activeDate ? new Date(`${activeDate}T12:00:00Z`) : new Date()
-  const startOffset = capabilitiesFor(mode).groupScheduleByRound ? 0 : activeDate ? 1 : 0
+  const startOffset = 0 // Scores now includes the active slate, not only future games.
 
   const dayDates: Date[] = []
   for (let i = 0; i < daysAhead; i++) {
@@ -198,212 +195,8 @@ function byTip(a: ScheduleGame, b: ScheduleGame): number {
   return new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
 }
 
-function formatTip(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', {
-    timeZone: CT,
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  })
-}
-
-// "January 19" — the secondary line inside a round, where the round name is
-// already the heading.
-function dayWithin(date: string): string {
-  return new Date(`${date}T12:00:00`).toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  })
-}
-
-export default async function SchedulePage() {
-  const pool = await getPoolConfig()
-  const mode = pool.competition_mode
-  const caps = capabilitiesFor(mode)
-  const copy = copyFor(mode)
-  const [{ days, season, activeDate }, teamBrands] = await Promise.all([
-    getScheduleData(mode),
-    getTeamBrandDirectory(),
-  ])
-  const hasAnyGames = days.some((d) => d.games.length > 0)
-
-  // In the tournament the round is the organising unit and the date is detail
-  // inside it. Outside it, the date *is* the unit — college basketball has no
-  // weekly rhythm to borrow.
-  const rounds = caps.groupScheduleByRound ? groupByRound(days) : []
-
-  return (
-    <div className="site-shell flex min-h-screen flex-col">
-      <SiteHeader mode={mode} />
-
-      <main className="content-width flex-1 py-9 sm:py-12">
-        <div className="max-w-3xl pb-3">
-          <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>Plan your path</p>
-          <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--dark)' }}>
-            {copy.scheduleHeading}
-          </h1>
-          <p className="mt-2 text-sm font-semibold" style={{ color: 'var(--muted)' }}>
-            {season} {caps.showTournamentRounds ? 'Tournament' : 'Season'}
-            {activeDate ? ` · Currently playing ${dayWithin(activeDate)}` : ''}
-          </p>
-          <p className="mt-3 text-sm" style={{ color: 'var(--muted)' }}>
-            Plan ahead — {copy.reuseRule.charAt(0).toLowerCase() + copy.reuseRule.slice(1)}
-          </p>
-        </div>
-
-        {!hasAnyGames ? (
-          <div className="py-20 text-center">
-            <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>SCHEDULE NOT AVAILABLE YET</p>
-            <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>
-              {caps.showTournamentRounds
-                ? 'Rounds appear once the bracket is released and synced.'
-                : 'Check back once upcoming game days are synced.'}
-            </p>
-          </div>
-        ) : caps.groupScheduleByRound ? (
-          <>
-            {/* Round nav. Anchors rather than client-side tabs: the whole
-                schedule is one server-rendered document, so every round is
-                linkable and shareable. */}
-            <nav className="mt-6 flex gap-1.5 flex-wrap" aria-label="Tournament rounds">
-              {rounds.map(({ round }) => (
-                <a
-                  key={round}
-                  href={`#${anchorFor(round)}`}
-                  className="px-3 py-1.5 text-xs font-bold tracking-wider uppercase"
-                  style={{ border: '1px solid var(--border)', color: 'var(--dark)', background: 'var(--surface)', borderRadius: 4 }}
-                >
-                  {ROUND_DISPLAY[round]}
-                </a>
-              ))}
-            </nav>
-
-            {rounds.map(({ round, days: roundDays }) => (
-              <section key={round} id={anchorFor(round)} className="pt-10 scroll-mt-4">
-                <div className="flex items-baseline gap-3 flex-wrap">
-                  <h2 className="font-display text-4xl leading-none" style={{ color: 'var(--dark)' }}>
-                    {ROUND_DISPLAY[round].toUpperCase()}
-                  </h2>
-                  <span className="eyebrow">
-                    {roundDays.reduce((n, d) => n + d.games.length, 0)} games · {roundDays.length}{' '}
-                    {roundDays.length === 1 ? 'day' : 'days'}
-                  </span>
-                </div>
-                {roundDays.map((day) => (
-                  <div key={day.date} className="pt-5">
-                    <p className="eyebrow mb-2">{day.label === 'Today' || day.label === 'Tomorrow' ? `${day.label} · ${dayWithin(day.date)}` : day.label}</p>
-                    <GameTable games={day.games} mode={mode} teamBrands={teamBrands} />
-                  </div>
-                ))}
-              </section>
-            ))}
-          </>
-        ) : (
-          days.map((day) =>
-            day.games.length === 0 ? null : (
-              <section key={day.date} className="pt-9">
-                <p className="eyebrow mb-1" style={{ color: day.label === 'Today' ? 'var(--red)' : undefined }}>
-                  {day.label}
-                </p>
-                {day.label === 'Today' || day.label === 'Tomorrow' ? (
-                  <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>{dayWithin(day.date)}</p>
-                ) : null}
-                <GameTable games={day.games} mode={mode} teamBrands={teamBrands} />
-              </section>
-            )
-          )
-        )}
-      </main>
-    </div>
-  )
-}
-
-function anchorFor(round: TournamentRound): string {
-  return `round-${shortRound(round).toLowerCase()}`
-}
-
-// Collect the days into rounds, in bracket order. A day with no round label
-// (a conference tournament game that slipped into the window, say) is left
-// out of the round view rather than filed under a round it isn't in.
-function groupByRound(days: ScheduleDay[]): { round: TournamentRound; days: ScheduleDay[] }[] {
-  const byRound = new Map<TournamentRound, ScheduleDay[]>()
-  for (const day of days) {
-    const perRound = new Map<TournamentRound, ScheduleGame[]>()
-    for (const game of day.games) {
-      if (!game.round) continue
-      const list = perRound.get(game.round) ?? []
-      list.push(game)
-      perRound.set(game.round, list)
-    }
-    for (const [round, games] of perRound) {
-      const list = byRound.get(round) ?? []
-      list.push({ ...day, games })
-      byRound.set(round, list)
-    }
-  }
-  return ROUND_SEQUENCE.filter((r) => byRound.has(r))
-    .sort((a, b) => roundOrder(a) - roundOrder(b))
-    .map((round) => ({ round, days: byRound.get(round)! }))
-}
-
-function GameTable({ games, mode, teamBrands }: { games: ScheduleGame[]; mode: CompetitionMode; teamBrands: TeamBrandDirectory }) {
-  const caps = capabilitiesFor(mode)
-  return (
-    <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: 'var(--surface-sunken)' }}>
-              <th className="py-2.5 pl-4 text-left eyebrow">Matchup</th>
-              {caps.showRegions && (
-                <th className="py-2.5 px-3 text-left eyebrow hidden sm:table-cell whitespace-nowrap">Region</th>
-              )}
-              <th className="py-2.5 pr-4 text-right eyebrow hidden sm:table-cell whitespace-nowrap">Tip (CT)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {games.map((g, i) => {
-              const awaySeed = seedToShow(mode, g.awaySeed, g.round)
-              const homeSeed = seedToShow(mode, g.homeSeed, g.round)
-              const tip = g.timeTbd ? 'TBD' : formatTip(g.kickoff)
-              return (
-                <tr key={`${g.awayAbbr}@${g.homeAbbr}-${i}`} className="row-hover border-t" style={{ borderColor: 'var(--border)' }}>
-                  <td className="py-3 pl-4">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Side abbr={g.awayAbbr} seed={awaySeed} teamBrands={teamBrands} />
-                      <span className="text-xs" style={{ color: 'var(--muted)' }}>vs.</span>
-                      <Side abbr={g.homeAbbr} seed={homeSeed} teamBrands={teamBrands} />
-                    </div>
-                    <span className="block sm:hidden text-xs mt-1" style={{ color: 'var(--muted)' }}>
-                      {tip}
-                      {caps.showRegions && g.region ? ` · ${g.region} Region` : ''}
-                    </span>
-                  </td>
-                  {caps.showRegions && (
-                    <td className="py-3 px-3 text-xs hidden sm:table-cell" style={{ color: 'var(--muted)' }}>
-                      {g.region ?? '—'}
-                    </td>
-                  )}
-                  <td className="py-3 pr-4 text-right text-xs hidden sm:table-cell tnum" style={{ color: 'var(--muted)' }}>{tip}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-// Seed ahead of the name, compact and sports-native — not a decorative badge.
-function Side({ abbr, seed, teamBrands }: { abbr: string; seed: number | null; teamBrands: TeamBrandDirectory }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      {seed != null && (
-        <span className="tnum" style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>{seed}</span>
-      )}
-      <TeamMark team={abbr} directory={teamBrands} size={34} showName />
-    </span>
-  )
+export default async function SchedulePage(){
+ const pool=await getPoolConfig()
+ const [{days,season},teamBrands]=await Promise.all([getScheduleData(pool.competition_mode),getTeamBrandDirectory()])
+ return <div className={s.root}><SiteHeader mode={pool.competition_mode}/><LiveTicker/><main className={s.main}><ScheduleBoard days={days} season={season} brands={teamBrands}/></main><Footer/></div>
 }

@@ -2,6 +2,8 @@ import SweatBoard from './SweatBoard'
 import SiteHeader from '@/app/components/SiteHeader'
 import { getPoolConfig } from '@/lib/pool'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
+import { Footer } from '@/app/components/Sports'
+import LiveTicker from '@/app/components/LiveTicker'
 
 export const metadata = { title: 'Sweat Board — MADNESS' }
 
@@ -22,10 +24,12 @@ export default async function LivePage() {
   return (
     <div className="site-shell">
       <SiteHeader mode={mode} />
+      <LiveTicker />
 
-      <main className="content-width pb-16">
+      <main className="content-width py-9 pb-16">
         <SweatBoard teamBrands={teamBrands} />
       </main>
+      <Footer />
     </div>
   )
 }

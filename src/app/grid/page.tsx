@@ -5,6 +5,7 @@ import { buildPickPeriods, capabilitiesFor, type PickPeriod } from '@/lib/compet
 import { getTeamAbbrs } from '@/lib/teams'
 import type { Game } from '@/types'
 import SiteHeader from '@/app/components/SiteHeader'
+import { Footer } from '@/app/components/Sports'
 
 // Cache the render for 60s (like the homepage) so 1k concurrent viewers are
 // served from the CDN instead of each triggering the full query set. Current-slate
@@ -260,6 +261,7 @@ export default async function GridPage() {
           </div>
         )}
       </main>
+      <Footer />
     </div>
   )
 }

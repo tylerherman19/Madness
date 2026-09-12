@@ -1,316 +1,52 @@
 'use client'
-
 import { useEffect, useState } from 'react'
-import type { TeamBrandDirectory } from '@/lib/teamBrand'
-import { capabilitiesFor } from '@/lib/competition'
-import type { SweatResponse, SweatGame } from '@/app/api/sweat/route'
-import TeamMark from '@/app/components/TeamMark'
-
-function scoreColor(myScore: number, theirScore: number, state: string): string {
-  if (state === 'pre') return 'var(--dark)'
-  if (myScore > theirScore) return 'var(--green)'
-  if (myScore < theirScore) return 'var(--red)'
-  return 'var(--dark)'
-}
-
-function kickoffLabel(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', {
-    timeZone: 'America/Chicago',
-    weekday: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  })
-}
-
-function TeamRow({
-  game,
-  side,
-  fieldSize,
-  tournament,
-  teamBrands,
-}: {
-  game: SweatGame
-  side: 'home' | 'away'
-  fieldSize: number
-  tournament: boolean
-  teamBrands: TeamBrandDirectory
-}) {
-  const team = side === 'home' ? game.homeTeam : game.awayTeam
-  const seed = side === 'home' ? game.homeSeed : game.awaySeed
-  const my = side === 'home' ? game.homeScore : game.awayScore
-  const their = side === 'home' ? game.awayScore : game.homeScore
-  const pickers = side === 'home' ? game.homePlayers : game.awayPlayers
-  const isPre = game.state === 'pre'
-  const color = scoreColor(my, their, game.state)
-  const pct = fieldSize > 0 ? Math.round((pickers.length / fieldSize) * 100) : 0
-
-  return (
-    <div className="py-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          {seed != null && (
-            <span className="tnum shrink-0" style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>{seed}</span>
-          )}
-          <span style={{ color }}><TeamMark team={team} directory={teamBrands} size={34} showName /></span>
-        </div>
-        {!isPre && (
-          <span className="font-display text-2xl tnum leading-none shrink-0" style={{ color }}>{my}</span>
-        )}
-      </div>
-      {pickers.length > 0 && (
-        <p className="mt-0.5 text-xs font-semibold" style={{ color: 'var(--muted)' }}>
-          {pickers.length} {tournament ? (pickers.length === 1 ? 'player riding' : 'players riding') : pickers.length === 1 ? 'pick' : 'picks'} · {pct}% of the {tournament ? 'field' : 'pool'}
-        </p>
-      )}
-    </div>
-  )
-}
-
-function GameCard({
-  game,
-  fieldSize,
-  tournament,
-  teamBrands,
-}: {
-  game: SweatGame
-  fieldSize: number
-  tournament: boolean
-  teamBrands: TeamBrandDirectory
-}) {
-  const isLive = game.state === 'in'
-  const sweatCount = game.homePlayers.length + game.awayPlayers.length
-  // Whichever side is currently behind is the side about to lose entries.
-  const atRisk =
-    game.state === 'pre'
-      ? 0
-      : game.homeScore === game.awayScore
-      ? sweatCount
-      : game.homeScore > game.awayScore
-      ? game.awayPlayers.length
-      : game.homePlayers.length
-  const riskPct = fieldSize > 0 ? Math.round((atRisk / fieldSize) * 100) : 0
-
-  // Bracket context is a strip above the matchup, not a badge beside it —
-  // "EAST REGION · SECOND ROUND" reads like a broadcast lower third.
-  const context = [game.region ? `${game.region} Region` : null, game.round].filter(Boolean).join(' · ')
-
-  return (
-    <div
-      className="card overflow-hidden"
-      style={{
-        borderColor: isLive ? 'var(--red)' : 'var(--border)',
-        boxShadow: isLive ? '0 0 0 2px var(--red)' : undefined,
-        opacity: game.state === 'post' && sweatCount === 0 ? 0.6 : 1,
-        padding: 0,
-      }}
-    >
-      {context && (
-        <div className="px-4 py-1 eyebrow" style={{ background: 'var(--dark)', color: 'var(--cream)', fontSize: 10 }}>
-          {context}
-        </div>
-      )}
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-between mb-1">
-          {isLive ? (
-            <span className="flex items-center gap-1.5 eyebrow" style={{ color: 'var(--red)' }}>
-              <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--red)' }} />
-              {game.statusText}
-            </span>
-          ) : (
-            <span className="eyebrow">
-              {game.state === 'pre' ? kickoffLabel(game.kickoff) : game.statusText}
-            </span>
-          )}
-        </div>
-        <TeamRow game={game} side="away" fieldSize={fieldSize} tournament={tournament} teamBrands={teamBrands} />
-        <div style={{ borderTop: '1px solid var(--border)' }} />
-        <TeamRow game={game} side="home" fieldSize={fieldSize} tournament={tournament} teamBrands={teamBrands} />
-
-        {/* Survivor impact — the reason anyone watches a game they have no
-            stake in. Only shown once the picks are on the board and the game
-            is actually deciding something. */}
-        {sweatCount > 0 && game.state !== 'pre' && (
-          <div className="mt-3 pt-2.5" style={{ borderTop: '1px solid var(--border)' }}>
-            <p className="eyebrow" style={{ color: 'var(--red)' }}>Survivor Impact</p>
-            <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
-              {atRisk > 0 ? (
-                <>
-                  <span className="font-bold" style={{ color: 'var(--red)' }}>{riskPct}%</span> of the{' '}
-                  {tournament ? 'remaining field' : 'remaining pool'} at risk
-                  {tournament ? ` · potential eliminations: ${atRisk}` : ''}
-                </>
-              ) : (
-                <>Everyone riding this game is currently ahead.</>
-              )}
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function StatTile({ value, label, color }: { value: number; label: string; color?: string }) {
-  return (
-    <div className="card px-4 py-3 text-center">
-      <p className="font-display text-4xl leading-none tnum" style={{ color: color ?? 'var(--dark)' }}>{value}</p>
-      <p className="eyebrow mt-1">{label}</p>
-    </div>
-  )
-}
-
-function CountLine({ title, count, color, note }: { title: string; count: number; color: string; note?: string }) {
-  if (count === 0) return null
-  return (
-    <div className="py-3 border-t flex items-baseline gap-2" style={{ borderColor: 'var(--border)' }}>
-      <p className="eyebrow" style={{ color }}>
-        {title} ({count})
-      </p>
-      {note && <p className="text-xs" style={{ color: 'var(--muted)' }}>{note}</p>}
-    </div>
-  )
-}
-
-const GAME_ORDER: Record<string, number> = { in: 0, pre: 1, post: 2 }
-
-export default function SweatBoard({ teamBrands }: { teamBrands: TeamBrandDirectory }) {
-  const [data, setData] = useState<SweatResponse | null>(null)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-
-  const hasLive = data?.hasLiveGames ?? false
-
-  useEffect(() => {
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const res = await fetch('/api/sweat', { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json()
-        if (cancelled) return
-        setData(json)
-        setLastUpdated(new Date())
-      } catch {
-        // non-critical — keep showing the last snapshot
-      }
-    }
-
-    load()
-    const timer = setInterval(load, hasLive ? 30_000 : 5 * 60_000)
-
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [hasLive])
-
-  if (!data) {
-    return (
-      <div className="py-20 text-center">
-        <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--muted)' }}>Loading…</p>
-      </div>
-    )
-  }
-
-  if (data.slateNumber === null || data.games.length === 0) {
-    return (
-      <div className="py-20 text-center">
-        <p className="font-display text-6xl" style={{ color: 'var(--dark)' }}>NO GAMES YET</p>
-        <p className="mt-4 text-sm tracking-widest uppercase" style={{ color: 'var(--muted)' }}>
-          The sweat board lights up on game day
-        </p>
-      </div>
-    )
-  }
-
-  // The board is the same instrument in both competitions. The tournament
-  // just gives it more to say — rounds, regions, seeds, and a field that
-  // shrinks by the hour.
-  const tournament = capabilitiesFor(data.mode).showTournamentRounds
-  // "% of the remaining field" means the entries still alive, not everyone
-  // who is rendered on the board (which includes today's casualties).
-  const fieldSize = data.aliveCount > 0 ? data.aliveCount : data.players.length
-
-  const s = data.summary
-  const inDanger = s.losing + s.noPick
-  const games = [...data.games].sort(
-    (a, b) =>
-      GAME_ORDER[a.state] - GAME_ORDER[b.state] ||
-      new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
-  )
-  const byStatus = (statuses: string[]) => data.players.filter((p) => statuses.includes(p.status))
-
-  return (
-    <div>
-      {/* Hero */}
-      <div className="py-8 sm:py-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 border-b-2" style={{ borderColor: 'var(--ink)' }}>
-        <div>
-          <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>Every pick. Every possession.</p>
-          <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--dark)' }}>Sweat board</h1>
-          <p className="mt-1 eyebrow">
-            {data.periodLabel ?? `Slate ${data.slateNumber}`} · {fieldSize} {fieldSize === 1 ? 'survivor' : 'survivors'}
-            {data.hasLiveGames && (
-              <span className="ml-2 font-bold" style={{ color: 'var(--red)' }}>● LIVE</span>
-            )}
-          </p>
-        </div>
-        {lastUpdated && (
-          <p style={{ fontSize: 10, color: 'var(--muted)' }}>
-            Updated {lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short', timeZone: 'America/Chicago' })}
-          </p>
-        )}
-      </div>
-
-      {/* Danger banner */}
-      {inDanger > 0 && (
-        <div className="mt-6 rounded-lg px-4 py-3 flex items-center gap-3" style={{ background: 'var(--red-tint)', boxShadow: '0 0 0 1px var(--red)' }}>
-          <span className="inline-block w-2 h-2 rounded-full animate-pulse shrink-0" style={{ background: 'var(--red)' }} />
-          <p className="text-sm font-bold" style={{ color: 'var(--red)' }}>
-            {inDanger} player{inDanger !== 1 ? 's' : ''} facing elimination right now
-          </p>
-        </div>
-      )}
-
-      {/* Summary tiles */}
-      <div className="mt-6 grid grid-cols-3 sm:grid-cols-6 gap-2">
-        <StatTile value={s.safe} label="Safe" color="var(--green)" />
-        <StatTile value={s.winning} label="Winning" color="var(--green)" />
-        <StatTile value={s.losing} label="Losing" color="var(--red)" />
-        <StatTile value={s.out} label="Out" color="var(--red)" />
-        <StatTile value={s.notStarted} label="Yet to Play" />
-        <StatTile value={s.hidden + s.pending + s.noPick} label="No Pick Shown" />
-      </div>
-
-      {/* Games with pickers */}
-      <div className="mt-8 grid sm:grid-cols-2 gap-3">
-        {games.map((g) => (
-          <GameCard key={g.id} game={g} fieldSize={fieldSize} tournament={tournament} teamBrands={teamBrands} />
-        ))}
-      </div>
-
-      {/* Reveal note */}
-      {!data.allRevealed && s.hidden > 0 && (
-        <p className="mt-4 text-xs" style={{ color: 'var(--muted)' }}>
-          {s.hidden} pick{s.hidden !== 1 ? 's are' : ' is'} in but hidden until the first tip of the day.
-        </p>
-      )}
-
-      {/* Off-board groups */}
-      <div className="mt-8">
-        <CountLine
-          title="No pick submitted"
-          count={byStatus(['pending']).length}
-          color="var(--muted)"
-          note="Deadline hasn't passed yet."
-        />
-        <CountLine
-          title="Missed the deadline"
-          count={byStatus(['no_pick']).length}
-          color="var(--red)"
-          note="Will be auto-assigned a team from the day's last game. If every team is spent, it's elimination."
-        />
-      </div>
-    </div>
-  )
+import Link from 'next/link'
+import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
+import type { SweatResponse } from '@/app/api/sweat/route'
+import { Logo, Arrow } from '@/app/components/Sports'
+import s from '@/app/components/sports.module.css'
+export default function SweatBoard({teamBrands}:{teamBrands:TeamBrandDirectory}){
+ const [data,setData]=useState<SweatResponse|null>(null)
+ const [updated,setUpdated]=useState<Date|null>(null)
+ const [error,setError]=useState(false)
+ const [filter,setFilter]=useState('All games')
+ const [retry,setRetry]=useState(0)
+ const live=data?.hasLiveGames??false
+ useEffect(()=>{
+  let cancelled=false
+  async function load(){try{const res=await fetch('/api/sweat',{cache:'no-store'});if(!res.ok)throw new Error();const body=await res.json();if(!cancelled){setData(body);setUpdated(new Date());setError(false)}}catch{if(!cancelled)setError(true)}}
+  load();const timer=setInterval(load,live?30000:300000)
+  return()=>{cancelled=true;clearInterval(timer)}
+ },[live,retry])
+ const name=(team:string)=>brandFor(team,teamBrands).shortName
+ const summary=data?.summary
+ const field=data?.players.length??0
+ const visible=data?.allRevealed??false
+ const stateLabels={in:'Live',pre:'Upcoming',post:'Final'}
+ const ordered=[...(data?.games??[])].sort((a,b)=>({in:0,pre:1,post:2}[a.state]-{in:0,pre:1,post:2}[b.state])||new Date(a.kickoff).getTime()-new Date(b.kickoff).getTime())
+ const games=ordered.filter(g=>filter==='All games'||stateLabels[g.state]===filter)
+ return <div className={s.root} style={{minHeight:0}}><div className={s.pageHeading}><div><p className={s.context}>{data?.periodLabel??'College basketball survivor'}</p><h1>Sweatboard.</h1><p>Every score matters. See what it means for your pool.</p></div>{live&&<span className={s.sweatLive}><i/>{data?.games.filter(g=>g.state==='in').length} live</span>}</div>
+ {error&&<p role="alert" className={s.privacyNotice}>{data?'Updates are unavailable. Showing the last received scores.':'Could not load the Sweatboard.'} <button className={s.textButton} onClick={()=>setRetry(retry+1)}>Try again</button></p>}
+ {!data&&!error&&<p role="status" className={s.empty}>Loading the Sweatboard…</p>}
+ {data&&<><div className={s.sweatControls}><div className={s.pills}>{['All games','Live','Final','Upcoming'].map(f=><button key={f} aria-pressed={filter===f} onClick={()=>setFilter(f)}>{f}</button>)}</div>{updated&&<span className={s.muted} style={{fontSize:11}}>Updated {updated.toLocaleTimeString('en-US',{timeZone:'America/Chicago',hour:'numeric',minute:'2-digit',timeZoneName:'short'})}</span>}</div>
+ {!visible&&<p className={s.privacyNotice}>Team choices stay private until the daily deadline. {summary?.hidden??0} picks submitted; {summary?.pending??0} still to come.</p>}
+ <dl className={s.sweatSummary} style={{gridTemplateColumns:'repeat(6,1fr)'}}>{[['Safe',summary?.safe],['Winning',summary?.winning],['Losing / tied',summary?.losing],['Out today',summary?.out],['Not started',summary?.notStarted],['No pick',summary?.noPick]].map(([label,value],index)=><div key={label} data-tone={index}><dt>{label}</dt><dd>{visible?value:'—'}</dd></div>)}</dl>
+ <div className={s.sweatLayout}><section className={s.sweatGames} aria-label="Games affecting the pool">{games.map(game=>{
+ const total=game.awayPlayers.length+game.homePlayers.length
+ const risk=game.awayScore<game.homeScore?game.awayPlayers.length:game.homeScore<game.awayScore?game.homePlayers.length:total
+ return <article className={s.sweatGame} key={game.id}><header><span className={game.state==='in'?s.sweatLive:s.muted}>{game.state==='in'&&<i/>}{game.state==='pre'?(game.statusText.toLowerCase().includes('tbd')?'Time TBD':new Date(game.kickoff).toLocaleString('en-US',{timeZone:'America/Chicago',weekday:'short',hour:'numeric',minute:'2-digit',timeZoneName:'short'})):game.statusText}</span><span>{[game.round,game.region].filter(Boolean).join(' · ')}</span></header>
+ {(['away','home'] as const).map(side=>{
+ const team=side==='away'?game.awayTeam:game.homeTeam
+ const score=side==='away'?game.awayScore:game.homeScore
+ const other=side==='away'?game.homeScore:game.awayScore
+ const names=side==='away'?game.awayPlayers:game.homePlayers
+ const seed=side==='away'?game.awaySeed:game.homeSeed
+ const result=game.state==='pre'?'Waiting':game.state==='post'?(score>other?'Safe':'Out'):(score>other?'Winning':score===other?'Tied':'At risk')
+ return <div key={side}><div className={s.sweatTeam}><Logo team={team} brands={teamBrands} size={40}/><div className={s.sweatTeamName}><strong>{seed?seed+' ':''}{name(team)}</strong><span>{visible?names.length+' entries'+(field?' · '+Math.round(names.length/field*100)+'% of field':''):'Picks hidden'}</span></div><span className={s.sweatResult} data-result={result}>{visible?result:'—'}</span><b className={s.sweatScore}>{game.state==='pre'?'—':score}</b></div>{visible&&names.length>0&&<details className="sweat-pickers"><summary>See {names.length} {names.length===1?'entry':'entries'} on {team}</summary><p>{names.join(' · ')}</p></details>}</div>
+ })}
+ {visible&&total>0&&<div className={s.exposureBar} aria-label={game.awayPlayers.length+' picks on '+game.awayTeam+', '+game.homePlayers.length+' on '+game.homeTeam}><span style={{flex:game.awayPlayers.length,background:brandFor(game.awayTeam,teamBrands).primary}}/><span style={{flex:game.homePlayers.length,background:brandFor(game.homeTeam,teamBrands).primary}}/></div>}
+ <footer>{visible?(game.state==='in'?risk+' entries currently at risk.':game.state==='pre'?'Waiting for tip-off.':'Result final.'):'Picks reveal at the daily deadline.'}{visible&&<span>{total} picks</span>}</footer></article>
+ })}{!games.length&&<div className={s.empty}><h2>{data.games.length?'No '+filter.toLowerCase()+' games':'No games yet'}</h2><p>{data.games.length?'Choose another filter.':'The Sweatboard will fill in when the next slate is available.'}</p></div>}</section>
+ <aside className={s.poolPulse}><h2>The pool today</h2><div className={s.poolCount}><strong>{field}</strong><span>entries on this game day</span></div>{visible?<><div className={s.poolProgress}><span style={{width:(field?(summary?.safe??0)/field*100:0)+'%'}}/></div><p><b>{summary?.safe} are through.</b> {(summary?.winning??0)+(summary?.losing??0)+(summary?.notStarted??0)} await a game result.</p>{!!summary?.losing&&<div className={s.riskNote}><strong>{summary.losing} on the edge</strong><span>Their teams are behind or tied. A final win is needed to advance.</span></div>}{!!summary?.noPick&&<p>{summary.noPick} missed the deadline. Auto-assignment uses the day’s last game; entries with no unused team are eliminated.</p>}</>:<p>See where the field stands after picks lock.</p>}<Link className={s.textButton} href="/standings">View standings <Arrow/></Link></aside></div></>}
+ </div>
 }
