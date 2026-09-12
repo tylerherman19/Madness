@@ -3,7 +3,7 @@ import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { isDeliverable } from '@/lib/email'
 import { fetchDayScoreboard, eventCompetitors, seedOf } from '@/lib/espn'
 import { isSlateLocked } from '@/lib/deadline'
-import type { Game, Slate } from '@/types'
+import type { Game } from '@/types'
 
 export interface LiveGame {
   id: string
@@ -14,6 +14,7 @@ export interface LiveGame {
   state: 'pre' | 'in' | 'post'
   statusText: string  // e.g. "Q3 4:22", "Final", "7:30 PM ET"
   kickoff: string
+  timeTbd?: boolean
   // NCAA tournament seeds, when the feed carries them.
   homeSeed?: number | null
   awaySeed?: number | null
@@ -48,7 +49,7 @@ const EMPTY: LiveScoresResponse = {
 // those show as a schedule card until ESPN takes over.
 function gameFromSchedule(g: Game, now: Date, teams: Record<string, { logo: string | null }>): LiveGame {
   const kickoff = new Date(g.tip_time)
-  const started = !isNaN(kickoff.getTime()) && now >= kickoff
+  const started = !g.time_tbd && !isNaN(kickoff.getTime()) && now >= kickoff
   const state: 'pre' | 'in' | 'post' =
     g.result !== 'pending' ? 'post' : started ? 'in' : 'pre'
   const scoresKnown = g.home_score != null && g.away_score != null
@@ -71,6 +72,7 @@ function gameFromSchedule(g: Game, now: Date, teams: Record<string, { logo: stri
     state,
     statusText,
     kickoff: g.tip_time,
+    timeTbd: g.time_tbd,
     scoresKnown,
     homeLogo: teams[g.home_team]?.logo ?? null,
     awayLogo: teams[g.away_team]?.logo ?? null,
@@ -141,6 +143,7 @@ export async function GET() {
         state: status.type.state as 'pre' | 'in' | 'post',
         statusText: status.type.shortDetail ?? '',
         kickoff: event.date,
+        timeTbd: event.competitions[0].timeValid === false,
         homeSeed: seedOf(teams.home),
         awaySeed: seedOf(teams.away),
         homeLogo: teams.home.team.logo ?? teams.home.team.logos?.[0]?.href ?? null,

@@ -10,9 +10,7 @@ import {
   type PickPeriod,
 } from '@/lib/competition'
 import type { Slate, Game } from '@/types'
-import Link from 'next/link'
-import LogoutButton from '../components/LogoutButton'
-import Wordmark from '../components/Wordmark'
+import SiteHeader from '../components/SiteHeader'
 import TeamMark from '../components/TeamMark'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
 
@@ -128,16 +126,7 @@ export default async function HistoryPage() {
 
   return (
     <div className="site-shell min-h-screen flex flex-col">
-      <header className="site-header">
-        <div className="content-width site-header-inner max-w-4xl">
-          <Wordmark mode={mode} size={42} tone="dark" />
-          <div className="flex items-center gap-4">
-            <Link href="/pick" className="btn-primary px-4">Make a pick</Link>
-            <span className="hidden sm:inline text-sm font-semibold" style={{ color: 'var(--muted)' }}>{session.full_name}</span>
-            <LogoutButton />
-          </div>
-        </div>
-      </header>
+      <SiteHeader mode={mode} account={session.full_name} />
 
       <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-10">
         <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>Your season</p>

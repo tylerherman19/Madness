@@ -7,7 +7,6 @@ import {
   capabilitiesFor,
   copyFor,
   formatPeriodDate,
-  weekdayOf,
   type CompetitionMode,
   type PickPeriod,
 } from '@/lib/competition'
@@ -15,6 +14,7 @@ import Countdown from './components/Countdown'
 import LiveTicker from './components/LiveTicker'
 import SiteHeader from './components/SiteHeader'
 import TeamChip from './components/TeamChip'
+import GameCenter from './components/GameCenter'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
 import {
   BurnMap,
@@ -281,6 +281,7 @@ async function getDashboardData() {
       periodByNumber,
       slateIsToday,
       gameCount: slateGames.length,
+      slateGames,
       firstTip,
       slate: slate as Slate | null,
       standings,
@@ -314,18 +315,8 @@ export default async function DashboardPage() {
   // One read of the pool's format, threaded through the whole page. If the
   // dashboard query failed we still need a mode to render the header with.
   const mode: CompetitionMode = data?.mode ?? (await getPoolConfig()).competition_mode
-  const caps = capabilitiesFor(mode)
   const copy = copyFor(mode)
   const period = data?.currentPeriod ?? null
-
-  const { eyebrow, headline, subhead } = mastheadFor({
-    mode,
-    period,
-    slateIsToday: data?.slateIsToday ?? false,
-    seasonYear: data?.slate?.season_year ?? null,
-    gameCount: data?.gameCount ?? 0,
-    aliveCount: data?.aliveCount ?? 0,
-  })
 
   const rules = buildRules(mode, copy, data?.pool?.tiebreaker ?? 'seed-total')
 
@@ -362,57 +353,32 @@ export default async function DashboardPage() {
           <p className="mt-4 text-sm" style={{ color: 'var(--muted)' }}>The pool will appear here when the first game day is ready.</p>
         </main>
       ) : (
-        <main className="content-width pb-4">
-          {/* Masthead: the pick period and the deadline. Regular season leads
-              with the day, because the day is the unit of play; the tournament
-              leads with the round, because that is what everyone is talking
-              about. Same layout either way — the product should still read as
-              MADNESS. */}
-          <section className="game-hero px-5 py-7 sm:px-8 sm:py-9">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-7">
-              <div className="min-w-0">
-                <p className="text-sm font-bold" style={{ color: 'var(--orange)' }}>{eyebrow}</p>
-                <h1 className="mt-1 font-display text-4xl sm:text-5xl leading-[0.95]" style={{ color: 'var(--ink)' }}>
-                  {headline}
-                </h1>
-                <div className="mt-3 flex items-center gap-3 flex-wrap">
-                  <span className="text-sm font-semibold" style={{ color: 'var(--muted)' }}>{subhead}</span>
-                  {!caps.showTournamentRounds && data.slate && (
-                    <span className="hidden sm:block h-1.5 w-40 rounded-full overflow-hidden" style={{ background: 'var(--surface-sunken)' }}>
-                      <span className="block h-full rounded-full" style={{ background: 'var(--orange)', width: `${Math.min(100, ((data.slate?.slate_number ?? 0) / TOTAL_SLATES_ESTIMATE) * 100)}%` }} />
-                    </span>
-                  )}
-                </div>
-              </div>
-              {data.nextDeadline && (
-                <div className="deadline-board shrink-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="pill-dot" style={{ background: 'var(--orange)' }} />
-                    <p className="text-xs font-bold" style={{ color: 'var(--muted)' }}>Pick deadline</p>
-                  </div>
-                  <p className="font-bold text-base" style={{ color: 'var(--ink)' }}>{data.nextDeadlineFormatted}</p>
-                  <Countdown deadline={data.nextDeadline} />
-                  <Link href="/pick" className="btn-primary mt-4 w-full px-5">Make your pick</Link>
-                </div>
-              )}
+        <main className="content-width dashboard-content pb-4">
+          <div className="workspace-heading">
+            <div><p className="workspace-context">College basketball / {data.slate?.season_year ?? 'Season'}</p><h1>Game center<span className="season-tag">Survivor</span></h1><p>{period ? formatPeriodDate(period.date) : 'Your pool, every game day'}</p></div>
+            <Link href="/schedule" className="btn-secondary px-4">Full schedule</Link>
+          </div>
+          <div className="game-center-layout">
+            <div className="game-center-main">
+              <GameCenter games={data.slateGames} brands={data.teamBrands}/>
             </div>
-          </section>
-
-          {/* Scoreboard: the four numbers, set as a ruled strip rather than four boxes */}
-          <div className="score-rail grid grid-cols-2 sm:grid-cols-5 overflow-hidden">
-            <Figure value={data.aliveCount} label="Still Alive" accent="var(--green)" />
-            <Figure value={data.eliminatedCount} label="Eliminated" accent="var(--red)" />
-            <Figure value={data.gameCount} label={caps.showTournamentRounds ? 'Tournament Games' : "Today's Games"} accent="var(--ink)" />
-            <Figure value={`$${data.potSize}`} label="Pot Size" accent="var(--ink)" />
-            <Figure
-              value={data.aliveCount > 0 && data.aliveCount < 20 ? `$${data.payoutPerSurvivor}` : `${data.picksMade}/${data.aliveCount}`}
-              label={
-                data.aliveCount > 0 && data.aliveCount < 20
-                  ? data.aliveCount === 1 ? 'Winner Takes' : 'Split Estimate'
-                  : 'Picks In'
-              }
-              accent="var(--ink)"
-            />
+            <aside className="pool-sidebar" aria-label="Your pool">
+              <section className="pick-panel">
+                <div className="pick-panel-title"><span className="basketball-glyph" aria-hidden="true">◉</span><span>Your next move</span></div>
+                <h2>{data.nextDeadline ? 'One team. Your call.' : 'Follow your pick.'}</h2>
+                <p>{data.nextDeadline ? 'Choose a winner before the first tip. Every team can be used once.' : 'See how your team and the rest of the pool are doing.'}</p>
+                {data.nextDeadline && <div className="pick-lock"><span>Picks close</span><strong>{data.nextDeadlineFormatted}</strong><Countdown deadline={data.nextDeadline}/></div>}
+                <Link href="/pick" className="btn-primary w-full">{data.nextDeadline ? 'Choose your team' : 'View my pick'}</Link>
+                <Link href="/history" className="pick-history-link">Your pick history</Link>
+              </section>
+              <section className="pool-summary">
+                <h2>Inside the pool</h2><span className="pool-season">Game day {data.slate?.slate_number ?? '—'}</span>
+                <div className="pool-prize"><span>Prize pool</span><strong>${data.potSize.toLocaleString()}</strong></div>
+                <dl><div><dt>Still in</dt><dd className="survivor-number">{data.aliveCount}</dd></div><div><dt>Eliminated</dt><dd>{data.eliminatedCount}</dd></div><div><dt>Picks submitted</dt><dd>{data.picksMade}<span> / {data.aliveCount}</span></dd></div></dl>
+                <Link href="#standings">View standings</Link>
+              </section>
+              <a className="rules-shortcut" href="#rules"><strong>New to survivor?</strong><span>Read the rules before your first pick.</span></a>
+            </aside>
           </div>
 
           {insights?.exposure && (
@@ -444,6 +410,7 @@ export default async function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {data.totalPlayers === 0 && <tr><td colSpan={3} className="p-8 text-center"><strong className="block mb-2">The field is open</strong><p className="text-sm text-[var(--muted)] mb-4">Players will appear here when they join the pool.</p>{!signupsClosed && <Link href="/signup" className="btn-primary px-5">Join the pool</Link>}</td></tr>}
                   {aliveRows.length > 0 && (
                     <tr>
                       <td colSpan={3} className="pt-4 pb-1.5 pl-4">
@@ -630,15 +597,6 @@ function Section({ id, title, children, className }: { id?: string; title: strin
   )
 }
 
-function Figure({ value, label, accent }: { value: string | number; label: string; accent: string }) {
-  return (
-    <div className="px-4 py-4 sm:px-5 border-t sm:border-t-0 sm:border-l first:border-t-0 sm:first:border-l-0 [&:nth-child(2)]:border-t-0 sm:[&:nth-child(2)]:border-l" style={{ borderColor: 'var(--line)' }}>
-      <p className="figure-num text-4xl sm:text-5xl" style={{ color: accent }}>{value}</p>
-      <p className="mt-2 text-xs font-bold" style={{ color: 'var(--muted)' }}>{label}</p>
-    </div>
-  )
-}
-
 function Rule({ n, text }: { n: string; text: string }) {
   return (
     <div className="flex gap-3">
@@ -648,72 +606,6 @@ function Rule({ n, text }: { n: string; text: string }) {
   )
 }
 
-
-// ---------------------------------------------------------------- masthead
-
-interface Masthead {
-  eyebrow: string
-  headline: string
-  subhead: string
-}
-
-// The one place the two competitions diverge on the front page.
-//
-// Regular season: the day is the story. "TODAY / Saturday's Survivor Slate".
-// March Madness: the round is the story, with the field size behind it.
-// "FIRST ROUND / Thursday, March 18 / 32 games · 46 survivors".
-function mastheadFor({
-  mode,
-  period,
-  slateIsToday,
-  seasonYear,
-  gameCount,
-  aliveCount,
-}: {
-  mode: CompetitionMode
-  period: PickPeriod | null
-  slateIsToday: boolean
-  seasonYear: number | null
-  gameCount: number
-  aliveCount: number
-}): Masthead {
-  const caps = capabilitiesFor(mode)
-
-  if (!period) {
-    return {
-      eyebrow: seasonYear ? `${seasonYear} Season` : 'MADNESS',
-      headline: caps.showTournamentRounds ? 'BRACKET NOT SET' : 'NO ACTIVE GAME DAY',
-      subhead: caps.showTournamentRounds
-        ? 'Rounds appear once the tournament field is synced'
-        : 'The next slate appears once games are scheduled',
-    }
-  }
-
-  if (caps.showTournamentRounds && period.roundLabel) {
-    // "32 games · 46 survivors" — the tournament header the product is built
-    // around, driven by real data rather than a fixed bracket shape.
-    const counts = [
-      gameCount > 0 ? `${gameCount} game${gameCount === 1 ? '' : 's'}` : null,
-      `${aliveCount} survivor${aliveCount === 1 ? '' : 's'}`,
-    ]
-      .filter(Boolean)
-      .join(' · ')
-    return {
-      eyebrow: seasonYear ? `${seasonYear} Tournament` : 'Tournament',
-      headline: period.roundLabel.toUpperCase(),
-      subhead: `${formatPeriodDate(period.date)} · ${counts}`,
-    }
-  }
-
-  const weekday = weekdayOf(period.date)
-  return {
-    eyebrow: slateIsToday ? 'Today' : `${copyFor(mode).periodNoun} ${period.number}`,
-    headline: slateIsToday
-      ? "TODAY'S SURVIVOR SLATE"
-      : `${weekday.toUpperCase()}'S SURVIVOR SLATE`,
-    subhead: formatPeriodDate(period.date),
-  }
-}
 
 // House rules, phrased for the competition actually being played and for the
 // tiebreak the administrator configured. A regular-season pool never mentions

@@ -12,8 +12,7 @@ import {
 } from '@/lib/competition'
 import type { Game } from '@/types'
 import PickForm, { type GameRow } from './PickForm'
-import LogoutButton from '../components/LogoutButton'
-import Wordmark from '../components/Wordmark'
+import SiteHeader from '../components/SiteHeader'
 import { slateDeadline } from '@/lib/deadline'
 import { fetchDayScoreboard } from '@/lib/espn'
 import Link from 'next/link'
@@ -259,7 +258,6 @@ function Shell({
   children,
   session,
   mode,
-  periodLabel,
 }: {
   children: React.ReactNode
   session: { full_name: string }
@@ -268,21 +266,7 @@ function Shell({
 }) {
   return (
     <div className="site-shell flex min-h-screen flex-col">
-      <header className="site-header">
-        <div className="content-width site-header-inner max-w-4xl">
-          <div className="min-w-0">
-            <Wordmark mode={mode} size={42} tone="dark" />
-            {periodLabel && (
-              <p className="mt-1 truncate text-[10px] font-semibold" style={{ color: 'var(--muted)' }}>{periodLabel}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-4 shrink-0">
-            <Link href="/history" className="nav-link">My picks</Link>
-            <span className="hidden sm:inline text-sm font-semibold" style={{ color: 'var(--muted)' }}>{session.full_name}</span>
-            <LogoutButton />
-          </div>
-        </div>
-      </header>
+      <SiteHeader mode={mode} account={session.full_name} />
       <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-8 sm:py-10">
         {children}
       </main>

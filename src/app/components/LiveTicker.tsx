@@ -92,7 +92,7 @@ function GameCard({ game }: { game: LiveGame }) {
       {/* Pre-game: show kickoff time */}
       {isPre && (
         <div className="mt-1" style={{ fontSize: 9, color: 'var(--muted)' }}>
-          {new Date(game.kickoff).toLocaleString('en-US', {
+          {game.timeTbd ? 'Time TBD' : new Date(game.kickoff).toLocaleString('en-US', {
             timeZone: 'America/Chicago',
             weekday: 'short',
             hour: 'numeric',
@@ -120,6 +120,7 @@ export default function LiveTicker({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const trackRef = useRef<HTMLDivElement>(null)
   const [duration, setDuration] = useState(30)
+  const [paused, setPaused] = useState(false)
 
   const hasLive = data?.hasLiveGames ?? false
 
@@ -166,7 +167,7 @@ export default function LiveTicker({
   const liveCount = data.games.filter((g) => g.state === 'in').length
 
   return (
-    <div style={{ borderBottom: '1px solid var(--border)', background: 'rgba(251,253,249,.92)' }}>
+    <section aria-label="Score scroll" className="live-score-scroll" style={{ borderBottom: '1px solid var(--border)', background: '#fff' }}>
       <div className="content-width py-2">
         {/* Header row */}
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2">
@@ -186,6 +187,7 @@ export default function LiveTicker({
               </span>
             )}
           </div>
+          <button type="button" onClick={() => setPaused(!paused)} aria-label={paused ? 'Resume score scroll' : 'Pause score scroll'} className="text-[11px] font-semibold px-2 py-1 border border-[var(--line)] rounded">{paused ? 'Resume' : 'Pause'}</button>
           {lastUpdated && (
             <span className="hidden sm:inline whitespace-nowrap" style={{ fontSize: 10, color: 'var(--muted)' }}>
               Updated {lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short', timeZone: 'America/Chicago' })}
@@ -198,7 +200,7 @@ export default function LiveTicker({
           <div
             ref={trackRef}
             className="flex gap-2 pb-1 ticker-track"
-            style={{ width: 'max-content', animationDuration: `${duration}s` }}
+            style={{ width: 'max-content', animationDuration: `${duration}s`, animationPlayState: paused ? 'paused' : undefined }}
           >
             {[...data.games, ...data.games].map((game, i) => (
               <GameCard key={`${game.id}-${i}`} game={game} />
@@ -206,6 +208,6 @@ export default function LiveTicker({
           </div>
         </div>
       </div>
-    </div>
+    </section>
   )
 }
