@@ -359,6 +359,7 @@ export default async function DashboardPage() {
             <Link href="/schedule" className="btn-secondary px-4">Full schedule</Link>
           </div>
           <div className="game-center-layout">
+            <dl className="mobile-pool-glance"><div><dt>Still in</dt><dd>{data.aliveCount}</dd></div><div><dt>Prize pool</dt><dd>${data.potSize.toLocaleString()}</dd></div><div><dt>Picks in</dt><dd>{data.picksMade} / {data.aliveCount}</dd></div></dl>
             <div className="game-center-main">
               <GameCenter games={data.slateGames} brands={data.teamBrands}/>
             </div>

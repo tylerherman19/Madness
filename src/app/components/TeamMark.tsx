@@ -25,7 +25,7 @@ export default function TeamMark({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={brand.logo} alt="" width={size} height={size} loading="lazy" />
         ) : (
-          <span aria-hidden="true">{brand.abbreviation.slice(0, 3)}</span>
+          <span aria-hidden="true" style={{ color: brand.primary }}>{brand.abbreviation.slice(0, 3)}</span>
         )}
       </span>
       <span className="team-mark-copy">

@@ -17,7 +17,7 @@ export default function AuthShell({
     <div className="site-shell min-h-screen">
       <SiteHeader />
       <main className="content-width py-8 sm:py-12">
-        <div className="mx-auto grid max-w-4xl overflow-hidden border border-[var(--line)] border-t-4 border-t-[var(--orange)] bg-[var(--paper-bright)] shadow-[var(--shadow-md)] lg:grid-cols-[1.15fr_.85fr]">
+        <div className="mx-auto grid max-w-4xl overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-bright)] lg:grid-cols-[1.15fr_.85fr]">
         <section className="flex items-center p-7 sm:p-10 lg:p-14">
           <div className="w-full max-w-md mx-auto">
             <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>{eyebrow}</p>

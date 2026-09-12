@@ -142,6 +142,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .season-tag { font-size: 10px; letter-spacing: 0; font-weight: 650; color: #3e568d; background: #e4eaf7; padding: 5px 8px; border-radius: 4px; }
 .game-center-layout { display: grid; grid-template-columns: minmax(0,1fr) 274px; gap: 24px; align-items: start; }
 .game-center-main { min-width: 0; }
+.mobile-pool-glance { display: none; }
 .board-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
 .board-filters { display: flex; gap: 3px; }
 .board-filters button { cursor: pointer; padding: 9px 11px; font-size: 12px; color: var(--muted); border-radius: 6px; font-weight: 650; }
@@ -208,5 +209,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 @media (min-width: 768px) and (max-width: 999px) { .app-navigation .navigation-icon { display: none; }.app-navigation .nav-link { font-size: 11px; padding: 0 6px; }.app-navigation .brand-tagline { display: none; } }
 @media (max-width: 1190px) and (min-width: 1000px) { .game-center-layout { grid-template-columns: minmax(0,1fr) 240px; gap: 17px; }.matchup-grid { grid-template-columns: 1fr; } }
 @media (max-width: 767px) {
+  .mobile-pool-glance { display: grid; width: 100%; grid-template-columns: repeat(3, 1fr); gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }.mobile-pool-glance dt { font-size: 10px; color: var(--muted); }.mobile-pool-glance dd { font-size: 17px; font-weight: 700; margin-top: 4px; }
   .game-center-layout { display: flex; flex-direction: column; gap: 20px; }.game-center-main { width: 100%; }.pool-sidebar { width: 100%; grid-template-columns: 1fr; }.workspace-heading { padding: 23px 0 20px; }.workspace-heading h1 { font-size: 28px; }.workspace-heading > a { display: none; }.matchup-grid { gap: 12px; grid-template-columns: 1fr; }.team-search { flex: 1; }.team-search input { width: 100%; }.board-toolbar { gap: 10px; }.board-filters { width: 100%; }.matchup-meta { padding-top: 14px; }.matchup-bottom a { min-height: 30px; }.pick-panel { padding: 20px; }.workspace-context { margin-bottom: 7px; }.matchup-board .board-note { line-height: 1.6; }
 }
