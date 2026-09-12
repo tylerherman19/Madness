@@ -211,7 +211,7 @@ export default async function PickPage() {
           <p className="font-display text-4xl" style={{ color: 'var(--red)' }}>ELIMINATED</p>
           <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>
             You can still follow along on the{' '}
-            <Link href="/" className="underline" style={{ color: 'var(--dark)' }}>standings page</Link>.
+            <Link href="/standings" className="underline" style={{ color: 'var(--dark)' }}>standings page</Link>.
           </p>
         </div>
       </Shell>

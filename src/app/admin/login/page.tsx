@@ -41,7 +41,7 @@ export default function AdminLoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--dark)' }}>
       <div className="w-full max-w-sm rounded-xl p-8" style={{ background: 'var(--dark-2)', boxShadow: 'var(--shadow-md)' }}>
         <h1 className="font-display text-5xl text-white mb-1">ADMIN</h1>
-        <p className="eyebrow mb-7" style={{ color: '#777' }}>NFL Survivor Pool</p>
+        <p className="eyebrow mb-7" style={{ color: '#777' }}>Madness · College basketball survivor</p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="eyebrow block mb-2 text-white">Password</label>
@@ -65,7 +65,7 @@ export default function AdminLoginPage() {
           </button>
         </form>
         <Link
-          href="/#standings"
+          href="/standings"
           className="mt-6 inline-block eyebrow transition-colors hover:text-white"
           style={{ color: '#777' }}
         >
