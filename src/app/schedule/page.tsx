@@ -13,6 +13,7 @@ import LiveTicker from '@/app/components/LiveTicker'
 import { Footer } from '@/app/components/Sports'
 import s from '@/app/components/sports.module.css'
 import { fetchDayScoreboard, eventCompetitors, toEspnDate, isTimeTbd, parseRound } from '@/lib/espn'
+import { fetchNcaabOdds, matchOdds, type GameOdds } from '@/lib/odds'
 
 export const revalidate = 3600
 
@@ -34,6 +35,7 @@ export interface ScheduleGame {
   round: TournamentRound | null
   region: string | null
   tv: string | null
+  odds?: GameOdds | null
 }
 
 export interface ScheduleDay {
@@ -197,6 +199,7 @@ function byTip(a: ScheduleGame, b: ScheduleGame): number {
 
 export default async function SchedulePage(){
  const pool=await getPoolConfig()
- const [{days,season},teamBrands]=await Promise.all([getScheduleData(pool.competition_mode),getTeamBrandDirectory()])
- return <div className={s.root}><SiteHeader mode={pool.competition_mode}/><LiveTicker/><main className={s.main}><ScheduleBoard days={days} season={season - 1} brands={teamBrands}/></main><Footer/></div>
+ const [{days,season},teamBrands,odds]=await Promise.all([getScheduleData(pool.competition_mode),getTeamBrandDirectory(),fetchNcaabOdds()])
+ const enriched=days.map(day=>({...day,games:day.games.map(game=>({...game,odds:matchOdds(odds,[teamBrands[game.homeAbbr]?.name??'',teamBrands[game.homeAbbr]?.shortName??'',game.homeAbbr],[teamBrands[game.awayAbbr]?.name??'',teamBrands[game.awayAbbr]?.shortName??'',game.awayAbbr],game.kickoff)}))}))
+ return <div className={s.root}><SiteHeader mode={pool.competition_mode}/><LiveTicker/><main className={s.main}><ScheduleBoard days={enriched} season={season - 1} brands={teamBrands}/></main><Footer/></div>
 }
