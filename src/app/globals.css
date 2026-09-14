@@ -234,3 +234,11 @@ body { font-family:var(--concept-text),sans-serif; }
 .sweat-pickers p { padding:8px 0; line-height:1.9; }
 .site-shell footer:not([class]) { background:white; }
 @media(max-width:760px) { .site-shell { padding-bottom:90px; }.content-width { padding-inline:18px; } }
+/* Pick & Pray concept refresh */
+:root{--paper:#f4f7fb;--paper-bright:#fff;--ink:#0d1c34;--ink-2:#26354c;--muted:#718096;--line:#dfe6ef;--court:#f7f9fc;--green:#16834f;--green-tint:#e9f8ee;--red:#db2f3d;--red-tint:#fff0f1;--orange:#2169e8;--orange-dark:#1554c0;--blue:#2169e8;--navy:#0c1c34;--radius:7px;--radius-sm:5px;--radius-lg:10px;--shadow-sm:0 1px 2px rgba(13,28,52,.05);--shadow-md:0 16px 42px rgba(13,28,52,.1)}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-geist),Arial,sans-serif}.site-shell{background:var(--paper)}
+.card{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-sm)}
+.btn-primary{background:var(--navy)!important;border-radius:6px!important}.btn-secondary{border-radius:6px!important;background:#fff!important}
+.pill{border-radius:999px!important}.pill-alive{background:var(--green-tint)!important;color:var(--green)!important}.pill-out{background:var(--red-tint)!important;color:var(--red)!important}
+.dashboard-content .workspace-heading{padding-top:32px}.dashboard-content h1,.dashboard-content h2{font-family:var(--font-geist);letter-spacing:-.03em}.dashboard-content .story-rule{border-color:var(--line)}
+@media(max-width:640px){.content-width{width:calc(100% - 28px)}.dashboard-content{padding-bottom:80px}.dashboard-content .workspace-heading{padding-top:24px}.dashboard-content h1{font-size:32px}.card{border-radius:8px}}
