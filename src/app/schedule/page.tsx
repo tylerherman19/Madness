@@ -198,5 +198,5 @@ function byTip(a: ScheduleGame, b: ScheduleGame): number {
 export default async function SchedulePage(){
  const pool=await getPoolConfig()
  const [{days,season},teamBrands]=await Promise.all([getScheduleData(pool.competition_mode),getTeamBrandDirectory()])
- return <div className={s.root}><SiteHeader mode={pool.competition_mode}/><LiveTicker/><main className={s.main}><ScheduleBoard days={days} season={season} brands={teamBrands}/></main><Footer/></div>
+ return <div className={s.root}><SiteHeader mode={pool.competition_mode}/><LiveTicker/><main className={s.main}><ScheduleBoard days={days} season={season - 1} brands={teamBrands}/></main><Footer/></div>
 }
