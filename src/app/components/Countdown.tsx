@@ -1,26 +1,3 @@
 'use client'
-
-import { useEffect, useState } from 'react'
-
-export default function Countdown({ deadline }: { deadline: string }) {
-  const [timeLeft, setTimeLeft] = useState('')
-
-  useEffect(() => {
-    function update() {
-      const diff = new Date(deadline).getTime() - Date.now()
-      if (diff <= 0) { setTimeLeft('Deadline passed'); return }
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-      if (days > 0) setTimeLeft(`${days} day${days !== 1 ? 's' : ''}, ${hours} hour${hours !== 1 ? 's' : ''} remaining`)
-      else if (hours > 0) setTimeLeft(`${hours} hr ${minutes} min remaining`)
-      else setTimeLeft(`${minutes}m ${seconds}s remaining`)
-    }
-    update()
-    const id = setInterval(update, 1000)
-    return () => clearInterval(id)
-  }, [deadline])
-
-  return <p className="italic text-sm" style={{ color: 'var(--muted)' }}>{timeLeft}</p>
-}
+import { useEffect,useState } from 'react'
+export default function Countdown({deadline}:{deadline:string}){const [v,setV]=useState('00:00:00');useEffect(()=>{const f=()=>{const d=Math.max(0,new Date(deadline).getTime()-Date.now());const h=Math.floor(d/36e5);const m=Math.floor(d%36e5/6e4);const s=Math.floor(d%6e4/1e3);setV([h,m,s].map(n=>String(n).padStart(2,'0')).join(':'))};f();const id=setInterval(f,1000);return()=>clearInterval(id)},[deadline]);return <b>{v}</b>}
