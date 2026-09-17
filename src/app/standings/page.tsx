@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import type { StandingRow } from '@/types'
 
 import { getPoolConfig } from '@/lib/pool'
 import {
@@ -10,17 +9,14 @@ import {
 } from '@/lib/competition'
 import LiveTicker from '../components/LiveTicker'
 import SiteHeader from '../components/SiteHeader'
+import StandingsTable from '../components/StandingsTable'
 import TeamChip from '../components/TeamChip'
 import { Footer } from '../components/Sports'
 
 import {
   BurnMap,
-  ChalkFigure,
   ExposureFigure,
-  LeverageTable,
-  OverlapFigure,
   Story,
-  TrajectoryFigure,
 } from '../components/insights'
 
 import { getDashboardData } from '@/lib/dashboard'
@@ -32,6 +28,10 @@ export default async function DashboardPage() {
 
   const aliveRows = data?.standings.filter((r) => r.status === 'alive') ?? []
   const elimRows = data?.standings.filter((r) => r.status === 'eliminated') ?? []
+  const clientAliveRows = aliveRows.map((row) => ({
+    ...row,
+    current_pick: row.pick_revealed ? row.current_pick : null,
+  }))
   const insights = data?.insights
 
   // One read of the pool's format, threaded through the whole page. If the
@@ -41,11 +41,6 @@ export default async function DashboardPage() {
   const period = data?.currentPeriod ?? null
 
   const rules = buildRules(mode, copy, data?.pool?.tiebreaker ?? 'seed-total')
-
-  // The editorial figures label their x-axis with pick periods, not week
-  // numbers — the same vocabulary the rest of the page uses.
-  const periodLabels: Record<number, string> = {}
-  for (const p of data?.periods ?? []) periodLabels[p.number] = p.shortLabel
 
   return (
     <div className="site-shell">
@@ -83,132 +78,32 @@ export default async function DashboardPage() {
             </section>
           )}
 
-          {insights?.leverage && (
-            <Story
-              kicker="Leverage"
-              lede={insights.leverage.headline}
-              deck={insights.leverage.deck}
-              method="Best case is the field that would remain if this pick wins and every other public pick loses. Dollar figures split the current pot across that field."
-            >
-              <LeverageTable data={insights.leverage} />
-            </Story>
-          )}
-
           {/* ---- Standings ---- */}
           <Section id="standings" title="Standings" className="pt-10">
-            <div className="card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ background: 'var(--surface-sunken)' }}>
-                    <th className="py-2.5 pl-4 text-left eyebrow w-full">Player</th>
-                    <th className="py-2.5 px-4 text-left eyebrow hidden sm:table-cell whitespace-nowrap">Status</th>
-                    <th className="py-2.5 pl-4 pr-4 text-left eyebrow whitespace-nowrap">{data.currentPeriod ? `${data.currentPeriod.shortLabel} Pick` : 'Pick'}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.totalPlayers === 0 && <tr><td colSpan={3} className="p-8 text-center"><strong className="block mb-2">The field is open</strong><p className="text-sm text-[var(--muted)] mb-4">Players will appear here when they join the pool.</p>{!signupsClosed && <Link href="/signup" className="btn-primary px-5">Join the pool</Link>}</td></tr>}
-                  {aliveRows.length > 0 && (
-                    <tr>
-                      <td colSpan={3} className="pt-4 pb-1.5 pl-4">
-                        <span className="pill pill-alive"><span className="pill-dot" />{aliveRows.length} Still Alive</span>
-                      </td>
-                    </tr>
-                  )}
-                  {aliveRows.map((row) => (
-                    <tr key={row.player_id} className="row-hover border-t" style={{ borderColor: 'var(--border)' }}>
-                      <td className="py-3 pl-4 font-bold" style={{ color: 'var(--dark)' }}>{row.full_name}</td>
-                      <td className="py-3 px-4 hidden sm:table-cell">
-                        <span className="pill pill-alive"><span className="pill-dot" />Alive</span>
-                      </td>
-                      <td className="py-3 pl-4 pr-4">
-                        {row.current_pick ? (
-                          row.pick_revealed ? (
-                            <TeamChip team={row.current_pick} size={28} directory={data.teamBrands} />
-                          ) : (
-                            <span className="pill pill-alive"><span className="pill-dot" />Pick In</span>
-                          )
-                        ) : (
-                          <span className="text-xs italic" style={{ color: 'var(--red)' }}>no pick yet</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-
-                  {elimRows.length > 0 && (
-                    <tr>
-                      <td colSpan={3} className="pt-6 pb-1.5 pl-4">
-                        <span className="pill pill-out"><span className="pill-dot" />{elimRows.length} Eliminated</span>
-                      </td>
-                    </tr>
-                  )}
-                  {elimRows.map((row) => {
-                    const ew = (row as StandingRow & { elimination_slate?: number | null }).elimination_slate
-                    return (
-                      <tr key={row.player_id} className="border-t" style={{ borderColor: 'var(--border)', opacity: 0.65 }}>
-                        <td className="py-2.5 pl-4 text-sm" style={{ color: 'var(--muted)', textDecoration: 'line-through' }}>{row.full_name}</td>
-                        <td className="py-2.5 px-4 hidden sm:table-cell">
-                          <span className="pill pill-out">Out{ew ? ` · ${data.periodByNumber[ew]?.shortLabel ?? `#${ew}`}` : ''}</span>
-                        </td>
-                        <td className="py-2.5 pl-4 pr-4 text-xs" style={{ color: 'var(--muted)' }}>
-                          {row.elimination_reason ?? '—'}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <StandingsTable
+              aliveRows={clientAliveRows}
+              elimRows={elimRows}
+              periodLabel={data.currentPeriod?.shortLabel ?? null}
+              periodByNumber={data.periodByNumber}
+              teamBrands={data.teamBrands}
+              signupsClosed={signupsClosed}
+            />
           </Section>
 
           {/* ---- The season so far ---- */}
-          {(insights?.trajectory || insights?.chalk || insights?.scarcity || insights?.overlap) && (
+          {insights?.scarcity && (
             <div className="pt-12">
               <hr className="story-rule" />
               <p className="eyebrow mt-4">The season so far</p>
             </div>
           )}
 
-          {insights?.trajectory && (
-            <Story
-              kicker="Attrition"
-              lede={insights.trajectory.headline}
-              deck={insights.trajectory.deck}
-              method="The dashed projection compounds the season's average weekly survival rate forward. It is an extrapolation of this pool's own results, not a forecast of any game."
-            >
-              <TrajectoryFigure data={insights.trajectory} periodLabels={periodLabels} />
-            </Story>
-          )}
-
-          {insights?.chalk && (
-            <Story
-              kicker="The crowd"
-              lede={insights.chalk.headline}
-              deck={insights.chalk.deck}
-              method="The crowd pick is the most-selected team in a completed slate, across every entry that was still alive to make one."
-            >
-              <ChalkFigure data={insights.chalk} periodLabels={periodLabels} />
-            </Story>
-          )}
-
           {insights?.scarcity && (
             <Story
               kicker="What's left on the board"
-              lede={insights.scarcity.headline}
-              deck={insights.scarcity.deck}
               method="Counts cover surviving entries only. A team is spent for a player the moment their pick on it locks — you can't pick the same team twice all season."
             >
               <BurnMap data={insights.scarcity} />
-            </Story>
-          )}
-
-          {insights?.overlap && (
-            <Story
-              kicker="Divergence"
-              lede={insights.overlap.headline}
-              deck={insights.overlap.deck}
-              method="Overlap is the share of two survivors' unused teams that is common to both. Boards that overlap heavily tend to live and die together in later slates."
-            >
-              <OverlapFigure data={insights.overlap} />
             </Story>
           )}
 

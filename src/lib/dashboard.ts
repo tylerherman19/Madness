@@ -4,7 +4,6 @@ import { computeInsights } from '@/lib/insights'
 import { getPoolConfig } from '@/lib/pool'
 import { buildPickPeriods, type CompetitionMode, type PickPeriod } from '@/lib/competition'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
-const TOTAL_SLATES_ESTIMATE = 120
 
 export async function getDashboardData() {
   try {
@@ -231,15 +230,10 @@ export async function getDashboardData() {
     // the current slate.
     const insights = computeInsights({
       players,
-      slates: seasonWeeks
-        .slice()
-        .sort((a: { slate_number: number }, b: { slate_number: number }) => a.slate_number - b.slate_number),
       picks: seasonPicks,
-      games: allGames || [],
       currentSlate: slate,
       revealedCurrentPicks: revealedPicks,
       potSize,
-      totalWeeks: TOTAL_SLATES_ESTIMATE,
       teamUniverse,
     })
 

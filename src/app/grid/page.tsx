@@ -2,7 +2,6 @@ import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline, isPickRevealed } from '@/lib/deadline'
 import { getPoolConfig } from '@/lib/pool'
 import { buildPickPeriods, capabilitiesFor, type PickPeriod } from '@/lib/competition'
-import { getTeamAbbrs } from '@/lib/teams'
 import type { Game } from '@/types'
 import SiteHeader from '@/app/components/SiteHeader'
 import { Footer } from '@/app/components/Sports'
@@ -19,24 +18,21 @@ export default async function GridPage() {
   let players: { id: string; full_name: string; status: string; elimination_slate: number | null }[] = []
   let allPicks: { player_id: string; slate_id: string; team: string }[] = []
   let allGames: { slate_id: string; home_team: string; away_team: string; result: string; tip_time: string; round_label: string | null }[] = []
-  let teamUniverse = 0
   let pool = await getPoolConfig()
   try {
     const supabase = await getDb()
-    const [weeksRes, playersRes, picksRes, gamesRes, teamAbbrs] = await Promise.all([
+    const [weeksRes, playersRes, picksRes, gamesRes] = await Promise.all([
       supabase.from('slates').select('id, slate_number, slate_date, season_year, locks_at').order('slate_number'),
       supabase.from('players').select('id, full_name, status, elimination_slate').not('email', 'like', '%@nflsurvivor.internal').order('full_name'),
       supabase.from('picks').select('player_id, slate_id, team'),
       // tip_time is what every deadline/reveal calculation below keys
       // off — leaving it out of this select silently pins every pick as hidden.
       supabase.from('games').select('slate_id, home_team, away_team, result, tip_time, round_label'),
-      getTeamAbbrs(supabase),
     ])
     slates = weeksRes.data ?? []
     players = playersRes.data ?? []
     allPicks = picksRes.data ?? []
     allGames = gamesRes.data ?? []
-    teamUniverse = teamAbbrs.length
     pool = await getPoolConfig(supabase)
   } catch {
     // fall through to empty state
@@ -155,11 +151,18 @@ export default async function GridPage() {
       <SiteHeader mode={mode} />
 
       <main className="content-width py-9 sm:py-12">
-        <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>The full pool at a glance</p>
-        <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--dark)' }}>Pick grid</h1>
-        <p className="mt-2 mb-6 text-sm" style={{ color: 'var(--muted)' }}>
-          {caps.showTournamentRounds ? 'Every round' : 'Every game day'} · green won · red lost · ? hidden until it locks
-        </p>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>The full pool at a glance</p>
+            <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--dark)' }}>Pick grid</h1>
+            <p className="mt-2 text-sm" style={{ color: 'var(--muted)' }}>
+              {caps.showTournamentRounds ? 'Every round' : 'Every game day'} · green won · red lost · ? hidden until it locks
+            </p>
+          </div>
+          <a href="/api/grid/export" className="btn-primary shrink-0 px-4 py-2 text-center text-sm font-bold">
+            Export to Excel
+          </a>
+        </div>
 
         {slates.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--muted)' }}>
@@ -175,12 +178,6 @@ export default async function GridPage() {
                     style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', minWidth: 140, position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 1 }}
                   >
                     Player
-                  </th>
-                  <th
-                    className="py-2 px-2 text-center"
-                    style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', minWidth: 44 }}
-                  >
-                    Left
                   </th>
                   {slates.map((w) => (
                     <th
@@ -212,9 +209,6 @@ export default async function GridPage() {
                         />
                         <span className="font-medium" style={{ color: 'var(--dark)', whiteSpace: 'nowrap' }}>{player.full_name}</span>
                       </div>
-                    </td>
-                    <td className="py-2 px-2 text-center font-mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
-                      {teamUniverse > 0 ? teamUniverse - player.weeksSurvived : '—'}
                     </td>
                     {slates.map((w) => {
                       const team = pickMap[player.id]?.[w.id]

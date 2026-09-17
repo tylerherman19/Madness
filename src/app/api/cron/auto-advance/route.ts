@@ -10,10 +10,12 @@ import type { Game } from '@/types'
 // basketball has plenty of dark days mid-week, so advancing cannot just add
 // one to a slate number the way the NFL version incremented a week.
 const MAX_LOOKAHEAD_DAYS = 10
+const ADVANCE_HOUR_CENTRAL = 6
 
-// Vercel Cron (vercel.json) — fires daily. It never advances on the clock
-// alone: the active slate's last tip has to have happened first, because the
-// admin can sync a slate active days before it is played.
+// Vercel Cron fires at both possible UTC equivalents of 6:00 AM Central. The
+// guard below accepts only the run that is actually 6:00 AM after DST is
+// applied. It never advances on the clock alone: the active slate's last tip
+// also has to have happened first.
 //
 // Advancing means finding the next calendar day that has games and making it
 // active, skipping dark days.
@@ -21,12 +23,16 @@ export async function GET(req: NextRequest) {
   const unauthorized = await requireCronOrAdmin(req)
   if (unauthorized) return unauthorized
 
-  // The NFL version fired twice a day (17:00 and 18:00 UTC) so that one run
-  // always landed on noon Central through the DST switch, and guarded itself
-  // to the noon run because advancing is not idempotent. There is a single
-  // daily run now, so that guard is gone — keeping it would have meant
-  // advancing never happened at all, since 10:00 UTC is never noon Central.
-  // Safety comes from the last-tip check below instead.
+  if (isCronRequest(req)) {
+    const centralHour = Number(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).format(new Date()))
+    if (centralHour !== ADVANCE_HOUR_CENTRAL) {
+      return NextResponse.json({ ok: true, message: 'Outside the 6:00 AM Central advance window' })
+    }
+  }
 
   try {
     const supabase = await getDb()

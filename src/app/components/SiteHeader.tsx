@@ -35,6 +35,15 @@ function NavIcon({ path }: { path: string }) {
   )
 }
 
+function ProfileGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <circle cx="12" cy="8" r="3.25" />
+      <path d="M5.5 20c.6-4 2.8-6 6.5-6s5.9 2 6.5 6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export default function SiteHeader({
   signupsClosed = false,
   mode = 'regular-season',
@@ -46,7 +55,7 @@ export default function SiteHeader({
 }) {
   const path = usePathname()
   const [open, setOpen] = useState(false)
-  const initials = account ? account.split(' ').map((name) => name[0]).slice(0, 2).join('') : 'TH'
+  const initials = account ? account.split(' ').map((name) => name[0]).slice(0, 2).join('') : null
 
   const accountLinks = (
     <nav id="account-links" className="account-links" aria-label="Your entry">
@@ -84,7 +93,7 @@ export default function SiteHeader({
           <div className={s.railFootnote}><span>Real games.</span><span>Real odds.</span><span>A bigger story.</span></div>
           <div className={`${s.accountMenu} account-menu`}>
             <button className={s.profile} aria-expanded={open} aria-controls="account-links" onClick={() => setOpen(!open)}>
-              <span className={s.avatar}>{initials}</span>
+              <span className={s.avatar}>{initials ?? <ProfileGlyph />}</span>
               <span>{account ?? 'My entry'}</span>
             </button>
             {open && accountLinks}
@@ -97,7 +106,7 @@ export default function SiteHeader({
           <span /><span /><span />
         </button>
         <Link className={s.mobileWordmark} href="/" aria-label="Madness overview"><BrandLockup /></Link>
-        <button className={s.mobileAvatar} aria-label="Open account menu" aria-expanded={open} onClick={() => setOpen(!open)}>{initials}</button>
+        <button className={s.mobileAvatar} aria-label="Open account menu" aria-expanded={open} onClick={() => setOpen(!open)}>{initials ?? <ProfileGlyph />}</button>
         {open && <div className={s.mobileAccountPanel}>{accountLinks}</div>}
       </header>
 

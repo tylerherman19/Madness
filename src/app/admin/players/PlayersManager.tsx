@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Player } from '@/types'
 import { teamColor } from '@/lib/teamColors'
@@ -36,6 +36,10 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkWorking, setBulkWorking] = useState(false)
   const [search, setSearch] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
+  const [newPlayer, setNewPlayer] = useState({ full_name: '', email: '' })
+  const [addError, setAddError] = useState('')
+  const [addingPlayer, setAddingPlayer] = useState(false)
 
   const query = search.trim().toLowerCase()
   const filtered = query
@@ -49,7 +53,8 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   function toggleSelect(id: string) {
     setSelected((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -226,16 +231,55 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
     }
   }
 
+  async function addPlayer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAddingPlayer(true)
+    setAddError('')
+    setMessage('')
+    try {
+      const res = await fetch('/api/admin/players', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newPlayer),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok) {
+        setMessage(`Added ${newPlayer.full_name.trim()}`)
+        setNewPlayer({ full_name: '', email: '' })
+        setShowAdd(false)
+        router.refresh()
+      } else if (data?.playerAdded) {
+        setMessage(data.error)
+        setNewPlayer({ full_name: '', email: '' })
+        setShowAdd(false)
+        router.refresh()
+      } else {
+        setAddError(data?.error || 'Failed to add player')
+      }
+    } finally {
+      setAddingPlayer(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
-      {/* Import section */}
+      {/* Add and import controls */}
       <div>
-        <button
-          onClick={() => setShowImport(!showImport)}
-          className="btn-primary text-sm font-semibold px-4 py-2"
-        >
-          Import Players from CSV
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => { setShowAdd(true); setAddError('') }}
+            className="btn-primary text-sm font-semibold px-4 py-2"
+          >
+            Add Player
+          </button>
+          <button
+            onClick={() => setShowImport(!showImport)}
+            className="rounded-lg border px-4 py-2 text-sm font-semibold"
+            style={{ borderColor: 'var(--border)', color: 'var(--dark)' }}
+          >
+            Import Players from CSV
+          </button>
+        </div>
 
         {showImport && (
           <div className="card mt-4 p-4 space-y-3">
@@ -539,6 +583,65 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           </tbody>
         </table>
       </div>
+
+      {/* Late player signup modal */}
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <form onSubmit={addPlayer} className="card p-6 w-full max-w-sm space-y-4" style={{ background: 'var(--surface)' }}>
+            <div>
+              <h3 className="font-display text-2xl" style={{ color: 'var(--dark)' }}>Add Player</h3>
+              <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+                This bypasses the public signup deadline. Welcome email delivery follows the pool&apos;s current email settings.
+              </p>
+            </div>
+            <div>
+              <label className="eyebrow block mb-1" htmlFor="new-player-name">Full Name</label>
+              <input
+                id="new-player-name"
+                type="text"
+                value={newPlayer.full_name}
+                onChange={(event) => setNewPlayer({ ...newPlayer, full_name: event.target.value })}
+                className="field w-full px-3 py-2 text-sm"
+                style={{ color: 'var(--dark)' }}
+                autoFocus
+                required
+                maxLength={80}
+              />
+            </div>
+            <div>
+              <label className="eyebrow block mb-1" htmlFor="new-player-email">Email</label>
+              <input
+                id="new-player-email"
+                type="email"
+                value={newPlayer.email}
+                onChange={(event) => setNewPlayer({ ...newPlayer, email: event.target.value })}
+                className="field w-full px-3 py-2 text-sm"
+                style={{ color: 'var(--dark)' }}
+                required
+                maxLength={254}
+              />
+            </div>
+            {addError && <p className="text-sm" style={{ color: 'var(--red)' }}>{addError}</p>}
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={addingPlayer || !newPlayer.full_name.trim() || !newPlayer.email.trim()}
+                className="btn-primary flex-1 py-2 font-semibold disabled:opacity-50"
+              >
+                {addingPlayer ? 'Adding…' : 'Add Player'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAdd(false)}
+                className="flex-1 rounded-lg border py-2"
+                style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Admin pick modal */}
       {pickModal && (

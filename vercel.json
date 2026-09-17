@@ -10,7 +10,11 @@
     },
     {
       "path": "/api/cron/auto-advance",
-      "schedule": "0 10 * * *"
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/auto-advance",
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/cron/reminders",

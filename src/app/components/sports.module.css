@@ -21,7 +21,7 @@
 .ticker { display: flex; height: 103px; border-bottom: 1px solid var(--c-line); background: white; overflow: hidden; }
 .tickerLabel { width: max(146px, calc((100vw - 1180px)/2 + 125px)); padding: 16px 20px 12px max(20px, calc((100vw - 1180px)/2)); flex-shrink: 0; background: white; border-right: 1px solid var(--c-line); position: relative; z-index: 2; }
 .tickerLabel > span { display: block; font-weight: 750; font-size: 11px; }.tickerLabel > small { display: block; white-space: nowrap; font-size: 9px; color: var(--c-muted); margin-top: 3px; }.tickerLabel button { font-size: 9px; color: var(--c-muted); background: transparent; margin-top: 6px; padding: 0; border: 0; text-decoration: underline; }
-.tickerViewport { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; cursor: grab; mask-image: linear-gradient(to right, #000 96%, transparent); }.tickerTrack { display: flex; width: max-content; }.tickerViewport::-webkit-scrollbar{display:none}.tickerViewport:active{cursor:grabbing}
+.tickerViewport { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; cursor: grab; mask-image: linear-gradient(to right, #000 96%, transparent); }.tickerTrack,.tickerSequence { display: flex; width: max-content; }.tickerSequence { flex: 0 0 auto; }.tickerViewport::-webkit-scrollbar{display:none}.tickerViewport:active{cursor:grabbing}.tickerViewport:focus-visible{outline:2px solid #0b63f6;outline-offset:-2px}
 .tickerGame { width: 164px; padding: 11px 18px; border-right: 1px solid var(--c-line); }.tickerStatus { display: block; color: var(--c-muted); font-size: 9px; margin-bottom: 3px; }.tickerGame > div { display: flex; align-items: center; gap: 7px; height: 25px; }.tickerGame b { font-size: 10px; }.tickerGame strong { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; }
 .logo { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; }.logo img { width: 100%; height: 100%; object-fit: contain; }.logo b { font-size: 10px; }
 .main { width: calc(100% - 60px); max-width: 1180px; margin: auto; padding: 35px 0 58px; min-height: 65vh; }
@@ -124,6 +124,7 @@
 .profile:hover { background:#edf3fb; }
 .profile .avatar { order:-1; }
 .avatar { width:31px; height:31px; background:#dfe8f4; color:#19324f; }
+.avatar svg,.mobileAvatar svg { width:15px; height:15px; }
 .mobileHeader { display:none; }
 .mobileNav { display:none; }
 
