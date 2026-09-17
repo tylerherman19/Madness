@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import AdminLogoutButton from './AdminLogoutButton'
 
 const LINKS: [string, string][] = [
@@ -18,50 +19,51 @@ const LINKS: [string, string][] = [
 
 export default function AdminNav({ testMode }: { testMode: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const path = usePathname()
 
   return (
-    <nav style={{ background: 'var(--dark)' }}>
-      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
-        <span className="font-display text-white tracking-wider text-sm">ADMIN</span>
+    <nav className="admin-rail">
+      <div className="admin-rail-inner">
+        <Link href="/" className="admin-brand" aria-label="Return to Madness">
+          <svg viewBox="0 0 42 42" fill="none" aria-hidden="true"><path d="M5 7h9v6h7v7h8v8h8" stroke="currentColor" strokeWidth="4"/><path d="M5 17h7v7H5m0 4h9v7H5" stroke="#4e84d8" strokeWidth="4"/></svg>
+          <span>MADNESS<small>CONTROL ROOM</small></span>
+        </Link>
+        <span className="admin-mode">Pool operations</span>
 
-        {/* Desktop nav */}
-        <div className="hidden sm:flex items-center gap-5">
+        <div className="admin-desktop-links">
           {LINKS.map(([href, label]) => (
-            <Link key={href} href={href} className="text-xs tracking-widest uppercase hover:text-white transition-colors" style={{ color: '#888' }}>
+            <Link key={href} href={href} aria-current={path === href ? 'page' : undefined}>
               {label}
             </Link>
           ))}
-          <Link href="/admin/testing" className="text-xs tracking-widest uppercase transition-colors" style={{ color: testMode ? '#fbbf24' : '#888' }}>
+          <Link href="/admin/testing" aria-current={path === '/admin/testing' ? 'page' : undefined} className={testMode ? 'is-testing' : ''}>
             Testing{testMode ? ' ●' : ''}
           </Link>
         </div>
-        <div className="hidden sm:block ml-auto">
+        <div className="admin-logout">
           <AdminLogoutButton />
         </div>
 
-        {/* Mobile hamburger */}
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          aria-label="Menu"
+          aria-label="Open admin menu"
           aria-expanded={menuOpen}
-          className="sm:hidden flex flex-col gap-1 p-2 ml-auto"
+          className="admin-menu-button"
         >
-          <span className="w-6 h-0.5 bg-gray-400"></span>
-          <span className="w-6 h-0.5 bg-gray-400"></span>
-          <span className="w-6 h-0.5 bg-gray-400"></span>
+          <span />
+          <span />
+          <span />
         </button>
       </div>
 
-      {/* Mobile menu dropdown */}
       {menuOpen && (
-        <div className="sm:hidden" style={{ background: 'var(--dark)' }}>
-          <div className="mx-auto max-w-6xl px-4 py-2 flex flex-col">
+        <div className="admin-mobile-menu">
+          <div>
             {LINKS.map(([href, label]) => (
               <Link
                 key={href}
                 href={href}
-                className="py-3 text-xs tracking-widest uppercase hover:text-white transition-colors"
-                style={{ color: '#888' }}
+                aria-current={path === href ? 'page' : undefined}
                 onClick={() => setMenuOpen(false)}
               >
                 {label}
@@ -69,13 +71,13 @@ export default function AdminNav({ testMode }: { testMode: boolean }) {
             ))}
             <Link
               href="/admin/testing"
-              className="py-3 text-xs tracking-widest uppercase transition-colors"
-              style={{ color: testMode ? '#fbbf24' : '#888' }}
+              aria-current={path === '/admin/testing' ? 'page' : undefined}
+              className={testMode ? 'is-testing' : ''}
               onClick={() => setMenuOpen(false)}
             >
               Testing{testMode ? ' ●' : ''}
             </Link>
-            <div className="py-3">
+            <div className="admin-mobile-logout">
               <AdminLogoutButton />
             </div>
           </div>

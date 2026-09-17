@@ -2,66 +2,24 @@
 import {useEffect,useRef,useState} from 'react'
 import type {LiveScoresResponse} from '@/app/api/live-scores/route'
 import s from './sports.module.css'
-const TICKER_PX_PER_SECOND=35
-export default function LiveTicker({
-  label,
-}: {
-  slateNumber?: number | null
-  season?: number | null
-  label?: string | null
-}) {
-  const [data, setData] = useState<LiveScoresResponse | null>(null)
-  const trackRef = useRef<HTMLDivElement>(null)
-  const [duration, setDuration] = useState(30)
-  const [paused, setPaused] = useState(false)
-
-  const hasLive = data?.hasLiveGames ?? false
-
-  useEffect(() => {
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const res = await fetch('/api/live-scores', { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json()
-        if (cancelled) return
-        setData(json)
-      } catch {
-        // silently fail — scores are non-critical
-      }
-    }
-
-    load()
-    const timer = setInterval(load, hasLive ? 30_000 : 5 * 60_000)
-
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [hasLive])
-
-  // Track is rendered as two back-to-back copies of the games list so the
-  // scroll can loop seamlessly (translateX(-50%) lands exactly back at the
-  // start of the second copy). Duration is derived from the measured width
-  // of one copy so the scroll speed stays constant no matter how many games
-  // are in the ticker.
-  useEffect(() => {
-    const track = trackRef.current
-    if (!track) return
-    const singleSetWidth = track.scrollWidth / 2
-    if (singleSetWidth > 0) setDuration(singleSetWidth / TICKER_PX_PER_SECOND)
-  }, [data?.games])
-
-  // Don't render if no active slate or no games
-  if (!data || data.games.length === 0) return null
-
-
- return <section className={s.ticker} aria-label="Live score scroll"><div className={s.tickerLabel}><span>Scoreboard</span><small>{data.hasLiveGames?'Games in progress':'College basketball'}</small><button onClick={()=>setPaused(!paused)} aria-label={paused?'Resume score scroll':'Pause score scroll'}>{paused?'Resume':'Pause'}</button></div><div className={s.tickerViewport} tabIndex={0} aria-label={label??'Game scores'}><div ref={trackRef} className={s.tickerTrack} style={{animationDuration:duration+'s',animationPlayState:paused?'paused':'running'}}>
- {[...data.games,...data.games].map((game,index)=><div className={s.tickerGame} key={game.id+'-'+index} aria-hidden={index>=data.games.length?true:undefined}><span className={s.tickerStatus} style={game.state==='in'?{color:'#b7443e'}:undefined}>{game.state==='pre'?(game.timeTbd?'Time TBD':new Date(game.kickoff).toLocaleString('en-US',{timeZone:'America/Chicago',hour:'numeric',minute:'2-digit'})+' CT'):game.statusText}</span>{(['away','home'] as const).map(side=><div key={side}><span className={s.logo} style={{width:20,height:20}}>
- {game[side+'Logo' as 'awayLogo'|'homeLogo']?(
- // eslint-disable-next-line @next/next/no-img-element
- <img src={game[side+'Logo' as 'awayLogo'|'homeLogo']!} width={20} height={20} alt=""/>
- ):null}</span><b>{side==='away'?game.awayTeam:game.homeTeam}</b><strong>{game.state!=='pre'&&game.scoresKnown!==false?(side==='away'?game.awayScore:game.homeScore):'—'}</strong></div>)}</div>)}
- </div></div></section>
+const SPEED=35,RESUME_AFTER=2600
+export default function LiveTicker({label}:{slateNumber?:number|null;season?:number|null;label?:string|null}){
+ const [data,setData]=useState<LiveScoresResponse|null>(null),[paused,setPaused]=useState(false)
+ const viewport=useRef<HTMLDivElement>(null),raf=useRef(0),last=useRef(0),idle=useRef(0),interacting=useRef(false),mouseDrag=useRef({active:false,x:0,left:0})
+ const hasLive=data?.hasLiveGames??false
+ useEffect(()=>{let dead=false;const load=async()=>{try{const r=await fetch('/api/live-scores',{cache:'no-store'});if(r.ok&&!dead)setData(await r.json())}catch{}};load();const id=setInterval(load,hasLive?30000:300000);return()=>{dead=true;clearInterval(id)}},[hasLive])
+ useEffect(()=>{const el=viewport.current;if(!el||paused)return;const tick=(now:number)=>{if(!last.current)last.current=now;const dt=Math.min(40,now-last.current);last.current=now;if(!interacting.current&&now>idle.current){el.scrollLeft+=SPEED*dt/1000;const half=el.scrollWidth/2;if(el.scrollLeft>=half)el.scrollLeft-=half}raf.current=requestAnimationFrame(tick)};raf.current=requestAnimationFrame(tick);return()=>{cancelAnimationFrame(raf.current);last.current=0}},[paused,data])
+ useEffect(()=>{const el=viewport.current;if(!el)return
+  const stop=()=>{interacting.current=true;idle.current=Infinity}
+  const resume=()=>{interacting.current=false;idle.current=performance.now()+3000}
+  const wheel=()=>{stop();window.setTimeout(resume,140)}
+  el.addEventListener('touchstart',stop,{passive:true})
+  el.addEventListener('touchend',resume,{passive:true})
+  el.addEventListener('touchcancel',resume,{passive:true})
+  el.addEventListener('wheel',wheel,{passive:true})
+  return()=>{el.removeEventListener('touchstart',stop);el.removeEventListener('touchend',resume);el.removeEventListener('touchcancel',resume);el.removeEventListener('wheel',wheel)}
+ },[])
+ if(!data?.games.length)return null
+ const games=[...data.games,...data.games]
+ return <section className={s.ticker} aria-label="Live score scroll"><div className={s.tickerLabel}><span>Scoreboard</span><small>{hasLive?'Games in progress':'College basketball'}</small><button onClick={()=>setPaused(!paused)}>{paused?'Resume':'Pause'}</button></div><div ref={viewport} className={s.tickerViewport} tabIndex={0} aria-label={label??'Game scores'} onPointerDown={e=>{if(e.pointerType==='mouse'){e.currentTarget.setPointerCapture(e.pointerId);mouseDrag.current={active:true,x:e.clientX,left:e.currentTarget.scrollLeft};interacting.current=true;idle.current=Infinity}}} onPointerMove={e=>{if(mouseDrag.current.active)e.currentTarget.scrollLeft=mouseDrag.current.left+mouseDrag.current.x-e.clientX}} onPointerUp={()=>{mouseDrag.current.active=false;interacting.current=false;idle.current=performance.now()+3000}} onPointerCancel={()=>{mouseDrag.current.active=false;interacting.current=false;idle.current=performance.now()+3000}}><div className={s.tickerTrack}>{games.map((g,i)=><div className={s.tickerGame} key={g.id+'-'+i} aria-hidden={i>=data.games.length||undefined}><span className={s.tickerStatus} style={g.state==='in'?{color:'#b7443e'}:undefined}>{g.state==='pre'?(g.timeTbd?'Time TBD':new Date(g.kickoff).toLocaleString('en-US',{timeZone:'America/Chicago',hour:'numeric',minute:'2-digit'})+' CT'):g.statusText}</span>{(['away','home'] as const).map(side=><div key={side}><span className={s.logo} style={{width:20,height:20}}>{g[side+'Logo' as 'awayLogo'|'homeLogo']&&<img src={g[side+'Logo' as 'awayLogo'|'homeLogo']!} width={20} height={20} alt=""/>}</span><b>{side==='away'?g.awayTeam:g.homeTeam}</b><strong>{g.state!=='pre'&&g.scoresKnown!==false?(side==='away'?g.awayScore:g.homeScore):'-'}</strong></div>)}</div>)}</div></div></section>
 }

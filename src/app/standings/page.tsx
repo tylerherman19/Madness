@@ -11,6 +11,7 @@ import {
 import LiveTicker from '../components/LiveTicker'
 import SiteHeader from '../components/SiteHeader'
 import TeamChip from '../components/TeamChip'
+import { Footer } from '../components/Sports'
 
 import {
   BurnMap,
@@ -267,18 +268,7 @@ export default async function DashboardPage() {
         </main>
       )}
 
-      {/* Footer */}
-      <footer style={{ background: 'var(--dark)' }} className="mt-10">
-        <div className="content-width py-7 flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-400">$25 entry · Venmo @griffinsell</span>
-          <div className="flex items-center gap-6">
-            {!signupsClosed && (
-              <Link href="/signup" className="text-xs font-semibold text-gray-400 hover:text-white transition-colors">Join pool</Link>
-            )}
-            <Link href="/admin/login" className="text-xs font-semibold text-gray-400 hover:text-white transition-colors">Admin</Link>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   )
 }
