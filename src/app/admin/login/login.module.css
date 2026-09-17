@@ -1,0 +1,54 @@
+.page {
+  min-height: 100vh;
+  background-image:
+    linear-gradient(90deg, rgba(4, 18, 38, 0.82), rgba(4, 18, 38, 0.28)),
+    url('/kohl-center-hero.jpg');
+  background-position: center;
+  background-size: cover;
+}
+
+.card {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 70px rgba(3, 13, 28, 0.32);
+  backdrop-filter: blur(14px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 34px;
+  color: #0d1c34;
+}
+
+.brand svg {
+  width: 31px;
+  height: 31px;
+}
+
+.brand span {
+  font-family: var(--concept-display), sans-serif;
+  font-size: 23px;
+  font-weight: 700;
+  line-height: 0.75;
+}
+
+.brand small {
+  display: block;
+  margin-top: 7px;
+  font-family: var(--concept-text), sans-serif;
+  font-size: 6px;
+  letter-spacing: 0.23em;
+}
+
+.card h1 {
+  color: #0d1c34;
+  font-size: 44px;
+}
+
+.card h1 + p {
+  color: #68768b;
+  font-size: 12px;
+  line-height: 1.6;
+}

@@ -14,10 +14,10 @@ export default function AuthShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="site-shell min-h-screen">
+    <div className="site-shell auth-shell min-h-screen">
       <SiteHeader />
       <main className="content-width py-8 sm:py-12">
-        <div className="mx-auto grid max-w-4xl overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-bright)] lg:grid-cols-[1.15fr_.85fr]">
+        <div className="auth-panel mx-auto grid max-w-4xl overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-bright)] lg:grid-cols-[1.15fr_.85fr]">
         <section className="flex items-center p-7 sm:p-10 lg:p-14">
           <div className="w-full max-w-md mx-auto">
             <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>{eyebrow}</p>
@@ -26,7 +26,7 @@ export default function AuthShell({
             {children}
           </div>
         </section>
-        <aside className="relative border-t border-[var(--line)] bg-[var(--court)] p-7 sm:p-10 lg:border-l lg:border-t-0 lg:p-12">
+        <aside className="auth-guide relative border-t border-[var(--line)] bg-[var(--court)] p-7 sm:p-10 lg:border-l lg:border-t-0 lg:p-12">
           <div className="relative z-10">
             <p className="font-display text-3xl">How it works</p>
             <ol className="mt-6 space-y-0">
