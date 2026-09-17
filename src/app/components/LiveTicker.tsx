@@ -5,42 +5,41 @@ import { useEffect, useRef, useState } from 'react'
 import type { LiveScoresResponse } from '@/app/api/live-scores/route'
 import s from './sports.module.css'
 
-const AUTO_SPEED = 34
-const RESUME_AFTER = 2800
+// The ticker is one continuous velocity, never a stop-and-restart. Left alone it
+// cruises; a swipe injects velocity; friction relaxes that velocity back toward
+// the cruise speed instead of toward zero, so a throw coasts, decays, and slides
+// straight back into the normal drift with no seam.
+const CRUISE = 34 // px/s the strip drifts at when nobody is touching it
+const SETTLE_TAU = 620 // ms time constant for velocity relaxing back to CRUISE
+const TRACKING_TAU = 45 // ms smoothing on the velocity sampled from the pointer
+const MAX_FLICK = 3400 // px/s cap so a violent swipe still stays readable
+const HOLD_TIMEOUT = 90 // ms of stillness before release that cancels the throw
+const KEY_NUDGE = 420 // px/s impulse from one arrow key press
+const WHEEL_GAIN = 14 // px/s of velocity carried per px of wheel delta
 const MIN_COPIES = 3
 
-type DragState = {
+type Drag = {
   active: boolean
   pointerId: number
-  startX: number
-  startLeft: number
   lastX: number
   lastAt: number
-  velocity: number
 }
 
 export default function LiveTicker({ label }: { slateNumber?: number | null; season?: number | null; label?: string | null }) {
   const [data, setData] = useState<LiveScoresResponse | null>(null)
   const [paused, setPaused] = useState(false)
   const [reduceMotion, setReduceMotion] = useState(false)
-  const [copyCount, setCopyCount] = useState(4)
+  const [copyCount, setCopyCount] = useState(MIN_COPIES)
 
   const viewport = useRef<HTMLDivElement>(null)
+  const track = useRef<HTMLDivElement>(null)
   const sequence = useRef<HTMLDivElement>(null)
+
   const sequenceWidth = useRef(0)
-  const positioned = useRef(false)
-  const interacting = useRef(false)
-  const animation = useRef(0)
-  const motion = useRef({ lastAt: 0, autoVelocity: 0, inertiaVelocity: 0, resumeAt: 0 })
-  const drag = useRef<DragState>({
-    active: false,
-    pointerId: -1,
-    startX: 0,
-    startLeft: 0,
-    lastX: 0,
-    lastAt: 0,
-    velocity: 0,
-  })
+  const offset = useRef(0)
+  const velocity = useRef(CRUISE)
+  const cruising = useRef(true)
+  const drag = useRef<Drag>({ active: false, pointerId: -1, lastX: 0, lastAt: 0 })
 
   const hasLive = data?.hasLiveGames ?? false
 
@@ -70,9 +69,14 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
     return () => query.removeEventListener('change', update)
   }, [])
 
-  // Repeat the score sequence enough times to leave a complete spare copy on
-  // each side of the viewport. Two copies are not enough on a wide monitor:
-  // the browser reaches its maximum scrollLeft before the seamless wrap point.
+  // The cruise target is read inside the animation frame, so keep it on a ref:
+  // toggling pause must bend the current velocity, not restart the loop.
+  useEffect(() => {
+    cruising.current = !paused && !reduceMotion
+  }, [paused, reduceMotion])
+
+  // Repeat the score sequence enough times to cover the viewport plus one spare
+  // copy, which is what lets the modular wrap below stay invisible.
   useEffect(() => {
     const scroller = viewport.current
     const unit = sequence.current
@@ -81,17 +85,8 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
     const measure = () => {
       const width = unit.getBoundingClientRect().width
       if (!width) return
-      const previousWidth = sequenceWidth.current
-      const phase = previousWidth ? scroller.scrollLeft % previousWidth : 0
       sequenceWidth.current = width
-      setCopyCount(Math.max(MIN_COPIES, Math.ceil(scroller.clientWidth / width) + 3))
-
-      if (!positioned.current) {
-        scroller.scrollLeft = width
-        positioned.current = true
-      } else if (previousWidth && Math.abs(previousWidth - width) > 0.5) {
-        scroller.scrollLeft = width + phase
-      }
+      setCopyCount(Math.max(MIN_COPIES, Math.ceil((scroller.clientWidth + width) / width) + 1))
     }
 
     measure()
@@ -102,58 +97,71 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
   }, [data])
 
   useEffect(() => {
-    const scroller = viewport.current
-    if (!scroller) return
-    const motionState = motion.current
+    const strip = track.current
+    if (!strip) return
+
+    let frame = 0
+    let last = 0
+
+    const draw = () => {
+      const width = sequenceWidth.current
+      // One sequence is indistinguishable from the next, so folding the offset
+      // back into [0, width) keeps the strip endless without any visible jump.
+      if (width > 0) offset.current = ((offset.current % width) + width) % width
+      strip.style.transform = `translate3d(${-offset.current}px, 0, 0)`
+    }
 
     const tick = (now: number) => {
-      const state = motion.current
-      if (!state.lastAt) state.lastAt = now
-      const deltaMs = Math.min(48, now - state.lastAt)
-      state.lastAt = now
+      if (!last) last = now
+      const deltaMs = Math.min(48, now - last)
+      last = now
 
-      const shouldCruise = !paused && !reduceMotion && !interacting.current && now >= state.resumeAt
-      const targetVelocity = shouldCruise ? AUTO_SPEED : 0
-      const ease = 1 - Math.exp(-deltaMs / 420)
-      state.autoVelocity += (targetVelocity - state.autoVelocity) * ease
-      state.inertiaVelocity *= Math.exp(-deltaMs / 560)
-      if (Math.abs(state.inertiaVelocity) < 0.25) state.inertiaVelocity = 0
-
-      if (!interacting.current) {
-        scroller.scrollLeft += (state.autoVelocity + state.inertiaVelocity) * deltaMs / 1000
-
-        const width = sequenceWidth.current
-        if (width > 0) {
-          // Equivalent copies make this jump visually invisible. Keeping the
-          // viewport near the middle also lets a user drag in either direction.
-          if (scroller.scrollLeft >= width * 2.25) scroller.scrollLeft -= width
-          else if (scroller.scrollLeft <= width * 0.55) scroller.scrollLeft += width
-        }
+      if (!drag.current.active) {
+        const target = cruising.current ? CRUISE : 0
+        const ease = 1 - Math.exp(-deltaMs / SETTLE_TAU)
+        velocity.current += (target - velocity.current) * ease
+        if (target === 0 && Math.abs(velocity.current) < 0.15) velocity.current = 0
+        offset.current += (velocity.current * deltaMs) / 1000
       }
 
-      animation.current = requestAnimationFrame(tick)
+      draw()
+      frame = requestAnimationFrame(tick)
     }
 
-    animation.current = requestAnimationFrame(tick)
-    return () => {
-      cancelAnimationFrame(animation.current)
-      motionState.lastAt = 0
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [data])
+
+  // React listens for wheel passively at the root, so preventDefault only takes
+  // effect from a listener we attach ourselves.
+  useEffect(() => {
+    const scroller = viewport.current
+    if (!scroller) return
+
+    const onWheel = (event: WheelEvent) => {
+      const horizontal = event.shiftKey ? event.deltaY : event.deltaX
+      if (!horizontal || (!event.shiftKey && Math.abs(event.deltaX) <= Math.abs(event.deltaY))) return
+      event.preventDefault()
+      offset.current += horizontal
+      // Carry the wheel into velocity too, so letting go of the wheel coasts
+      // back to cruise the same way a released swipe does.
+      velocity.current = Math.max(-MAX_FLICK, Math.min(MAX_FLICK, horizontal * WHEEL_GAIN))
     }
-  }, [paused, reduceMotion, data])
+
+    scroller.addEventListener('wheel', onWheel, { passive: false })
+    return () => scroller.removeEventListener('wheel', onWheel)
+  }, [data])
 
   if (!data?.games.length) return null
 
-  const interrupt = () => {
-    motion.current.autoVelocity = 0
-    motion.current.resumeAt = performance.now() + RESUME_AFTER
-  }
-
-  const endDrag = (element: HTMLDivElement, pointerId: number) => {
-    if (!drag.current.active || drag.current.pointerId !== pointerId) return
-    drag.current.active = false
-    interacting.current = false
-    motion.current.inertiaVelocity = Math.max(-1600, Math.min(1600, drag.current.velocity))
-    motion.current.resumeAt = performance.now() + RESUME_AFTER
+  const release = (element: HTMLDivElement, pointerId: number) => {
+    const state = drag.current
+    if (!state.active || state.pointerId !== pointerId) return
+    state.active = false
+    // A pointer parked in place is a deliberate hold, not a throw: let it fall
+    // back to cruise from a standstill rather than firing off a stale velocity.
+    if (performance.now() - state.lastAt > HOLD_TIMEOUT) velocity.current = 0
+    velocity.current = Math.max(-MAX_FLICK, Math.min(MAX_FLICK, velocity.current))
     if (element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId)
   }
 
@@ -171,70 +179,45 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
         ref={viewport}
         className={s.tickerViewport}
         tabIndex={0}
-        aria-label={`${label ?? 'Game scores'}. Drag or scroll horizontally to browse.`}
-        onFocus={() => {
-          interacting.current = true
-          interrupt()
-        }}
-        onBlur={() => {
-          interacting.current = false
-          motion.current.resumeAt = performance.now() + RESUME_AFTER
-        }}
-        onKeyDown={interrupt}
-        onWheel={(event) => {
-          interrupt()
-          motion.current.inertiaVelocity = 0
-          if (event.shiftKey && Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
-            event.preventDefault()
-            event.currentTarget.scrollLeft += event.deltaY
-          }
-        }}
-        onTouchStart={() => {
-          interacting.current = true
-          motion.current.inertiaVelocity = 0
-          interrupt()
-        }}
-        onTouchEnd={() => {
-          interacting.current = false
-          motion.current.resumeAt = performance.now() + RESUME_AFTER
-        }}
-        onTouchCancel={() => {
-          interacting.current = false
-          motion.current.resumeAt = performance.now() + RESUME_AFTER
+        role="group"
+        aria-label={`${label ?? 'Game scores'}. Drag or use the arrow keys to browse.`}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+          event.preventDefault()
+          velocity.current = event.key === 'ArrowRight' ? KEY_NUDGE : -KEY_NUDGE
         }}
         onPointerDown={(event) => {
-          if (event.pointerType === 'touch') return
+          if (event.button !== 0 && event.pointerType === 'mouse') return
           event.currentTarget.setPointerCapture(event.pointerId)
-          const now = performance.now()
           drag.current = {
             active: true,
             pointerId: event.pointerId,
-            startX: event.clientX,
-            startLeft: event.currentTarget.scrollLeft,
             lastX: event.clientX,
-            lastAt: now,
-            velocity: 0,
+            lastAt: performance.now(),
           }
-          interacting.current = true
-          motion.current.inertiaVelocity = 0
-          interrupt()
+          // Grabbing catches the strip mid-coast, exactly like pinning a
+          // spinning wheel: whatever momentum it had is now yours.
+          velocity.current = 0
         }}
         onPointerMove={(event) => {
           const state = drag.current
           if (!state.active || state.pointerId !== event.pointerId) return
-          event.preventDefault()
           const now = performance.now()
-          const elapsed = Math.max(1, now - state.lastAt)
-          const delta = state.lastX - event.clientX
-          state.velocity = delta / elapsed * 1000
+          const deltaMs = Math.max(1, now - state.lastAt)
+          const deltaX = event.clientX - state.lastX
           state.lastX = event.clientX
           state.lastAt = now
-          event.currentTarget.scrollLeft = state.startLeft + state.startX - event.clientX
+          // Dragging right reveals earlier games, which means a smaller offset.
+          offset.current -= deltaX
+          const sample = (-deltaX / deltaMs) * 1000
+          const ease = 1 - Math.exp(-deltaMs / TRACKING_TAU)
+          velocity.current += (sample - velocity.current) * ease
         }}
-        onPointerUp={(event) => endDrag(event.currentTarget, event.pointerId)}
-        onPointerCancel={(event) => endDrag(event.currentTarget, event.pointerId)}
+        onPointerUp={(event) => release(event.currentTarget, event.pointerId)}
+        onPointerCancel={(event) => release(event.currentTarget, event.pointerId)}
+        onLostPointerCapture={(event) => release(event.currentTarget, event.pointerId)}
       >
-        <div className={s.tickerTrack}>
+        <div className={s.tickerTrack} ref={track}>
           {Array.from({ length: copyCount }, (_, copyIndex) => (
             <div
               ref={copyIndex === 0 ? sequence : undefined}
