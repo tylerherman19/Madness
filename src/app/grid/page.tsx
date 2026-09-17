@@ -169,8 +169,12 @@ export default async function GridPage() {
             No {caps.showTournamentRounds ? 'tournament rounds' : 'game days'} scheduled yet.
           </p>
         ) : (
-          <div className="card overflow-x-auto p-1" role="region" aria-label="Pool pick history" tabIndex={0}>
-            <table className="text-sm" style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <div>
+            <p id="grid-scroll-hint" className="mb-2 text-xs sm:hidden" style={{ color: 'var(--muted)' }}>
+              Swipe sideways to see every {caps.showTournamentRounds ? 'round' : 'game day'}.
+            </p>
+            <div className="card overflow-x-auto p-1" role="region" aria-label="Pool pick history" aria-describedby="grid-scroll-hint" tabIndex={0}>
+              <table className="text-sm" style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--border)' }}>
                   <th
@@ -196,6 +200,13 @@ export default async function GridPage() {
                 </tr>
               </thead>
               <tbody>
+                {withStats.length === 0 && (
+                  <tr>
+                    <td colSpan={slates.length + 1} className="px-4 py-10 text-center" style={{ color: 'var(--muted)', fontSize: 12 }}>
+                      No entries yet. Players will appear here after they join the pool.
+                    </td>
+                  </tr>
+                )}
                 {withStats.map((player) => (
                   <tr key={player.id} style={{ borderBottom: '1px solid var(--border)', opacity: player.status === 'eliminated' ? 0.7 : 1 }}>
                     <td
@@ -251,7 +262,8 @@ export default async function GridPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         )}
       </main>

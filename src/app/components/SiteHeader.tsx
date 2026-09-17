@@ -54,16 +54,23 @@ export default function SiteHeader({
   account?: string
 }) {
   const path = usePathname()
-  const [open, setOpen] = useState(false)
+  const [desktopAccountOpen, setDesktopAccountOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const initials = account ? account.split(' ').map((name) => name[0]).slice(0, 2).join('') : null
 
-  const accountLinks = (
-    <nav id="account-links" className="account-links" aria-label="Your entry">
-      <Link href="/pick">Your daily pick</Link>
-      <Link href="/history">Pick history &amp; alerts</Link>
-      <Link href="/grid">Full pick grid</Link>
-      <Link href="/standings#rules">Pool rules</Link>
-      {account ? <LogoutButton /> : <><Link href="/login">Log in</Link>{!signupsClosed && <Link href="/signup">Join pool</Link>}</>}
+  const closeMobilePanels = () => {
+    setMobileMenuOpen(false)
+    setMobileAccountOpen(false)
+  }
+
+  const accountLinks = (id: string, onNavigate?: () => void) => (
+    <nav id={id} className="account-links" aria-label="Your entry">
+      <Link href="/pick" onClick={onNavigate}>Your daily pick</Link>
+      <Link href="/history" onClick={onNavigate}>Pick history &amp; alerts</Link>
+      <Link href="/grid" onClick={onNavigate}>Full pick grid</Link>
+      <Link href="/standings#rules" onClick={onNavigate}>Pool rules</Link>
+      {account ? <LogoutButton /> : <><Link href="/login" onClick={onNavigate}>Log in</Link>{!signupsClosed && <Link href="/signup" onClick={onNavigate}>Join pool</Link>}</>}
     </nav>
   )
 
@@ -92,27 +99,62 @@ export default function SiteHeader({
           </nav>
           <div className={s.railFootnote}><span>Real games.</span><span>Real odds.</span><span>A bigger story.</span></div>
           <div className={`${s.accountMenu} account-menu`}>
-            <button className={s.profile} aria-expanded={open} aria-controls="account-links" onClick={() => setOpen(!open)}>
+            <button className={s.profile} aria-expanded={desktopAccountOpen} aria-controls="desktop-account-links" onClick={() => setDesktopAccountOpen(!desktopAccountOpen)}>
               <span className={s.avatar}>{initials ?? <ProfileGlyph />}</span>
               <span>{account ?? 'My entry'}</span>
             </button>
-            {open && accountLinks}
+            {desktopAccountOpen && accountLinks('desktop-account-links')}
           </div>
         </div>
       </header>
 
       <header className={s.mobileHeader}>
-        <button className={s.mobileMenuButton} aria-label="Open account menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <button
+          className={s.mobileMenuButton}
+          aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={mobileMenuOpen}
+          aria-controls="mobile-navigation-menu"
+          onClick={() => {
+            setMobileMenuOpen(!mobileMenuOpen)
+            setMobileAccountOpen(false)
+          }}
+        >
           <span /><span /><span />
         </button>
-        <Link className={s.mobileWordmark} href="/" aria-label="Madness overview"><BrandLockup /></Link>
-        <button className={s.mobileAvatar} aria-label="Open account menu" aria-expanded={open} onClick={() => setOpen(!open)}>{initials ?? <ProfileGlyph />}</button>
-        {open && <div className={s.mobileAccountPanel}>{accountLinks}</div>}
+        <Link className={s.mobileWordmark} href="/" aria-label="Madness overview" onClick={closeMobilePanels}><BrandLockup /></Link>
+        <button
+          className={s.mobileAvatar}
+          aria-label={mobileAccountOpen ? 'Close account menu' : 'Open account menu'}
+          aria-expanded={mobileAccountOpen}
+          aria-controls="mobile-account-links"
+          onClick={() => {
+            setMobileAccountOpen(!mobileAccountOpen)
+            setMobileMenuOpen(false)
+          }}
+        >
+          {initials ?? <ProfileGlyph />}
+        </button>
+        {(mobileMenuOpen || mobileAccountOpen) && <button className={s.mobileMenuBackdrop} aria-label="Close menu" onClick={closeMobilePanels} />}
+        {mobileMenuOpen && (
+          <nav id="mobile-navigation-menu" className={s.mobileMenuPanel} aria-label="Main menu">
+            {links.map((link) => (
+              <Link key={link.href} href={link.href} aria-current={path === link.href ? 'page' : undefined} onClick={closeMobilePanels}>
+                <NavIcon path={link.icon} />
+                <span>{link.label}</span>
+              </Link>
+            ))}
+            <div className={s.mobileMenuDivider} />
+            <Link href="/history" aria-current={path === '/history' ? 'page' : undefined} onClick={closeMobilePanels}>My entry</Link>
+            <Link href="/grid" aria-current={path === '/grid' ? 'page' : undefined} onClick={closeMobilePanels}>Full pick grid</Link>
+            <Link href="/standings#rules" onClick={closeMobilePanels}>Pool rules</Link>
+          </nav>
+        )}
+        {mobileAccountOpen && <div className={s.mobileAccountPanel}>{accountLinks('mobile-account-links', closeMobilePanels)}</div>}
       </header>
 
       <nav className={s.mobileNav} aria-label="Mobile navigation">
         {links.map((link) => (
-          <Link href={link.href} key={link.href} aria-current={path === link.href ? 'page' : undefined}>
+          <Link href={link.href} key={link.href} aria-current={path === link.href ? 'page' : undefined} onClick={closeMobilePanels}>
             <NavIcon path={link.icon} />
             {link.shortLabel}
           </Link>
