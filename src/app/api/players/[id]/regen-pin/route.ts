@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { generatePin, hashPin } from '@/lib/pin'
-import { sendPinRegeneratedEmail } from '@/lib/email'
+import { emailsEnabled, sendPinRegeneratedEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
 
 export async function POST(
@@ -53,5 +53,8 @@ export async function POST(
     )
   }
 
-  return NextResponse.json({ ok: true })
+  // With mail switched off there is no send to report: the admin is the
+  // delivery channel, so give them the PIN to pass on. Otherwise the player
+  // is left with a PIN that only the database knows.
+  return NextResponse.json(emailsEnabled() ? { ok: true } : { ok: true, pin })
 }

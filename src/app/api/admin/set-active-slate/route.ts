@@ -24,7 +24,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Slate not found' }, { status: 404 })
     }
 
-    await supabase.from('slates').update({ is_active: false }).gt('slate_number', 0)
+    // Deactivate by the flag itself. Keying off slate_number missed a slate
+    // still carrying the provisional number 0 that getOrCreateSlate inserts,
+    // which left two slates active — and the one-active partial index then
+    // rejects the activation below.
+    await supabase.from('slates').update({ is_active: false }).eq('is_active', true)
     const { error } = await supabase.from('slates').update({ is_active: true }).eq('id', slate_id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

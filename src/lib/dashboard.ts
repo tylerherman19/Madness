@@ -24,7 +24,10 @@ export async function getDashboardData() {
       const [weeksRes, playersRes, picksRes, gamesRes] = await Promise.all([
         supabase.from('slates').select('*').order('slate_number'),
         supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name'),
-        supabase.from('picks').select('player_id, slate_id, team'),
+        // `seed` is load-bearing: the endgame tiebreak sums the seeds a
+        // player has taken, and leaving it out of the select silently
+        // pinned every seed_total at zero.
+        supabase.from('picks').select('player_id, slate_id, team, seed'),
         supabase.from('games').select('*')
       ])
       allWeeks = weeksRes.data

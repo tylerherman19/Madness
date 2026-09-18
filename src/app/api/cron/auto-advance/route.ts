@@ -44,13 +44,34 @@ export async function GET(req: NextRequest) {
 
     if (!slate) return NextResponse.json({ ok: true, message: 'No active slate' })
 
-    const { data: currentGames } = await supabase.from('games').select('tip_time').eq('slate_id', slate.id)
-    const lastTip = ((currentGames || []) as Pick<Game, 'tip_time'>[])
+    const { data: currentGames } = await supabase
+      .from('games')
+      .select('tip_time, time_tbd')
+      .eq('slate_id', slate.id)
+    const slateGames = (currentGames || []) as Pick<Game, 'tip_time' | 'time_tbd'>[]
+
+    // Announced tips only. A game whose time ESPN hasn't published carries a
+    // midnight-Eastern placeholder, which is 11pm Central the night *before*
+    // the day the game belongs to — treating that as "already tipped" would
+    // advance off a slate before any of its games had been played.
+    const tipsDescending = slateGames
+      .filter((g) => !g.time_tbd)
       .map((g) => new Date(g.tip_time).getTime())
-      .sort((a, b) => b - a)[0]
+      .filter((t) => !Number.isNaN(t))
+      .sort((a, b) => b - a)
     const now = await getEffectiveNow()
-    if (lastTip && now.getTime() < lastTip) {
+
+    if (tipsDescending.length > 0 && now.getTime() < tipsDescending[0]) {
       return NextResponse.json({ ok: true, message: `Slate ${slate.slate_number}'s games haven't all tipped off yet — nothing to advance` })
+    }
+    // Games on the board but not one announced time among them: the day hasn't
+    // been played, it just hasn't been scheduled. Staying put is the safe
+    // answer — the daily re-sync picks the real times up when ESPN posts them.
+    if (tipsDescending.length === 0 && slateGames.length > 0) {
+      return NextResponse.json({
+        ok: true,
+        message: `Slate ${slate.slate_number} has no announced tip times yet — nothing to advance`,
+      })
     }
 
     // Walk forward day by day until one has games. Each probe is a real sync,
@@ -76,9 +97,17 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // Deactivate first, then activate: the one-active partial index rejects a
+    // second active row, so the pair has to pass through an all-false state. If
+    // the second half fails, put the old slate back — every `.eq('is_active',
+    // true).single()` read in the app resolves to "no row" when nothing is
+    // active, and the whole site renders as if the pool never started.
     await supabase.from('slates').update({ is_active: false }).eq('is_active', true)
     const { error: activateErr } = await supabase.from('slates').update({ is_active: true }).eq('id', result.slateId)
-    if (activateErr) return NextResponse.json({ ok: false, error: activateErr.message }, { status: 500 })
+    if (activateErr) {
+      await supabase.from('slates').update({ is_active: true }).eq('id', slate.id)
+      return NextResponse.json({ ok: false, error: activateErr.message }, { status: 500 })
+    }
 
     const label = nextDate
     await logAudit(supabase, {

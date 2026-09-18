@@ -94,12 +94,19 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   }
 
   async function regenPin(playerId: string, fullName: string) {
-    if (!confirm(`Regenerate PIN for ${fullName}? They'll get a new email.`)) return
+    if (!confirm(`Regenerate PIN for ${fullName}? Their current PIN stops working immediately.`)) return
     const res = await fetch(`/api/players/${playerId}/regen-pin`, { method: 'POST' })
+    const data = await res.json().catch(() => null)
     if (res.ok) {
-      setMessage(`New PIN sent to ${fullName}`)
+      // The route returns the PIN when this deployment sends no email — the
+      // admin is then the only way it reaches the player, so show it rather
+      // than claiming an email went out.
+      setMessage(
+        typeof data?.pin === 'string'
+          ? `${fullName}'s new PIN is ${data.pin} — no email was sent, pass it on directly.`
+          : `New PIN sent to ${fullName}`
+      )
     } else {
-      const data = await res.json().catch(() => null)
       setMessage(data?.error || 'Failed to regen PIN')
     }
   }

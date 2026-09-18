@@ -12,6 +12,10 @@ export default function SignupForm() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
+  // Set only when the signup response hands the PIN back, which happens when
+  // this deployment sends no email — otherwise the PIN arrives by mail and is
+  // never echoed to the browser.
+  const [pin, setPin] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -25,6 +29,7 @@ export default function SignupForm() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Signup failed'); return }
+      setPin(typeof data.pin === 'string' ? data.pin : null)
       setDone(true)
     } catch {
       setError('Something went wrong. Try again.')
@@ -38,9 +43,27 @@ export default function SignupForm() {
           {done ? (
             <div className="card p-6 sm:p-8 text-center space-y-4">
               <p className="font-display text-5xl" style={{ color: 'var(--green)' }}>You&apos;re in</p>
-              <p className="text-sm" style={{ color: 'var(--dark)' }}>
-                Check your email — your 6-digit PIN is on its way. You&apos;ll need it to log in and submit picks each slate.
-              </p>
+              {pin ? (
+                <>
+                  <p className="text-sm font-bold" style={{ color: 'var(--red)' }}>
+                    Write this down now — it is not emailed to you.
+                  </p>
+                  <p
+                    className="font-mono text-4xl font-bold tracking-widest rounded-md px-3 py-4"
+                    style={{ color: 'var(--dark)', background: 'var(--surface-sunken)' }}
+                  >
+                    {pin}
+                  </p>
+                  <p className="text-sm" style={{ color: 'var(--dark)' }}>
+                    That is your 6-digit PIN. You&apos;ll need it, with your full name, every time you log in to
+                    submit a pick. Lost it? The pool organizer can issue a new one.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm" style={{ color: 'var(--dark)' }}>
+                  Check your email — your 6-digit PIN is on its way. You&apos;ll need it to log in and submit picks each slate.
+                </p>
+              )}
               <p className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--dark)', background: 'var(--green-tint)' }}>
                 Venmo <strong>@griffinsell</strong> $25 to lock in your spot.
               </p>
@@ -54,7 +77,7 @@ export default function SignupForm() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {[
                     { label: 'Full Name', type: 'text', val: fullName, set: setFullName, placeholder: 'e.g. John Smith', required: true, autoComplete: 'name' },
-                    { label: 'Email', type: 'email', val: email, set: setEmail, placeholder: 'you@example.com', required: true, autoComplete: 'email', note: 'Your PIN will be sent here.' },
+                    { label: 'Email', type: 'email', val: email, set: setEmail, placeholder: 'you@example.com', required: true, autoComplete: 'email', note: 'How the organizer identifies your entry.' },
                     { label: 'Phone', type: 'tel', val: phone, set: setPhone, placeholder: '(608) 555-1234', required: true, autoComplete: 'tel' },
                     { label: 'Venmo Handle', type: 'text', val: venmo, set: setVenmo, placeholder: '@yourhandle', required: true },
                   ].map(({ label, type, val, set, placeholder, required, autoComplete, note }) => (
