@@ -6,7 +6,7 @@ import { isUuid } from '@/lib/api'
 import { isSlateLocked, seedForTeam } from '@/lib/deadline'
 import { sendPickConfirmationEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
-import type { Game, Slate } from '@/types'
+import type { Game } from '@/types'
 
 export async function POST(req: NextRequest) {
   try {

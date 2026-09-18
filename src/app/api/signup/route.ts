@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { generatePin, hashPin } from '@/lib/pin'
-import { sendWelcomeEmail } from '@/lib/email'
+import { emailsEnabled, sendWelcomeEmail } from '@/lib/email'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
 import { haveSignupsClosed } from '@/lib/season'
@@ -130,7 +130,12 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({ ok: true })
+    // This pool sends no email (see lib/email.ts), so the welcome message
+    // that normally carries the PIN is discarded. Hand it back in the response
+    // instead: the account is worthless to its owner without it, and this is
+    // the one moment the right person is guaranteed to be looking. When
+    // EMAILS_ENABLED is on, the email carries it and nothing is echoed.
+    return NextResponse.json(emailsEnabled() ? { ok: true } : { ok: true, pin })
   } catch (err) {
     console.error('signup error', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })

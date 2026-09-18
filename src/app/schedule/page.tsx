@@ -12,7 +12,7 @@ import ScheduleBoard from './ScheduleBoard'
 import LiveTicker from '@/app/components/LiveTicker'
 import { Footer } from '@/app/components/Sports'
 import s from '@/app/components/sports.module.css'
-import { fetchDayScoreboard, eventCompetitors, toEspnDate, isTimeTbd, parseRound } from '@/lib/espn'
+import { fetchDayScoreboard, eventCompetitors, toEspnDate, isTimeTbd, parseRound, seedOf } from '@/lib/espn'
 import { fetchNcaabOdds, matchOdds, type GameOdds } from '@/lib/odds'
 
 export const revalidate = 3600
@@ -113,8 +113,10 @@ async function fetchEspnDay(day: Date): Promise<ScheduleGame[]> {
       games.push({
         homeAbbr,
         awayAbbr,
-        homeSeed: teams.home.curatedRank?.current ?? null,
-        awaySeed: teams.away.curatedRank?.current ?? null,
+        // seedOf, not the raw curatedRank: ESPN reports an unranked team as
+        // 99, which this board would otherwise print as "Seed 99".
+        homeSeed: seedOf(teams.home),
+        awaySeed: seedOf(teams.away),
         kickoff: event.date,
         timeTbd: isTimeTbd(event),
         round: normalizeRound(roundLabel),

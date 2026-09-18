@@ -4,7 +4,7 @@ import { requireCronOrAdmin } from '@/lib/api'
 import { slateDeadline, autoAssignTeam, seedForTeam } from '@/lib/deadline'
 import { sendEliminationEmail, sendPickConfirmationEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
-import type { Game, Slate } from '@/types'
+import type { Game } from '@/types'
 
 // Per-player DB round trips plus awaited emails — allow a big no-pick cohort.
 export const maxDuration = 300

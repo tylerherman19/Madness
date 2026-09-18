@@ -31,8 +31,11 @@ function addDays(iso: string, n: number): string {
   return new Date(d.getTime() + n * 86_400_000).toISOString().slice(0, 10)
 }
 
+// Central, like every other date in this app. toISOString() would give the
+// UTC date, which after ~7pm Central is already tomorrow — defaulting the sync
+// box to a day the admin didn't mean.
 function today(): string {
-  return new Date().toISOString().slice(0, 10)
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
 }
 
 // A college season labelled 2027 runs November 2026 through early April 2027

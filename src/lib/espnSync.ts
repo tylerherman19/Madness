@@ -12,7 +12,7 @@ import {
   isTimeTbd,
   CONFERENCES,
 } from './espn'
-import { getOrCreateSlate, renumberSlates } from './slates'
+import { getOrCreateSlate, renumberSlates, refreshLockTime } from './slates'
 
 export interface SyncResult {
   ok: boolean
@@ -23,6 +23,13 @@ export interface SyncResult {
   // Conferences whose ESPN call failed. Games are still written, but stale
   // rows are left alone when this is non-empty — see below.
   partial?: string[]
+}
+
+// Games this app created itself rather than read from ESPN: hand-entered
+// schedule rows and Test Mode's fabricated slate. Their ids live in their own
+// namespaces so a sync can tell them apart from real ESPN events.
+function isLocallyEntered(espnEventId: string): boolean {
+  return espnEventId.startsWith('manual:') || espnEventId.startsWith('sandbox:')
 }
 
 // Sync one day's games from ESPN into `supabase` (the caller passes getDb()'s
@@ -83,7 +90,6 @@ export async function syncSlateFromEspn(
     if (slateDate === requestedDate) primarySlateId = slateId
 
     const rows = []
-    let earliestTip: string | null = null
 
     for (const event of dayEvents) {
       const teams = eventCompetitors(event)
@@ -111,10 +117,6 @@ export async function syncSlateFromEspn(
       const state = comp.status?.type?.state
       const homeScore = teams.home.score != null ? Number(teams.home.score) : null
       const awayScore = teams.away.score != null ? Number(teams.away.score) : null
-
-      // A placeholder time must never set the lock — one TBD game would
-      // otherwise lock the whole slate at 11pm the previous night.
-      if (!tbd && (!earliestTip || event.date < earliestTip)) earliestTip = event.date
 
       rows.push({
         slate_id: slateId,
@@ -150,12 +152,16 @@ export async function syncSlateFromEspn(
       totalGames += rows.length
     }
 
-    await supabase.from('slates').update({ locks_at: earliestTip }).eq('id', slateId)
-
     // Drop games ESPN no longer lists for this slate — but only when every
     // conference answered. After a partial fetch, a missing game means "we
     // didn't ask successfully", not "it was cancelled", and deleting it would
     // silently void the picks that reference it.
+    //
+    // Only ESPN-sourced rows are candidates. A `manual:` row exists precisely
+    // because ESPN doesn't carry that game (see /api/schedule), and a
+    // `sandbox:` row is fabricated for Test Mode — ESPN's silence about
+    // either one says nothing, so sweeping them would delete the schedule the
+    // admin entered by hand.
     if (failedGroups.length === 0) {
       const { data: stored } = await supabase
         .from('games')
@@ -163,12 +169,19 @@ export async function syncSlateFromEspn(
         .eq('slate_id', slateId)
       const live = new Set(rows.map((r) => r.espn_event_id))
       const staleIds = (stored ?? [])
-        .filter((g) => !live.has(g.espn_event_id))
+        .filter((g) => !live.has(g.espn_event_id) && !isLocallyEntered(g.espn_event_id))
         .map((g) => g.id)
       if (staleIds.length > 0) {
         await supabase.from('games').delete().in('id', staleIds)
       }
     }
+
+    // Cache the day's first announced tip from the games that are now stored,
+    // rather than from this fetch's rows. After a partial fetch those rows are
+    // only part of the day: deriving the lock from them alone would move it
+    // later than the real first tip — or null it out entirely — and leave
+    // picks open after the games had started.
+    await refreshLockTime(supabase, slateId)
   }
 
   await renumberSlates(supabase, seasonYear)

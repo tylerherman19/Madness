@@ -1,10 +1,14 @@
 /**
- * NFL Survivor Pool — Stress + Security Test
+ * MADNESS — Stress + Security Test
  * Simulates 1k concurrent users: homepage checks, login attempts, pick submits, admin probes.
  * Run: node stress-test.mjs [url]
+ *
+ * The target defaults to a local dev server on purpose. This fires a thousand
+ * concurrent requests and floods the rate limiters, so pointing it at a
+ * deployment has to be a deliberate argument, never the default.
  */
 
-const BASE = process.argv[2] || 'https://nfl-survivor-coral.vercel.app'
+const BASE = process.argv[2] || 'http://localhost:3000'
 const CONCURRENCY = 1000
 
 // --- helpers ---
@@ -260,7 +264,7 @@ async function testBadInputRejection() {
     },
     {
       label: 'Grade week without cookie',
-      url: '/api/results/grade-week',
+      url: '/api/results/grade-slate',
       body: { week_id: '00000000-0000-0000-0000-000000000001' },
       expectStatus: 401,
     },
@@ -278,7 +282,7 @@ async function testBadInputRejection() {
     },
     {
       label: 'Set active week without cookie',
-      url: '/api/admin/set-active-week',
+      url: '/api/admin/set-active-slate',
       body: { week_id: '00000000-0000-0000-0000-000000000001' },
       expectStatus: 401,
     },
@@ -430,7 +434,7 @@ async function main() {
   console.log('    Limits may be exhausted by earlier tests — intentional')
   console.log('  • Signup tests skipped: would create real DB rows + send real emails')
   console.log('  • Pick race condition requires a live session — test via browser DevTools:')
-  console.log('    for(let i=0;i<20;i++) fetch("/api/picks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({week_id:"<wid>",team:"KC"})})')
+  console.log('    for(let i=0;i<20;i++) fetch("/api/picks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({slate_id:"<slate-uuid>",team:"DUKE"})})')
   console.log()
 }
 

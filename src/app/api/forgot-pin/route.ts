@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { generatePin, hashPin } from '@/lib/pin'
-import { sendPinRegeneratedEmail } from '@/lib/email'
+import { emailsEnabled, sendPinRegeneratedEmail } from '@/lib/email'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
@@ -38,6 +38,20 @@ export async function POST(req: NextRequest) {
     // target, and the rate limit above still bounds abuse.
     if (!player) {
       return NextResponse.json({ error: 'No account found for that email.' }, { status: 404 })
+    }
+
+    // Refuse before touching the PIN when mail is switched off. The
+    // suppressed client reports every send as a success, so rotating first
+    // would replace a PIN the player knows with one nobody can tell them —
+    // locking them out of the pool for good.
+    if (!emailsEnabled()) {
+      return NextResponse.json(
+        {
+          error:
+            'PIN reset by email is turned off for this pool. Ask the pool organizer to reset your PIN and pass it along.',
+        },
+        { status: 503 }
+      )
     }
 
     const pin = generatePin()

@@ -48,6 +48,17 @@ another conditional.
 - **No email.** `getResend()` in `src/lib/email.ts` returns a stub that logs and
   discards every send unless `EMAILS_ENABLED=true`. The `/api/cron/reminders` job
   still runs on schedule; it just has nothing to deliver.
+
+  Because a suppressed send still *reports success*, anything whose only
+  delivery channel is email has to route around it — otherwise a player ends up
+  with a PIN nobody can tell them. `emailsEnabled()` is the one switch to test,
+  and three flows read it:
+
+  | Flow | With email off |
+  | --- | --- |
+  | Signup | The PIN is returned in the response and shown once on the confirmation screen. Write it down — nothing re-sends it. |
+  | Forgot PIN | Refused with a 503, **before** the PIN is rotated. The player asks the organizer instead. |
+  | Admin → Regen PIN | The new PIN comes back to the admin, who passes it on by hand. |
 - Separate Supabase project, separate Vercel project.
 - In-app copy, logos, and `pickandpray.org` links are unchanged from the original.
 
