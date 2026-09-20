@@ -5,6 +5,7 @@ import { getSignupCutoff } from '@/lib/season'
 import { getPoolConfig } from '@/lib/pool'
 import { MODE_LABEL, STATUS_LABEL } from '@/lib/competition'
 import { formatCentralTime } from '@/lib/deadline'
+import { seedTotalsByPlayer } from '@/lib/standings'
 import Link from 'next/link'
 import AdvanceWeekButton from './AdvanceWeekButton'
 import SetActiveWeek from './SetActiveWeek'
@@ -15,10 +16,19 @@ export default async function AdminDashboard() {
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
 
-  const [{ data: slate }, { data: players }, { data: allWeeks }, signupAnchor, now, pool] = await Promise.all([
+  const [
+    { data: slate },
+    { data: players },
+    { data: allWeeks },
+    { data: allPicks },
+    signupAnchor,
+    now,
+    pool,
+  ] = await Promise.all([
     supabase.from('slates').select('*').eq('is_active', true).single(),
     supabase.from('players').select('id, full_name, email, status, paid'),
     supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active').order('slate_date'),
+    supabase.from('picks').select('player_id, seed'),
     getSignupCutoff(),
     getEffectiveNow(),
     getPoolConfig(supabase),
@@ -36,6 +46,28 @@ export default async function AdminDashboard() {
     (p: { email: string }) => !p.email?.endsWith('@nflsurvivor.internal')
   )
   const unpaidPlayers = realPlayers.filter((p: { paid: boolean }) => !p.paid)
+
+  // Seed totals are a running tournament score, not a snapshot of the active
+  // slate. Include every real player so the admin can also see who is still at
+  // zero before their first seeded pick.
+  const seedTotals = seedTotalsByPlayer(allPicks || [])
+  const seededPickCounts: Record<string, number> = {}
+  for (const pick of allPicks || []) {
+    if (pick.seed != null) {
+      seededPickCounts[pick.player_id] = (seededPickCounts[pick.player_id] || 0) + 1
+    }
+  }
+  const seedLeaderboard = realPlayers
+    .map((player: { id: string; full_name: string; status: string }) => ({
+      ...player,
+      seedTotal: seedTotals[player.id] || 0,
+      seededPicks: seededPickCounts[player.id] || 0,
+    }))
+    .sort(
+      (a: { seedTotal: number; full_name: string }, b: { seedTotal: number; full_name: string }) =>
+        b.seedTotal - a.seedTotal ||
+        a.full_name.localeCompare(b.full_name, undefined, { sensitivity: 'base' })
+    )
 
   let pickCount = 0
   let pickDistribution: { team: string; count: number; pct: number }[] = []
@@ -133,6 +165,82 @@ export default async function AdminDashboard() {
         <StatCard label="Still Alive" value={alive.length} color="text-green-400" />
         <StatCard label="Picks This Slate" value={`${pickCount}/${alive.length}`} />
       </div>
+
+      <section className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
+        <div className="border-b border-slate-700 px-4 py-4 sm:px-5">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold text-white">Seed totals</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Running sum of every tournament seed picked. Highest total ranks first.
+              </p>
+            </div>
+            {pool.competition_mode !== 'march-madness' && (
+              <span className="text-xs text-slate-500">Starts with March Madness picks</span>
+            )}
+          </div>
+        </div>
+
+        {seedLeaderboard.length === 0 ? (
+          <p className="px-4 py-5 text-sm text-slate-500 sm:px-5">No players have joined yet.</p>
+        ) : (
+          <>
+            <div className="divide-y divide-slate-700 sm:hidden">
+              {seedLeaderboard.map((player, index) => (
+                <div key={player.id} className="flex items-center gap-3 px-4 py-3">
+                  <span className="w-6 shrink-0 text-center text-xs font-semibold text-slate-500">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white">{player.full_name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {player.seededPicks} seeded pick{player.seededPicks === 1 ? '' : 's'} ·{' '}
+                      {player.status === 'alive' ? 'Alive' : 'Out'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-bold tabular-nums text-white">{player.seedTotal}</p>
+                    <p className="text-[11px] text-slate-500">seed total</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto sm:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700 text-left text-xs text-slate-500">
+                    <th className="w-14 px-5 py-2.5 font-medium">Rank</th>
+                    <th className="px-4 py-2.5 font-medium">Player</th>
+                    <th className="px-4 py-2.5 font-medium">Status</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Seeded picks</th>
+                    <th className="px-5 py-2.5 text-right font-medium">Seed total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700/70">
+                  {seedLeaderboard.map((player, index) => (
+                    <tr key={player.id}>
+                      <td className="px-5 py-3 text-slate-500 tabular-nums">{index + 1}</td>
+                      <td className="px-4 py-3 font-medium text-white">{player.full_name}</td>
+                      <td className="px-4 py-3">
+                        <span className={player.status === 'alive' ? 'text-green-400' : 'text-red-400'}>
+                          {player.status === 'alive' ? 'Alive' : 'Out'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-400 tabular-nums">
+                        {player.seededPicks}
+                      </td>
+                      <td className="px-5 py-3 text-right text-base font-bold text-white tabular-nums">
+                        {player.seedTotal}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
 
       {!slate && (
         <div className="rounded-xl border border-amber-500/40 bg-slate-800 p-4">
