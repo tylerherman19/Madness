@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { getPoolConfig } from '@/lib/pool'
 import {
   capabilitiesFor,
+  autoPickRule,
   copyFor,
   formatPeriodDate,
   type CompetitionMode,
@@ -41,7 +42,12 @@ export default async function DashboardPage() {
   const copy = copyFor(mode)
   const period = data?.currentPeriod ?? null
 
-  const rules = buildRules(mode, copy, data?.pool?.tiebreaker ?? 'seed-total')
+  const rules = buildRules(
+    mode,
+    copy,
+    data?.pool?.tiebreaker ?? 'seed-total',
+    data?.pool?.auto_pick_behavior ?? 'latest-game'
+  )
 
   return (
     <div className="site-shell">
@@ -195,7 +201,8 @@ function Rule({ n, text }: { n: string; text: string }) {
 function buildRules(
   mode: CompetitionMode,
   copy: ReturnType<typeof copyFor>,
-  tiebreaker: string
+  tiebreaker: string,
+  autoPickBehavior: Parameters<typeof autoPickRule>[0]
 ): string[] {
   const tournament = capabilitiesFor(mode).showTournamentRounds
 
@@ -216,7 +223,7 @@ function buildRules(
     copy.reuseRule,
     "Your team wins, you survive. Loses and you're out.",
     'Picks lock when the first game of the day tips off — all of them, at once.',
-    "Miss the lock and you're auto-assigned a team from the day's last game. If every team on the slate is already used, you're eliminated.",
+    autoPickRule(autoPickBehavior, tournament),
     endgame,
   ]
 }

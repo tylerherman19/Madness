@@ -16,10 +16,11 @@ export const revalidate = 60
 export default async function LivePage() {
   // The sweat board runs year-round; the header just has to agree with the
   // competition the pool is actually playing.
-  const [{ competition_mode: mode }, teamBrands] = await Promise.all([
+  const [pool, teamBrands] = await Promise.all([
     getPoolConfig(),
     getTeamBrandDirectory(),
   ])
+  const mode = pool.competition_mode
 
   return (
     <div className="site-shell">
@@ -27,7 +28,7 @@ export default async function LivePage() {
       <LiveTicker />
 
       <main className="content-width py-9 pb-16">
-        <SweatBoard teamBrands={teamBrands} />
+        <SweatBoard teamBrands={teamBrands} autoPickBehavior={pool.auto_pick_behavior} />
       </main>
       <Footer />
     </div>

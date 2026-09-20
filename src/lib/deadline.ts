@@ -97,6 +97,47 @@ export function autoAssignTeam(games: Game[], usedTeams: string[]): string | nul
   return null
 }
 
+type SeedCandidate = {
+  team: string
+  seed: number
+  apRank: number
+}
+
+// Tournament auto-pick. "Highest seed" means the strongest line in the
+// bracket: No. 1 before No. 2, and so on. Once a player has used a seed value
+// anywhere in the tournament, move to the next available seed value. AP rank
+// breaks a tie between teams on the same line; an unranked team sorts last.
+//
+// If a late-round slate contains only seed values the player has already
+// used, fall back to the best unused team still playing rather than eliminate
+// the player for a bracket shape they cannot control.
+export function autoAssignHighestSeed(
+  games: Game[],
+  usedTeams: string[],
+  usedSeeds: number[],
+  apRanks: Record<string, number>
+): string | null {
+  const usedTeamSet = new Set(usedTeams)
+  const usedSeedSet = new Set(usedSeeds.filter((seed) => Number.isInteger(seed) && seed >= 1 && seed <= 16))
+  const candidates: SeedCandidate[] = []
+
+  for (const game of games) {
+    if (!game.round_label) continue
+    for (const [team, seed] of [
+      [game.away_team, game.away_seed],
+      [game.home_team, game.home_seed],
+    ] as const) {
+      if (usedTeamSet.has(team) || seed === null || seed < 1 || seed > 16) continue
+      candidates.push({ team, seed, apRank: apRanks[team] ?? Number.MAX_SAFE_INTEGER })
+    }
+  }
+
+  const compare = (a: SeedCandidate, b: SeedCandidate) =>
+    a.seed - b.seed || a.apRank - b.apRank || a.team.localeCompare(b.team)
+  const freshSeedCandidates = candidates.filter((candidate) => !usedSeedSet.has(candidate.seed)).sort(compare)
+  return freshSeedCandidates[0]?.team ?? candidates.sort(compare)[0]?.team ?? null
+}
+
 // Format a UTC date as a human-readable Central time string
 export function formatCentralTime(utcDate: Date | string): string {
   const d = typeof utcDate === 'string' ? new Date(utcDate) : utcDate

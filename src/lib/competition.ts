@@ -31,7 +31,7 @@ export const POOL_STATUSES: PoolStatus[] = [
 export type PickFrequency = 'every-game-day' | 'weekends-only' | 'tournament-round'
 export type PickDeadlineRule = 'first-tip' | 'per-game'
 export type TeamReuseRule = 'once-per-pool' | 'once-per-round' | 'unlimited'
-export type AutoPickBehavior = 'latest-game' | 'eliminate' | 'none'
+export type AutoPickBehavior = 'latest-game' | 'highest-seed' | 'eliminate' | 'none'
 export type Tiebreaker = 'seed-total' | 'most-survived' | 'none'
 
 export interface PoolConfig {
@@ -160,6 +160,30 @@ export const STATUS_LABEL: Record<PoolStatus, string> = {
   live: 'Live',
   completed: 'Completed',
   archived: 'Archived',
+}
+
+// The status is currently an administrator-facing lifecycle label. The game
+// engine still opens and locks picks from the configured dates and tip times,
+// so these descriptions deliberately do not promise access controls that the
+// status field does not enforce.
+export const STATUS_DESCRIPTION: Record<PoolStatus, string> = {
+  draft: 'Build the pool and review its settings before announcing it.',
+  upcoming: 'The pool has been announced, but play has not started.',
+  open: 'Players can register and get ready before the first pick period.',
+  live: 'The competition is in progress and picks and results are being managed.',
+  completed: 'Play is finished and the final standings are set.',
+  archived: 'The pool is retained for history and should no longer be edited.',
+}
+
+export function autoPickRule(behavior: AutoPickBehavior, tournament: boolean): string {
+  if (behavior === 'highest-seed') {
+    return tournament
+      ? 'Miss the lock and you will be auto-assigned the highest remaining seed you have not used, starting with a No. 1 seed. AP rank breaks ties.'
+      : 'Miss the lock and the system will use the latest-game fallback; seed priority is available only for tournament games.'
+  }
+  if (behavior === 'eliminate') return 'Miss the lock and your entry is eliminated.'
+  if (behavior === 'none') return 'Miss the lock and no pick is recorded or graded.'
+  return "Miss the lock and you're auto-assigned an unused team from the day's last game. If no unused team remains, you're eliminated."
 }
 
 // -------------------------------------------------------------------- rounds

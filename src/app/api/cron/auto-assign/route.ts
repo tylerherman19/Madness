@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireCronOrAdmin } from '@/lib/api'
-import { slateDeadline, autoAssignTeam, seedForTeam } from '@/lib/deadline'
+import { slateDeadline, autoAssignHighestSeed, autoAssignTeam, seedForTeam } from '@/lib/deadline'
 import { getPoolConfig } from '@/lib/pool'
 import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
+import { fetchApRankings } from '@/lib/espn'
 import { sendEliminationEmail, sendPickConfirmationEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
@@ -16,10 +17,10 @@ export const maxDuration = 300
 // weekly cutoff: if the first tip hasn't happened yet it is a no-op, and
 // re-running afterwards is harmless because everyone then has a pick.
 //
-// A player who missed the lock is assigned a team from the latest game of the
-// day they haven't already used (see autoAssignTeam). Elimination is the
-// fallback for the one case that cannot be assigned: every team on the slate
-// is already spent.
+// The active pool configuration decides what a missed lock does: latest-game
+// assignment, tournament seed priority, immediate elimination, or no action.
+// Every branch is guarded by the same lock and existing-pick checks so a rerun
+// cannot add an extra pick after a player has satisfied the period quota.
 export async function GET(req: NextRequest) {
   const unauthorized = await requireCronOrAdmin(req)
   if (unauthorized) return unauthorized
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
 
     const { data: existingPicks } = await supabase
       .from('picks')
-      .select('player_id, team, slate_id')
+      .select('player_id, team, slate_id, seed')
 
     const requiredPicks = sharedQuota ?? 1
     const periodPickCount = new Map<string, number>()
@@ -109,21 +110,75 @@ export async function GET(req: NextRequest) {
       (player: { id: string }) => (periodPickCount.get(player.id) ?? 0) < requiredPicks
     )
 
+    const useSeedPriority =
+      pool.auto_pick_behavior === 'highest-seed' && pool.competition_mode === 'march-madness'
+    const apRanks = useSeedPriority ? await fetchApRankings() : {}
+
     const results = []
 
     for (const player of playersWithoutPick) {
-      const usedTeams = new Set(
-        (existingPicks || [])
-          .filter((pick: { player_id: string }) => pick.player_id === player.id)
-          .map((pick: { team: string }) => pick.team)
-      )
+      if (pool.auto_pick_behavior === 'none') {
+        results.push({ player: player.full_name, action: 'left blank (auto-pick disabled)' })
+        continue
+      }
+
       const missing = requiredPicks - (periodPickCount.get(player.id) ?? 0)
+      if (pool.auto_pick_behavior === 'eliminate') {
+        const reason = sharedQuota
+          ? `Missed the round quota — needed ${missing} more pick${missing === 1 ? '' : 's'}`
+          : 'Missed the lock — pool rule eliminates entries without a pick'
+        const { error: eliminateError } = await supabase
+          .from('players')
+          .update({
+            status: 'eliminated',
+            elimination_slate: slate.slate_number,
+            elimination_reason: reason,
+          })
+          .eq('id', player.id)
+
+        if (eliminateError) {
+          results.push({ player: player.full_name, action: `skipped: ${eliminateError.message}` })
+          continue
+        }
+
+        await logAudit(supabase, {
+          event_type: 'player-eliminated',
+          actor: 'system',
+          player_id: player.id,
+          player_name: player.full_name,
+          message: `${player.full_name} eliminated — ${reason}`,
+          details: { slate_number: slate.slate_number, cause: 'missed-deadline', auto_pick_behavior: 'eliminate' },
+        })
+
+        if (player.email) {
+          await sendEliminationEmail(player.email, player.full_name, null, slate.slate_number)
+        }
+
+        results.push({ player: player.full_name, action: 'eliminated (configured rule)' })
+        continue
+      }
+
+      const playerPicks = (existingPicks || []).filter(
+        (pick: { player_id: string }) => pick.player_id === player.id
+      )
+      const usedTeams = new Set(
+        playerPicks.map((pick: { team: string }) => pick.team)
+      )
+      const usedSeeds = new Set<number>(
+        playerPicks
+          .map((pick: { seed: number | null }) => pick.seed)
+          .filter((seed: number | null): seed is number => seed !== null)
+      )
       const autoTeams: string[] = []
       for (let index = 0; index < missing; index++) {
-        const autoTeam = autoAssignTeam(gamesData, [...usedTeams])
+        const autoTeam = useSeedPriority
+          ? autoAssignHighestSeed(gamesData, [...usedTeams], [...usedSeeds], apRanks)
+          : autoAssignTeam(gamesData, [...usedTeams])
         if (!autoTeam) break
         autoTeams.push(autoTeam)
         usedTeams.add(autoTeam)
+        const seed = seedForTeam(autoTeam, gamesData)
+        if (seed !== null) usedSeeds.add(seed)
       }
 
       if (autoTeams.length === missing) {
@@ -149,7 +204,12 @@ export async function GET(req: NextRequest) {
           player_id: player.id,
           player_name: player.full_name,
           message: `${player.full_name} missed the Slate ${slate.slate_number} deadline — auto-assigned ${autoTeams.join(', ')}`,
-          details: { slate_number: slate.slate_number, teams: autoTeams, required_picks: requiredPicks },
+          details: {
+            slate_number: slate.slate_number,
+            teams: autoTeams,
+            required_picks: requiredPicks,
+            auto_pick_behavior: pool.auto_pick_behavior,
+          },
         })
 
         // Awaited: fire-and-forget sends can be dropped when the serverless
