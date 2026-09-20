@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
+import { getPoolConfig } from '@/lib/pool'
 import { getSession, getAdminSession } from '@/lib/session'
 import { isUuid } from '@/lib/api'
 import { isSlateLocked, seedForTeam } from '@/lib/deadline'
+import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
 import { sendPickConfirmationEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
-import type { Game, Slate } from '@/types'
+import type { Game } from '@/types'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { slate_id, team, player_id_override, submitted_by_admin } = body
+    const { slate_id, team, pick_id, player_id_override, submitted_by_admin } = body
 
     // Allow admin to submit on behalf of a player
     const isAdmin = submitted_by_admin ? await getAdminSession() : false
@@ -39,8 +41,12 @@ export async function POST(req: NextRequest) {
     if (!isUuid(slate_id)) {
       return NextResponse.json({ error: 'Invalid slate_id' }, { status: 400 })
     }
+    if (pick_id && !isUuid(pick_id)) {
+      return NextResponse.json({ error: 'Invalid pick_id' }, { status: 400 })
+    }
 
     const supabase = await getDb()
+    const pool = await getPoolConfig(supabase)
 
     // Check player is alive
     const { data: player } = await supabase
@@ -57,7 +63,7 @@ export async function POST(req: NextRequest) {
     // Check slate is active
     const { data: slate } = await supabase
       .from('slates')
-      .select('id, slate_number, is_active, locks_at')
+      .select('id, slate_number, slate_date, season_year, is_active, locks_at')
       .eq('id', slate_id)
       .single()
 
@@ -65,33 +71,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'This slate is not active' }, { status: 400 })
     }
 
-    // Look up any existing pick for this slate — players may change it until
-    // their currently-picked team's deadline passes
-    const { data: existingPick } = await supabase
-      .from('picks')
-      .select('id, team')
-      .eq('player_id', playerId)
-      .eq('slate_id', slate_id)
-      .single()
-
-    // Check team hasn't been used by this player in other slates
-    // When changing this slate's pick, exclude it so the replaced team doesn't block
-    let pastPicksQuery = supabase.from('picks').select('team').eq('player_id', playerId)
-    if (existingPick) pastPicksQuery = pastPicksQuery.neq('slate_id', slate_id)
-    const { data: pastPicks } = await pastPicksQuery
-
-    const usedTeams = (pastPicks || []).map((p: { team: string }) => p.team)
-    if (usedTeams.includes(team)) {
-      return NextResponse.json({ error: `${player.full_name} already used ${team} in a previous slate` }, { status: 400 })
-    }
-
-    // Check deadline
-    const { data: games } = await supabase
-      .from('games')
-      .select('*')
-      .eq('slate_id', slate_id)
-
-    const gamesData: Game[] = games || []
+    const [{ data: seasonSlates }, { data: playerPicks }] = await Promise.all([
+      supabase
+        .from('slates')
+        .select('id, slate_number, slate_date, locks_at')
+        .eq('season_year', slate.season_year),
+      supabase.from('picks').select('id, team, slate_id').eq('player_id', playerId),
+    ])
+    const seasonSlateIds = (seasonSlates ?? []).map((row) => row.id)
+    const { data: seasonGames } = seasonSlateIds.length
+      ? await supabase.from('games').select('*').in('slate_id', seasonSlateIds)
+      : { data: [] as Game[] }
+    const allGames: Game[] = seasonGames || []
+    const gamesData = allGames.filter((game) => game.slate_id === slate_id)
     const teamGame = gamesData.find((g) => g.home_team === team || g.away_team === team)
 
     if (!teamGame) {
@@ -111,21 +103,63 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const periods = buildPickPeriods(pool.competition_mode, seasonSlates ?? [], allGames)
+    const activePeriod = periods.find((period) => period.id === slate_id)
+    const sharedQuota = sharedRoundPickQuota(
+      pool.competition_mode,
+      pool.pick_frequency,
+      activePeriod?.round ?? null
+    )
+    const eligibleSlateIds = sharedQuota
+      ? new Set(periods.filter((period) => period.round === activePeriod?.round).map((period) => period.id))
+      : new Set([slate_id])
+    const picksInPeriod = (playerPicks ?? []).filter((pick) => eligibleSlateIds.has(pick.slate_id))
+    const quota = sharedQuota ?? 1
+
+    let existingPick = pick_id
+      ? (playerPicks ?? []).find((pick) => pick.id === pick_id && pick.slate_id === slate_id)
+      : undefined
+
+    // Daily pools retain the familiar replace-in-place behavior. Shared-round
+    // pools add picks until their quota is full; changing one requires its ID.
+    if (!sharedQuota && !existingPick) {
+      existingPick = (playerPicks ?? []).find((pick) => pick.slate_id === slate_id)
+    }
+    if (pick_id && !existingPick) {
+      return NextResponse.json({ error: 'That pick cannot be changed on this game day' }, { status: 400 })
+    }
+    if (!existingPick && picksInPeriod.length >= quota) {
+      return NextResponse.json(
+        { error: `You already made all ${quota} required pick${quota === 1 ? '' : 's'} for this round` },
+        { status: 409 }
+      )
+    }
+
+    const usedTeams = (playerPicks ?? [])
+      .filter((pick) => pick.id !== existingPick?.id)
+      .map((pick) => pick.team)
+    if (usedTeams.includes(team)) {
+      return NextResponse.json({ error: `${player.full_name} already used ${team}` }, { status: 400 })
+    }
+
     // Snapshot the seed at pick time; the endgame tiebreak sums these and a
     // seed is only meaningful on the day the pick was made.
     const pickedSeed = seedForTeam(team, gamesData)
 
     // Re-submitting the same team is a no-op
     if (existingPick && existingPick.team === team) {
-      return NextResponse.json({ ok: true, team })
+      return NextResponse.json({ ok: true, pick: existingPick })
     }
 
+    let savedPick: { id: string; team: string; slate_id: string } | null = null
     if (existingPick) {
       // UPDATE in place — atomic, no window where the player has zero picks
-      const { error: updateError } = await supabase
+      const { data: updated, error: updateError } = await supabase
         .from('picks')
         .update({ team, seed: pickedSeed, auto_assigned: false, submitted_by_admin: isAdmin })
         .eq('id', existingPick.id)
+        .select('id, team, slate_id')
+        .single()
       if (updateError) {
         console.error('update error', updateError)
         if (updateError.code === '23505') {
@@ -133,17 +167,22 @@ export async function POST(req: NextRequest) {
         }
         return NextResponse.json({ error: 'Failed to update pick' }, { status: 500 })
       }
+      savedPick = updated
     } else {
       // submitted_by_admin records the verified admin session, never the
       // client-supplied flag — players can't stamp their own picks as admin's.
-      const { error: insertError } = await supabase.from('picks').insert({
-        player_id: playerId,
-        slate_id,
-        team,
-        seed: pickedSeed,
-        auto_assigned: false,
-        submitted_by_admin: isAdmin,
-      })
+      const { data: inserted, error: insertError } = await supabase
+        .from('picks')
+        .insert({
+          player_id: playerId,
+          slate_id,
+          team,
+          seed: pickedSeed,
+          auto_assigned: false,
+          submitted_by_admin: isAdmin,
+        })
+        .select('id, team, slate_id')
+        .single()
       if (insertError) {
         console.error('insert error', insertError)
         if (insertError.code === '23505') {
@@ -151,6 +190,7 @@ export async function POST(req: NextRequest) {
         }
         return NextResponse.json({ error: 'Failed to save pick' }, { status: 500 })
       }
+      savedPick = inserted
     }
 
     await logAudit(supabase, {
@@ -161,7 +201,12 @@ export async function POST(req: NextRequest) {
       message: existingPick
         ? `${player.full_name} changed Slate ${slate.slate_number} pick: ${existingPick.team} → ${team}${isAdmin ? ' (by admin)' : ''}`
         : `${player.full_name} picked ${team} for Slate ${slate.slate_number}${isAdmin ? ' (by admin)' : ''}`,
-      details: { slate_number: slate.slate_number, team, previous_team: existingPick?.team ?? null },
+      details: {
+        slate_number: slate.slate_number,
+        team,
+        previous_team: existingPick?.team ?? null,
+        required_picks: quota,
+      },
     })
 
     // Awaited: fire-and-forget sends can be dropped when the serverless
@@ -172,7 +217,7 @@ export async function POST(req: NextRequest) {
     }
 
     revalidatePath('/')
-    return NextResponse.json({ ok: true, team })
+    return NextResponse.json({ ok: true, pick: savedPick })
   } catch (err) {
     console.error('picks error', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })

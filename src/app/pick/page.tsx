@@ -5,19 +5,18 @@ import { getPoolConfig } from '@/lib/pool'
 import {
   buildPickPeriods,
   capabilitiesFor,
-  copyFor,
   formatPeriodDateShort,
+  sharedRoundPickQuota,
   seedToShow,
   type CompetitionMode,
 } from '@/lib/competition'
 import type { Game } from '@/types'
-import PickForm, { type GameRow } from './PickForm'
+import PickForm, { type GameRow, type SavedPick } from './PickForm'
 import SiteHeader from '../components/SiteHeader'
 import { slateDeadline } from '@/lib/deadline'
 import { fetchDayScoreboard } from '@/lib/espn'
 import Link from 'next/link'
 import { getTeamBrandDirectory, type TeamBrandDirectory } from '@/lib/teamBrand'
-import TeamMark from '../components/TeamMark'
 import { Footer } from '../components/Sports'
 
 // Everything the pick page needs, loaded in one place. Kept separate from the
@@ -34,12 +33,18 @@ type PickPageData =
       usedTeams: string[]
       gameRows: GameRow[]
       slateId: string
-      lockedPick: { team: string; autoAssigned: boolean } | null
-      currentPick: { team: string; deadline: string | null } | null
+      savedPicks: SavedPick[]
+      requiredPicks: number
+      sharedRound: boolean
+      locked: boolean
       teamBrands: TeamBrandDirectory
     }
 
-async function loadPickData(playerId: string, mode: CompetitionMode): Promise<PickPageData> {
+async function loadPickData(
+  playerId: string,
+  mode: CompetitionMode,
+  pickFrequency: 'every-game-day' | 'weekends-only' | 'tournament-round'
+): Promise<PickPageData> {
   const caps = capabilitiesFor(mode)
   try {
     const supabase = await getDb()
@@ -54,7 +59,7 @@ async function loadPickData(playerId: string, mode: CompetitionMode): Promise<Pi
     if (!player) return { kind: 'no-session' }
 
     const [{ data: pastPicks }, { data: allSlates }, teamBrands] = await Promise.all([
-      supabase.from('picks').select('team, slate_id').eq('player_id', playerId),
+      supabase.from('picks').select('id, team, slate_id, auto_assigned').eq('player_id', playerId),
       supabase
         .from('slates')
         .select('id, slate_number, slate_date, locks_at')
@@ -76,11 +81,12 @@ async function loadPickData(playerId: string, mode: CompetitionMode): Promise<Pi
     }
     const usedTeams = Object.keys(usedOn)
 
-    const [{ data: currentPick }, { data: games }] = await Promise.all([
-      supabase.from('picks').select('*').eq('player_id', playerId).eq('slate_id', slate.id).maybeSingle(),
-      supabase.from('games').select('*').eq('slate_id', slate.id).order('tip_time'),
-    ])
-    const gamesData: Game[] = games || []
+    const allSlateIds = (allSlates ?? []).map((row) => row.id)
+    const { data: allGamesResult } = allSlateIds.length
+      ? await supabase.from('games').select('*').in('slate_id', allSlateIds).order('tip_time')
+      : { data: [] as Game[] }
+    const allGames: Game[] = allGamesResult || []
+    const gamesData = allGames.filter((game) => game.slate_id === slate.id)
 
     const now = await getEffectiveNow()
 
@@ -145,9 +151,22 @@ async function loadPickData(playerId: string, mode: CompetitionMode): Promise<Pi
         slate_date: String(s.slate_date),
         locks_at: s.locks_at,
       })),
-      gamesData.map((g) => ({ slate_id: g.slate_id, round_label: g.round_label }))
+      allGames.map((g) => ({ slate_id: g.slate_id, round_label: g.round_label }))
     )
     const period = periods.find((p) => p.id === slate.id) ?? null
+    const sharedQuota = sharedRoundPickQuota(mode, pickFrequency, period?.round ?? null)
+    const periodSlateIds = sharedQuota
+      ? new Set(periods.filter((candidate) => candidate.round === period?.round).map((candidate) => candidate.id))
+      : new Set([slate.id])
+    const savedPicks: SavedPick[] = (pastPicks ?? [])
+      .filter((pick) => periodSlateIds.has(pick.slate_id))
+      .map((pick) => ({
+        id: pick.id,
+        team: pick.team,
+        slateId: pick.slate_id,
+        editable: pick.slate_id === slate.id && !locked,
+        autoAssigned: !!pick.auto_assigned,
+      }))
 
     return {
       kind: 'ok',
@@ -156,13 +175,10 @@ async function loadPickData(playerId: string, mode: CompetitionMode): Promise<Pi
       usedTeams,
       gameRows,
       slateId: slate.id,
-      lockedPick:
-        currentPick && locked
-          ? { team: currentPick.team, autoAssigned: !!currentPick.auto_assigned }
-          : null,
-      currentPick: currentPick
-        ? { team: currentPick.team, deadline: lockTime?.toISOString() ?? null }
-        : null,
+      savedPicks,
+      requiredPicks: sharedQuota ?? 1,
+      sharedRound: sharedQuota != null,
+      locked,
       teamBrands,
     }
   } catch (err) {
@@ -178,9 +194,8 @@ export default async function PickPage() {
   const pool = await getPoolConfig()
   const mode: CompetitionMode = pool.competition_mode
   const caps = capabilitiesFor(mode)
-  const copy = copyFor(mode)
 
-  const data = await loadPickData(session.player_id, mode)
+  const data = await loadPickData(session.player_id, mode, pool.pick_frequency)
   if (data.kind === 'no-session') redirect('/login')
 
   if (data.kind === 'failed') {
@@ -218,37 +233,17 @@ export default async function PickPage() {
     )
   }
 
-  if (data.lockedPick) {
-    return (
-      <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
-        <div className="space-y-6">
-          <div className="border p-8 text-center" style={{ borderColor: 'var(--green)', borderWidth: 2 }}>
-            <p className="text-sm font-bold mb-4" style={{ color: 'var(--green)' }}>
-              Pick locked · {data.periodLabel}
-            </p>
-            <TeamMark team={data.lockedPick.team} directory={data.teamBrands} size={64} showName />
-            {data.lockedPick.autoAssigned && (
-              <p className="text-xs mt-3" style={{ color: 'var(--red)' }}>Auto-assigned (missed deadline)</p>
-            )}
-          </div>
-          <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
-            Teams used: {[...data.usedTeams, data.lockedPick.team].join(', ')}
-          </p>
-        </div>
-      </Shell>
-    )
-  }
-
   return (
     <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
       <PickForm
         slateId={data.slateId}
         periodLabel={data.periodLabel}
-        pickHeading={copy.pickHeading}
-        mode={mode}
         gameRows={data.gameRows}
         usedTeams={data.usedTeams}
-        currentPick={data.currentPick}
+        savedPicks={data.savedPicks}
+        requiredPicks={data.requiredPicks}
+        sharedRound={data.sharedRound}
+        locked={data.locked}
         teamBrands={data.teamBrands}
       />
     </Shell>

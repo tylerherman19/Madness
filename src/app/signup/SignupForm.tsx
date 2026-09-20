@@ -9,6 +9,8 @@ export default function SignupForm() {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [venmo, setVenmo] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -16,12 +18,16 @@ export default function SignupForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: fullName.trim(), email: email.trim(), phone: phone.trim() || undefined, venmo: venmo.trim() || undefined }),
+        body: JSON.stringify({ full_name: fullName.trim(), email: email.trim(), phone: phone.trim() || undefined, venmo: venmo.trim() || undefined, password }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Signup failed'); return }
@@ -34,12 +40,12 @@ export default function SignupForm() {
   }
 
   return (
-    <AuthShell eyebrow="Open registration" title="Join the pool" description="$25 entry. One pick each game day. One loss and your run is over.">
+    <AuthShell eyebrow="Open registration" title="Join the pool" description="$25 entry. Pick winners, stay alive, and never use the same team twice.">
           {done ? (
             <div className="card p-6 sm:p-8 text-center space-y-4">
               <p className="font-display text-5xl" style={{ color: 'var(--green)' }}>You&apos;re in</p>
               <p className="text-sm" style={{ color: 'var(--dark)' }}>
-                Check your email — your 6-digit PIN is on its way. You&apos;ll need it to log in and submit picks each slate.
+                Your account is ready. Use the password you just chose to log in and submit picks.
               </p>
               <p className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--dark)', background: 'var(--green-tint)' }}>
                 Venmo <strong>@griffinsell</strong> $25 to lock in your spot.
@@ -54,10 +60,10 @@ export default function SignupForm() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {[
                     { label: 'Full Name', type: 'text', val: fullName, set: setFullName, placeholder: 'e.g. John Smith', required: true, autoComplete: 'name' },
-                    { label: 'Email', type: 'email', val: email, set: setEmail, placeholder: 'you@example.com', required: true, autoComplete: 'email', note: 'Your PIN will be sent here.' },
+                    { label: 'Email', type: 'email', val: email, set: setEmail, placeholder: 'you@example.com', required: true, autoComplete: 'email' },
                     { label: 'Phone', type: 'tel', val: phone, set: setPhone, placeholder: '(608) 555-1234', required: true, autoComplete: 'tel' },
                     { label: 'Venmo Handle', type: 'text', val: venmo, set: setVenmo, placeholder: '@yourhandle', required: true },
-                  ].map(({ label, type, val, set, placeholder, required, autoComplete, note }) => (
+                  ].map(({ label, type, val, set, placeholder, required, autoComplete }) => (
                     <div key={label}>
                       <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>{label}</label>
                       <input
@@ -70,9 +76,17 @@ export default function SignupForm() {
                         className="field w-full px-3.5 py-2.5 text-sm"
                         style={{ color: 'var(--dark)' }}
                       />
-                      {note && <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>{note}</p>}
                     </div>
                   ))}
+
+                  <div>
+                    <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Create password</label>
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--dark)' }} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Confirm password</label>
+                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--dark)' }} />
+                  </div>
 
                   {error && <p className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--red)', background: 'var(--red-tint)' }}>{error}</p>}
 
@@ -81,7 +95,7 @@ export default function SignupForm() {
                     disabled={loading}
                     className="btn-primary w-full py-3"
                   >
-                    {loading ? 'Joining…' : 'Join and get my PIN'}
+                    {loading ? 'Joining…' : 'Create my account'}
                   </button>
                 </form>
               </div>

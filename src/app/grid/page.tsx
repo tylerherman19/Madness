@@ -65,11 +65,13 @@ export default async function GridPage() {
 
   const now = await getEffectiveNow()
 
-  // Build pick map: playerId -> slateId -> team
-  const pickMap: Record<string, Record<string, string>> = {}
+  // Build pick map: playerId -> slateId -> teams. Round quotas can put two
+  // selections on the same calendar slate.
+  const pickMap: Record<string, Record<string, string[]>> = {}
   for (const pick of allPicks) {
     if (!pickMap[pick.player_id]) pickMap[pick.player_id] = {}
-    pickMap[pick.player_id][pick.slate_id] = pick.team
+    if (!pickMap[pick.player_id][pick.slate_id]) pickMap[pick.player_id][pick.slate_id] = []
+    pickMap[pick.player_id][pick.slate_id].push(pick.team)
   }
 
   // A slate reveals as a unit at its first tip, so this is memoised per
@@ -114,7 +116,7 @@ export default async function GridPage() {
 
   // Build result map: playerId -> slateId -> outcome
   type Outcome = 'won' | 'lost' | 'pending'
-  const resultMap: Record<string, Record<string, Outcome>> = {}
+  const resultMap: Record<string, Record<string, Outcome[]>> = {}
   for (const pick of allPicks) {
     const games = gamesByWeek[pick.slate_id] ?? []
     const game = games.find((g) => g.home_team === pick.team || g.away_team === pick.team)
@@ -125,13 +127,14 @@ export default async function GridPage() {
       else outcome = 'lost'
     }
     if (!resultMap[pick.player_id]) resultMap[pick.player_id] = {}
-    resultMap[pick.player_id][pick.slate_id] = outcome
+    if (!resultMap[pick.player_id][pick.slate_id]) resultMap[pick.player_id][pick.slate_id] = []
+    resultMap[pick.player_id][pick.slate_id].push(outcome)
   }
 
   // Sort players: alive first (by slates survived desc, then name), then eliminated (by elimination_slate desc, then name)
   const withStats = players.map((p) => ({
     ...p,
-    weeksSurvived: Object.keys(pickMap[p.id] ?? {}).length,
+    weeksSurvived: Object.values(pickMap[p.id] ?? {}).reduce((total, teams) => total + teams.length, 0),
   }))
   withStats.sort((a, b) => {
     if (a.status !== b.status) return a.status === 'alive' ? -1 : 1
@@ -222,10 +225,10 @@ export default async function GridPage() {
                       </div>
                     </td>
                     {slates.map((w) => {
-                      const team = pickMap[player.id]?.[w.id]
-                      const hidden = !!team && !isRevealed(w.id)
+                      const teams = pickMap[player.id]?.[w.id] ?? []
+                      const hidden = teams.length > 0 && !isRevealed(w.id)
 
-                      if (!team) {
+                      if (!teams.length) {
                         return (
                           <td key={w.id} className="py-2 px-1 text-center" style={{ fontSize: 11, color: 'var(--muted)' }}>
                             —
@@ -241,7 +244,12 @@ export default async function GridPage() {
                         )
                       }
 
-                      const outcome = resultMap[player.id]?.[w.id] ?? 'pending'
+                      const outcomes = resultMap[player.id]?.[w.id] ?? []
+                      const outcome: Outcome = outcomes.includes('lost')
+                        ? 'lost'
+                        : outcomes.length > 0 && outcomes.every((result) => result === 'won')
+                          ? 'won'
+                          : 'pending'
                       const cellStyle =
                         outcome === 'won'
                           ? { background: 'rgba(30,82,24,0.15)', color: 'var(--green)' }
@@ -255,7 +263,7 @@ export default async function GridPage() {
                           className="py-2 px-1 text-center font-mono font-bold"
                           style={{ fontSize: 11, borderRadius: 2, ...cellStyle }}
                         >
-                          {team}
+                          {teams.join(' / ')}
                         </td>
                       )
                     })}

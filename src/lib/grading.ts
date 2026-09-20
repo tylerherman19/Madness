@@ -26,11 +26,18 @@ function computeLosers(games: Game[]): Set<string> {
 // Alive players whose pick has already lost (or tied) in a game that's been
 // decided but not yet graded — i.e. what "Grade All Picks" is about to do.
 export function countPendingEliminations(
-  picks: { team: string; playerStatus: string }[],
+  picks: { team: string; playerStatus: string; playerId?: string }[],
   games: Game[]
 ): number {
   const losers = computeLosers(games)
-  return picks.filter((p) => p.playerStatus === 'alive' && losers.has(p.team)).length
+  const eliminatedPlayers = new Set<string>()
+  let anonymousLosses = 0
+  for (const pick of picks) {
+    if (pick.playerStatus !== 'alive' || !losers.has(pick.team)) continue
+    if (pick.playerId) eliminatedPlayers.add(pick.playerId)
+    else anonymousLosses++
+  }
+  return eliminatedPlayers.size + anonymousLosses
 }
 
 // Grade every pick for a slate against its completed games: a loss
@@ -57,7 +64,8 @@ export async function gradeSlatePicks(
     .eq('slate_id', slateId)
 
   const eliminated: string[] = []
-  const advanced: string[] = []
+  const advanced = new Set<string>()
+  const eliminatedPlayerIds = new Set<string>()
 
   for (const pick of picks ?? []) {
     const player = pick.players as unknown as {
@@ -66,7 +74,7 @@ export async function gradeSlatePicks(
       email: string
       status: string
     } | null
-    if (!player || player.status !== 'alive') continue
+    if (!player || player.status !== 'alive' || eliminatedPlayerIds.has(player.id)) continue
 
     const game = completedGames.find(
       (g) => g.home_team === pick.team || g.away_team === pick.team
@@ -90,6 +98,8 @@ export async function gradeSlatePicks(
       }
 
       eliminated.push(player.full_name)
+      eliminatedPlayerIds.add(player.id)
+      advanced.delete(player.full_name)
       await logAudit(db, {
         event_type: 'player-eliminated',
         actor: 'system',
@@ -105,9 +115,9 @@ export async function gradeSlatePicks(
         await sleep(SEND_DELAY_MS)
       }
     } else if (winners.has(pick.team)) {
-      advanced.push(player.full_name)
+      advanced.add(player.full_name)
     }
   }
 
-  return { eliminated, advanced }
+  return { eliminated, advanced: [...advanced] }
 }

@@ -130,7 +130,7 @@ export default function TestingPanel({
                 const seeded = await callTestMode('seed', { users: seedUsers })
                 if (seeded) {
                   setMessage(
-                    `Sandbox ready: ${seeded.created_users} test users (PIN ${seeded.pin}), Slate ${seeded.slate_number} with ${seeded.games} games.`
+                    `Sandbox ready: ${seeded.created_users} test users (password ${seeded.password}), Slate ${seeded.slate_number} with ${seeded.games} games.`
                   )
                 }
                 router.refresh()
@@ -217,7 +217,7 @@ export default function TestingPanel({
                   const data = await callTestMode('seed', { users: seedUsers })
                   if (data) {
                     setMessage(
-                      `Seeded: ${data.created_users} new test users (PIN ${data.pin}), Slate ${data.slate_number} with ${data.games} games.`
+                      `Seeded: ${data.created_users} new test users (password ${data.password}), Slate ${data.slate_number} with ${data.games} games.`
                     )
                     router.refresh()
                   }
@@ -243,7 +243,7 @@ export default function TestingPanel({
               </button>
             </div>
             <p className="text-slate-400 text-sm">
-              Seeding creates test users (login with their name + PIN <span className="font-mono text-white">1234</span>)
+              Seeding creates test users (login with their name + password <span className="font-mono text-white">madness-test</span>)
               and one day of games anchored on tomorrow, tipping from 6:00 PM CT. The whole slate locks at that first tip.
               Prefer your own slate? Build it in{' '}
               <Link href="/admin/schedule" className="text-blue-400 underline">Schedule</Link> — while testing mode is

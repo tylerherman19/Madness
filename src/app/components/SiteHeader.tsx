@@ -97,7 +97,6 @@ export default function SiteHeader({
               <span>Rules</span>
             </Link>
           </nav>
-          <div className={s.railFootnote}><span>Real games.</span><span>Real odds.</span><span>A bigger story.</span></div>
           <div className={`${s.accountMenu} account-menu`}>
             <button className={s.profile} aria-expanded={desktopAccountOpen} aria-controls="desktop-account-links" onClick={() => setDesktopAccountOpen(!desktopAccountOpen)}>
               <span className={s.avatar}>{initials ?? <ProfileGlyph />}</span>

@@ -137,8 +137,11 @@ export async function GET() {
         p.email && isDeliverable(p.email) &&
         (p.status === 'alive' || p.elimination_slate === slate.slate_number)
     )
-    const pickByPlayer: Record<string, string> = {}
-    for (const p of picksRes.data ?? []) pickByPlayer[p.player_id] = p.team
+    const picksByPlayer: Record<string, string[]> = {}
+    for (const pick of picksRes.data ?? []) {
+      if (!picksByPlayer[pick.player_id]) picksByPlayer[pick.player_id] = []
+      picksByPlayer[pick.player_id].push(pick.team)
+    }
 
     const dbGames = (dbGamesRes.data ?? []) as Game[]
 
@@ -214,56 +217,58 @@ export async function GET() {
     }
 
     const summary = { safe: 0, winning: 0, losing: 0, out: 0, notStarted: 0, hidden: 0, pending: 0, noPick: 0 }
-    const sweatPlayers: SweatPlayer[] = players.map(
+    const sweatPlayers: SweatPlayer[] = players.flatMap(
       (p: { id: string; full_name: string }) => {
-        const team = pickByPlayer[p.id]
-        if (!team) {
+        const teams = picksByPlayer[p.id] ?? []
+        if (!teams.length) {
           if (deadlinePassed) {
             summary.noPick++
-            return { name: p.full_name, team: null, status: 'no_pick' as const }
+            return [{ name: p.full_name, team: null, status: 'no_pick' as const }]
           }
           summary.pending++
-          return { name: p.full_name, team: null, status: 'pending' as const }
+          return [{ name: p.full_name, team: null, status: 'pending' as const }]
         }
 
-        const game = gameByTeam[team]
-        // Picks are revealed the moment the slate locks, which is the same
-        // instant for everyone. ESPN reporting the game as started counts
-        // too, in case our stored tip time drifted.
-        const revealed =
-          isPickRevealed(slate, dbGames, now) || (game !== undefined && game.state !== 'pre')
-        if (!revealed) {
-          summary.hidden++
-          return { name: p.full_name, team: null, status: 'pick_in' as const }
-        }
+        return teams.map((team): SweatPlayer => {
+          const game = gameByTeam[team]
+          // Picks are revealed the moment the slate locks, which is the same
+          // instant for everyone. ESPN reporting the game as started counts
+          // too, in case our stored tip time drifted.
+          const revealed =
+            isPickRevealed(slate, dbGames, now) || (game !== undefined && game.state !== 'pre')
+          if (!revealed) {
+            summary.hidden++
+            return { name: p.full_name, team: null, status: 'pick_in' }
+          }
 
-        if (!game) {
-          summary.notStarted++
-          return { name: p.full_name, team, status: 'pre' as const }
-        }
+          if (!game) {
+            summary.notStarted++
+            return { name: p.full_name, team, status: 'pre' }
+          }
 
-        const isHome = game.homeTeam === team
-        if (isHome) game.homePlayers.push(p.full_name)
-        else game.awayPlayers.push(p.full_name)
+          const isHome = game.homeTeam === team
+          if (isHome) game.homePlayers.push(p.full_name)
+          else game.awayPlayers.push(p.full_name)
 
-        if (game.state === 'pre') {
-          summary.notStarted++
-          return { name: p.full_name, team, status: 'pre' as const }
-        }
+          if (game.state === 'pre') {
+            summary.notStarted++
+            return { name: p.full_name, team, status: 'pre' }
+          }
 
-        const my = isHome ? game.homeScore : game.awayScore
-        const their = isHome ? game.awayScore : game.homeScore
-        let status: SweatStatus
-        if (game.state === 'post') {
-          status = my > their ? 'won' : 'lost' // tie eliminates
-          if (status === 'won') summary.safe++
-          else summary.out++
-        } else {
-          status = my > their ? 'winning' : my < their ? 'losing' : 'tied'
-          if (status === 'winning') summary.winning++
-          else summary.losing++ // tied counts as danger — a tie eliminates
-        }
-        return { name: p.full_name, team, status }
+          const my = isHome ? game.homeScore : game.awayScore
+          const their = isHome ? game.awayScore : game.homeScore
+          let status: SweatStatus
+          if (game.state === 'post') {
+            status = my > their ? 'won' : 'lost' // tie eliminates
+            if (status === 'won') summary.safe++
+            else summary.out++
+          } else {
+            status = my > their ? 'winning' : my < their ? 'losing' : 'tied'
+            if (status === 'winning') summary.winning++
+            else summary.losing++ // tied counts as danger — a tie eliminates
+          }
+          return { name: p.full_name, team, status }
+        })
       }
     )
 

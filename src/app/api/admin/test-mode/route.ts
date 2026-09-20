@@ -4,14 +4,14 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { requireAdmin } from '@/lib/api'
 import { isTestMode, setTestModeCookie, clearTestModeCookie } from '@/lib/testMode'
 import { sandboxSupabase } from '@/lib/supabase'
-import { hashPin } from '@/lib/pin'
+import { hashPassword } from '@/lib/password'
 import { gradeSlatePicks } from '@/lib/grading'
 import type { Game } from '@/types'
 
 const CHICAGO_TZ = 'America/Chicago'
 
-// Every seeded test user logs in with this PIN (sandbox-only accounts).
-const TEST_USER_PIN = '1234'
+// Every seeded test user logs in with this password (sandbox-only accounts).
+const TEST_USER_PASSWORD = 'madness-test'
 
 // One day of games, tomorrow, spread across an evening. The whole slate
 // locks at the first tip (6:00 PM CT here), so the sandbox clock can be
@@ -176,8 +176,8 @@ export async function POST(req: NextRequest) {
       const existingEmails = new Set((existingPlayers || []).map((p: { email: string }) => p.email))
 
       // One bcrypt hash shared by all seeded users — they're throwaway
-      // sandbox accounts and hashing 30 PINs at cost 12 is needlessly slow.
-      const pinHash = await hashPin(TEST_USER_PIN)
+      // sandbox accounts and hashing 30 passwords at cost 12 is needlessly slow.
+      const passwordHash = await hashPassword(TEST_USER_PASSWORD)
       const newUsers = []
       for (let i = 1; i <= userCount; i++) {
         const email = `test.player${i}@nflsurvivor.internal`
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
         newUsers.push({
           full_name: `Test Player ${i}`,
           email,
-          pin_hash: pinHash,
+          pin_hash: passwordHash,
           paid: true,
           status: 'alive',
         })
@@ -259,7 +259,7 @@ export async function POST(req: NextRequest) {
         created_users: newUsers.length,
         slate_number: slateNumber,
         games: games.length,
-        pin: TEST_USER_PIN,
+        password: TEST_USER_PASSWORD,
       })
     }
 

@@ -31,8 +31,8 @@ export async function PATCH(
   }
 
   // full_name is the login key but doesn't have to be unique — login tries
-  // every same-named candidate's PIN (see /api/auth/login). Email must stay
-  // unique since that's where PINs get sent.
+  // every same-named candidate's password (see /api/auth/login). Email stays
+  // unique so each entry still has one stable contact identity.
   if ('full_name' in updates) {
     const name = typeof updates.full_name === 'string' ? updates.full_name.trim() : ''
     if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 })

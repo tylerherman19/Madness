@@ -81,62 +81,6 @@ async function sendChecked(payload: {
   return { ok: true }
 }
 
-export async function sendWelcomeEmail(
-  email: string,
-  fullName: string,
-  pin: string
-): Promise<SendResult> {
-  if (!isDeliverable(email)) return { ok: true }
-  const name = esc(fullName)
-  return sendChecked({
-    to: email,
-    subject: "Welcome to the 2026 NFL Survivor Pool — You're In!",
-    html: `
-      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-        ${LOGO_HEADER}
-        <p>Hey ${name}, welcome to the 2026 NFL Survivor Pool!</p>
-        <p>Entry: $25 &mdash; If you haven&rsquo;t already, please Venmo @griffinsell before Slate 1.</p>
-        <p style="margin-bottom: 4px;">Your login name: ${name}</p>
-        <p style="margin-top: 0;">Your PIN: ${esc(pin)} &mdash; save that PIN, you&rsquo;ll need it every slate to submit your pick.</p>
-        <a href="${APP_URL}/login" style="display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Log In &amp; Make Your Pick</a>
-        <p>Join the GroupMe chat here: <a href="https://groupme.com/join_group/116696794/alYOgDf2">https://groupme.com/join_group/116696794/alYOgDf2</a></p>
-        <p>Rules (quick hits):</p>
-        <ul>
-          <li>Choose one NFL team to win each slate</li>
-          <li>No repeats; you can&rsquo;t use the same team twice</li>
-          <li>Win and advance; lose or tie and you&rsquo;re out</li>
-          <li>Deadlines: Wed-Sat games lock at kickoff; all other picks lock Sunday at 12PM CT</li>
-          <li>Missed pick: SNF away team OR MNF away team if SNF team was already used. If both already used, you&rsquo;re eliminated.</li>
-        </ul>
-        <p>Last survivor wins the pot. If multiple survivors remain at the end, the entire pot is split amongst those people. My phone number is 612-790-3985 and email is griffin.sell@icloud.com. Please reach out with any questions!</p>
-        <p>Can&rsquo;t remember your PIN? Use the &ldquo;Forgot PIN&rdquo; link on the login page to get a reset email.</p>
-        <p>Good luck,</p>
-        <p>Griffin Sell</p>
-      </div>
-    `,
-  })
-}
-
-export async function sendPinRegeneratedEmail(
-  email: string,
-  fullName: string,
-  pin: string
-): Promise<SendResult> {
-  if (!isDeliverable(email)) return { ok: true }
-  return sendChecked({
-    to: email,
-    subject: 'Your PIN Has Been Reset',
-    html: `
-      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-        ${LOGO_HEADER}
-        <p>Hey ${esc(fullName)},</p>
-        <p>Your PIN was reset by the admin. Your new PIN: ${esc(pin)} &mdash; you&rsquo;ll need it next time you log in to make your pick.</p>
-        <a href="${APP_URL}/login" style="display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Log In</a>
-      </div>
-    `,
-  })
-}
-
 export async function sendPickConfirmationEmail(
   email: string,
   fullName: string,

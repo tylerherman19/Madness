@@ -9,6 +9,7 @@ import {
   roundOf64Countdown,
   roundOf64Date,
   seedToShow,
+  sharedRoundPickQuota,
   ROUND_SEQUENCE,
   type PickPeriodGame,
   type PickPeriodSource,
@@ -74,6 +75,17 @@ test('rounds order by bracket position', () => {
   assert.ok(roundOrder('First Four') < roundOrder('Final Four'))
   // A game with no round sorts last rather than first.
   assert.ok(roundOrder(null) > roundOrder('National Championship'))
+})
+
+test('Elite Eight is two picks across the complete round', () => {
+  assert.equal(sharedRoundPickQuota('march-madness', 'every-game-day', 'Elite 8'), 2)
+  assert.equal(sharedRoundPickQuota('march-madness', 'tournament-round', 'Elite 8'), 2)
+})
+
+test('round quotas do not change regular-season game days', () => {
+  assert.equal(sharedRoundPickQuota('regular-season', 'tournament-round', null), null)
+  assert.equal(sharedRoundPickQuota('march-madness', 'every-game-day', 'Sweet 16'), null)
+  assert.equal(sharedRoundPickQuota('march-madness', 'tournament-round', 'Sweet 16'), 2)
 })
 
 test('regular-season pick periods are named by their calendar day', () => {

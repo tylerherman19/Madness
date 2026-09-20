@@ -106,6 +106,7 @@ export interface StandingRow {
   // survivor is left at the end. Higher wins: it means riskier picks.
   seed_total: number
   current_pick: string | null
+  current_picks: string[]
   pick_locked: boolean
   // True once the slate has locked and the pick can be shown publicly.
   pick_revealed: boolean

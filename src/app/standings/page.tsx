@@ -31,6 +31,7 @@ export default async function DashboardPage() {
   const clientAliveRows = aliveRows.map((row) => ({
     ...row,
     current_pick: row.pick_revealed ? row.current_pick : null,
+    current_picks: row.pick_revealed ? row.current_picks : [],
   }))
   const insights = data?.insights
 
@@ -87,6 +88,7 @@ export default async function DashboardPage() {
               periodByNumber={data.periodByNumber}
               teamBrands={data.teamBrands}
               signupsClosed={signupsClosed}
+              showSeedTotal={capabilitiesFor(mode).showSeedTotal}
             />
           </Section>
 
@@ -209,7 +211,7 @@ function buildRules(
   return [
     'Pay $25 entry via Venmo to @griffinsell.',
     tournament
-      ? 'Every tournament game day, pick one team to win.'
+      ? 'Make the required picks for each tournament period. In the Elite Eight, make two total picks across the full round — not one forced pick each day.'
       : 'Every day there are games, pick one team to win.',
     copy.reuseRule,
     "Your team wins, you survive. Loses and you're out.",

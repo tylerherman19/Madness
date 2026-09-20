@@ -6,7 +6,7 @@ import type { StandingRow } from '@/types'
 import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
 import TeamChip from './TeamChip'
 
-type SortMode = 'alphabetical' | 'team'
+type SortMode = 'seeds' | 'alphabetical' | 'team'
 
 function byName(a: StandingRow, b: StandingRow): number {
   return a.full_name.localeCompare(b.full_name, undefined, { sensitivity: 'base' })
@@ -19,6 +19,7 @@ export default function StandingsTable({
   periodByNumber,
   teamBrands,
   signupsClosed,
+  showSeedTotal,
 }: {
   aliveRows: StandingRow[]
   elimRows: StandingRow[]
@@ -26,11 +27,15 @@ export default function StandingsTable({
   periodByNumber: Record<number, { shortLabel: string }>
   teamBrands: TeamBrandDirectory
   signupsClosed: boolean
+  showSeedTotal: boolean
 }) {
-  const [sortMode, setSortMode] = useState<SortMode>('alphabetical')
+  const [sortMode, setSortMode] = useState<SortMode>(showSeedTotal ? 'seeds' : 'alphabetical')
 
   const sortedAliveRows = useMemo(() => {
     const rows = aliveRows.slice()
+    if (sortMode === 'seeds') {
+      return rows.sort((a, b) => b.seed_total - a.seed_total || byName(a, b))
+    }
     if (sortMode === 'alphabetical') return rows.sort(byName)
     return rows.sort((a, b) => {
       // The server strips unrevealed teams before this component receives the
@@ -50,7 +55,10 @@ export default function StandingsTable({
     })
   }, [aliveRows, sortMode, teamBrands])
 
-  const sortedElimRows = useMemo(() => elimRows.slice().sort(byName), [elimRows])
+  const sortedElimRows = useMemo(
+    () => elimRows.slice().sort(showSeedTotal ? (a, b) => b.seed_total - a.seed_total || byName(a, b) : byName),
+    [elimRows, showSeedTotal]
+  )
   const isEmpty = aliveRows.length === 0 && elimRows.length === 0
 
   return (
@@ -58,7 +66,7 @@ export default function StandingsTable({
       {!isEmpty && (
         <div className="mb-3 flex justify-end" aria-label="Sort standings">
           <div className="inline-flex rounded-full p-1" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}>
-            {(['alphabetical', 'team'] as const).map((mode) => {
+            {([...(showSeedTotal ? ['seeds'] as const : []), 'alphabetical', 'team'] as SortMode[]).map((mode) => {
               const active = sortMode === mode
               return (
                 <button
@@ -69,7 +77,7 @@ export default function StandingsTable({
                   className="rounded-full px-3 py-1.5 text-xs font-bold"
                   style={{ background: active ? 'var(--dark)' : 'transparent', color: active ? 'white' : 'var(--muted)' }}
                 >
-                  {mode === 'alphabetical' ? 'Alphabetical' : 'Team'}
+                  {mode === 'seeds' ? 'Seed total' : mode === 'alphabetical' ? 'Alphabetical' : 'Team'}
                 </button>
               )
             })}
@@ -83,13 +91,14 @@ export default function StandingsTable({
             <tr style={{ background: 'var(--surface-sunken)' }}>
               <th className="py-2.5 pl-4 text-left eyebrow w-full">Player</th>
               <th className="py-2.5 px-4 text-left eyebrow hidden sm:table-cell whitespace-nowrap">Status</th>
+              {showSeedTotal && <th className="py-2.5 px-3 text-right eyebrow whitespace-nowrap">Seeds</th>}
               <th className="py-2.5 pl-4 pr-4 text-left eyebrow whitespace-nowrap">{periodLabel ? `${periodLabel} Pick` : 'Pick'}</th>
             </tr>
           </thead>
           <tbody>
             {isEmpty && (
               <tr>
-                <td colSpan={3} className="p-8 text-center">
+                <td colSpan={showSeedTotal ? 4 : 3} className="p-8 text-center">
                   <strong className="block mb-2">The field is open</strong>
                   <p className="text-sm text-[var(--muted)] mb-4">Players will appear here when they join the pool.</p>
                   {!signupsClosed && <Link href="/signup" className="btn-primary px-5">Join the pool</Link>}
@@ -99,7 +108,7 @@ export default function StandingsTable({
 
             {sortedAliveRows.length > 0 && (
               <tr>
-                <td colSpan={3} className="pt-4 pb-1.5 pl-4">
+                <td colSpan={showSeedTotal ? 4 : 3} className="pt-4 pb-1.5 pl-4">
                   <span className="pill pill-alive"><span className="pill-dot" />{sortedAliveRows.length} Still Alive</span>
                 </td>
               </tr>
@@ -110,9 +119,10 @@ export default function StandingsTable({
                 <td className="py-3 px-4 hidden sm:table-cell">
                   <span className="pill pill-alive"><span className="pill-dot" />Alive</span>
                 </td>
+                {showSeedTotal && <td className="py-3 px-3 text-right font-bold tnum" style={{ color: 'var(--dark)' }}>{row.seed_total}</td>}
                 <td className="py-3 pl-4 pr-4">
-                  {row.current_pick ? (
-                    <TeamChip team={row.current_pick} size={28} directory={teamBrands} />
+                  {row.current_picks.length > 0 ? (
+                    <span className="flex flex-wrap gap-1.5">{row.current_picks.map((team) => <TeamChip key={team} team={team} size={28} directory={teamBrands} />)}</span>
                   ) : row.pick_locked ? (
                     <span className="pill pill-alive"><span className="pill-dot" />Pick In</span>
                   ) : (
@@ -124,7 +134,7 @@ export default function StandingsTable({
 
             {sortedElimRows.length > 0 && (
               <tr>
-                <td colSpan={3} className="pt-6 pb-1.5 pl-4">
+                <td colSpan={showSeedTotal ? 4 : 3} className="pt-6 pb-1.5 pl-4">
                   <span className="pill pill-out"><span className="pill-dot" />{sortedElimRows.length} Eliminated</span>
                 </td>
               </tr>
@@ -137,6 +147,7 @@ export default function StandingsTable({
                   <td className="py-2.5 px-4 hidden sm:table-cell">
                     <span className="pill pill-out">Out{eliminatedIn ? ` · ${periodByNumber[eliminatedIn]?.shortLabel ?? `#${eliminatedIn}`}` : ''}</span>
                   </td>
+                  {showSeedTotal && <td className="py-2.5 px-3 text-right font-bold tnum" style={{ color: 'var(--muted)' }}>{row.seed_total}</td>}
                   <td className="py-2.5 pl-4 pr-4 text-xs" style={{ color: 'var(--muted)' }}>{row.elimination_reason ?? '—'}</td>
                 </tr>
               )

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
-import { generatePin, hashPin } from '@/lib/pin'
-import { sendPinRegeneratedEmail } from '@/lib/email'
+import { hashPassword, passwordValidationError } from '@/lib/password'
 import { logAudit } from '@/lib/audit'
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const unauthorized = await requireAdmin()
@@ -26,32 +25,22 @@ export async function POST(
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
 
-  const pin = generatePin()
-  const pin_hash = await hashPin(pin)
+  const { password } = await req.json().catch(() => ({ password: null }))
+  const passwordError = passwordValidationError(password)
+  if (passwordError) return NextResponse.json({ error: passwordError }, { status: 400 })
+  const pin_hash = await hashPassword(password)
 
-  // Only email the new PIN once it's actually saved
   const { error } = await supabase.from('players').update({ pin_hash }).eq('id', id)
-  if (error) return NextResponse.json({ error: 'Failed to update PIN' }, { status: 500 })
-
-  // The PIN is already saved, so a failed send needs the admin to retry —
-  // surface it.
-  const emailResult = await sendPinRegeneratedEmail(player.email, player.full_name, pin)
+  if (error) return NextResponse.json({ error: 'Failed to update password' }, { status: 500 })
 
   await logAudit(supabase, {
-    event_type: 'pin-regenerated',
+    event_type: 'password-reset',
     actor: 'admin',
     player_id: player.id,
     player_name: player.full_name,
-    message: `Admin regenerated PIN for ${player.full_name}`,
-    details: { email_sent: emailResult.ok },
+    message: `Admin reset the password for ${player.full_name}`,
+    details: null,
   })
-
-  if (!emailResult.ok) {
-    return NextResponse.json(
-      { error: 'PIN was reset, but the email failed to send — try again to email it' },
-      { status: 502 }
-    )
-  }
 
   return NextResponse.json({ ok: true })
 }

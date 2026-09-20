@@ -245,6 +245,22 @@ export const ROUND_PICK_QUOTA: Record<TournamentRound, number> = {
   'National Championship': 1,
 }
 
+// A round quota can be spent on either playing day. Elite Eight always uses
+// this rule: two picks across the complete round, never one forced pick per
+// calendar day. Pools configured for tournament-round frequency use the same
+// round-level model for every bracket round.
+export function sharedRoundPickQuota(
+  mode: CompetitionMode,
+  frequency: PickFrequency,
+  round: TournamentRound | null
+): number | null {
+  if (mode !== 'march-madness' || !round) return null
+  if (round === 'Elite 8' || frequency === 'tournament-round') {
+    return ROUND_PICK_QUOTA[round]
+  }
+  return null
+}
+
 // ------------------------------------------------------------- pick periods
 
 // A pick period is the set of games a player may choose from for one required
