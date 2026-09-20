@@ -17,7 +17,7 @@ export default async function GridPage() {
   let slates: { id: string; slate_number: number; slate_date: string; season_year: number; locks_at: string | null }[] = []
   let players: { id: string; full_name: string; status: string; elimination_slate: number | null }[] = []
   let allPicks: { player_id: string; slate_id: string; team: string }[] = []
-  let allGames: { slate_id: string; home_team: string; away_team: string; result: string; tip_time: string; round_label: string | null }[] = []
+  let allGames: { slate_id: string; home_team: string; away_team: string; result: string; tip_time: string; time_tbd: boolean; round_label: string | null }[] = []
   let pool = await getPoolConfig()
   try {
     const supabase = await getDb()
@@ -27,7 +27,11 @@ export default async function GridPage() {
       supabase.from('picks').select('player_id, slate_id, team'),
       // tip_time is what every deadline/reveal calculation below keys
       // off — leaving it out of this select silently pins every pick as hidden.
-      supabase.from('games').select('slate_id, home_team, away_team, result, tip_time, round_label'),
+      // time_tbd matters just as much in the other direction: without it a
+      // slate whose tips ESPN hasn't announced falls back to the
+      // midnight-Eastern placeholders, which read as 11pm Central the night
+      // before and reveal picks that can still be changed.
+      supabase.from('games').select('slate_id, home_team, away_team, result, tip_time, time_tbd, round_label'),
     ])
     slates = weeksRes.data ?? []
     players = playersRes.data ?? []
@@ -134,7 +138,9 @@ export default async function GridPage() {
   // Sort players: alive first (by slates survived desc, then name), then eliminated (by elimination_slate desc, then name)
   const withStats = players.map((p) => ({
     ...p,
-    weeksSurvived: Object.values(pickMap[p.id] ?? {}).reduce((total, teams) => total + teams.length, 0),
+    // Days entered, not picks made: pickMap is keyed by slate, and a round
+    // quota can put two teams under one of those keys.
+    weeksSurvived: Object.keys(pickMap[p.id] ?? {}).length,
   }))
   withStats.sort((a, b) => {
     if (a.status !== b.status) return a.status === 'alive' ? -1 : 1

@@ -44,7 +44,7 @@ async function legacyCheckRateLimit(
   windowSeconds: number
 ): Promise<{ allowed: boolean }> {
   try {
-    const windowStart = new Date(Date.now() - windowSeconds * 1000).toISOString()
+    const windowStart = Date.now() - windowSeconds * 1000
 
     const { data } = await supabase
       .from('rate_limits')
@@ -52,7 +52,12 @@ async function legacyCheckRateLimit(
       .eq('key', key)
       .single()
 
-    if (!data || data.window_start < windowStart) {
+    // Compare instants, not strings: Postgres returns
+    // "…T03:14:00.123456+00:00" while toISOString() produces "…T03:14:00.123Z",
+    // and lexicographic ordering of those two shapes does not follow time.
+    const storedStart = data ? Date.parse(data.window_start) : NaN
+
+    if (!data || Number.isNaN(storedStart) || storedStart < windowStart) {
       await supabase.from('rate_limits').upsert({ key, count: 1, window_start: new Date().toISOString() })
       return { allowed: true }
     }

@@ -72,12 +72,15 @@ export default async function AdminDashboard() {
   let pickCount = 0
   let pickDistribution: { team: string; count: number; pct: number }[] = []
   let notPickedYet: string[] = []
-  let games: { id: string; home_team: string; away_team: string; result: string; game_day: string }[] = []
+  let games: { id: string; home_team: string; away_team: string; result: string }[] = []
 
   if (slate) {
     const [{ data: picks }, { data: gamesData }] = await Promise.all([
       supabase.from('picks').select('player_id, team').eq('slate_id', slate.id),
-      supabase.from('games').select('id, home_team, away_team, result, game_day').eq('slate_id', slate.id).order('tip_time'),
+      // `game_day` belonged to the NFL weeks schema and was dropped in
+      // migration 014 — asking for it failed the query outright, which read
+      // on this page as "no games entered" for every slate.
+      supabase.from('games').select('id, home_team, away_team, result').eq('slate_id', slate.id).order('tip_time'),
     ])
     games = gamesData || []
     const picksData = picks || []
@@ -153,7 +156,7 @@ export default async function AdminDashboard() {
             </p>
             <p className="text-slate-400 text-sm mt-1">
               Anchored to Slate {signupAnchor.slateNumber} · Season {signupAnchor.seasonYear}
-              {' '}— that slate&apos;s Sunday 12:00 PM CT pick deadline. Advancing slates does not move it.
+              {' '}— that slate&apos;s lock, its first announced tip. Advancing slates does not move it.
             </p>
           </>
         )}

@@ -45,10 +45,14 @@ export async function getSignupCutoff(): Promise<SignupCutoff | null> {
     if (!firstSlate) return null
 
     // The slate's own cached lock instant, falling back to its first tip.
+    // Announced tips only: a game whose time ESPN hasn't published carries a
+    // midnight-Eastern placeholder — 11pm Central the night before — and
+    // taking it for a real tip would slam signups shut a day early.
     const { data: games } = await supabase
       .from('games')
-      .select('tip_time')
+      .select('tip_time, time_tbd')
       .eq('slate_id', firstSlate.id)
+      .eq('time_tbd', false)
       .order('tip_time', { ascending: true })
       .limit(1)
 

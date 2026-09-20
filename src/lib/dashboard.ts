@@ -4,7 +4,7 @@ import { computeInsights } from '@/lib/insights'
 import { getPoolConfig } from '@/lib/pool'
 import { buildPickPeriods, capabilitiesFor, type CompetitionMode, type PickPeriod } from '@/lib/competition'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
-import { compareBySeedTotal, seedTotalsByPlayer } from '@/lib/standings'
+import { compareBySeedTotal, seedTotalsByPlayer, slatesSurvivedByPlayer } from '@/lib/standings'
 
 export async function getDashboardData() {
   try {
@@ -25,6 +25,9 @@ export async function getDashboardData() {
       const [weeksRes, playersRes, picksRes, gamesRes] = await Promise.all([
         supabase.from('slates').select('*').order('slate_number'),
         supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name'),
+        // `seed` is load-bearing: the endgame tiebreak sums the seeds a
+        // player has taken, and leaving it out of the select silently
+        // pinned every seed_total at zero.
         supabase.from('picks').select('player_id, slate_id, team, seed'),
         supabase.from('games').select('*')
       ])
@@ -162,15 +165,15 @@ export async function getDashboardData() {
       getTeamBrandDirectory(),
     ])
 
-    // Count slates survived per player from this season's picks (including current slate)
-    const weeksSurvivedByPlayer: Record<string, number> = {}
+    // Playing days entered per player from this season's picks (including the
+    // current slate). Distinct slates, not pick rows — a round quota can be
+    // spent twice on one day.
+    const weeksSurvivedByPlayer = slatesSurvivedByPlayer(seasonPicks)
     // Sum of the seeds each player has taken — the tiebreak when more than
     // one survivor is left. Regular-season picks carry no seed, so this stays
-    // at zero until the bracket is set.
+    // at zero until the bracket is set. Summed per pick, unlike the count
+    // above: two picks in a round are two seeds toward the tiebreak.
     const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks)
-    for (const pick of seasonPicks) {
-      weeksSurvivedByPlayer[pick.player_id] = (weeksSurvivedByPlayer[pick.player_id] || 0) + 1
-    }
 
     const standings: StandingRow[] = players.map(
       (p: { id: string; full_name: string; status: string; elimination_reason: string | null; elimination_slate: number | null }) => ({
