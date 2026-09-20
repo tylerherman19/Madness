@@ -5,7 +5,8 @@ import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
 import type { SweatResponse } from '@/app/api/sweat/route'
 import { Logo, Arrow } from '@/app/components/Sports'
 import s from '@/app/components/sports.module.css'
-export default function SweatBoard({teamBrands}:{teamBrands:TeamBrandDirectory}){
+import { autoPickRule, type AutoPickBehavior } from '@/lib/competition'
+export default function SweatBoard({teamBrands,autoPickBehavior}:{teamBrands:TeamBrandDirectory;autoPickBehavior:AutoPickBehavior}){
  const [data,setData]=useState<SweatResponse|null>(null)
  const [updated,setUpdated]=useState<Date|null>(null)
  const [error,setError]=useState(false)
@@ -47,6 +48,6 @@ export default function SweatBoard({teamBrands}:{teamBrands:TeamBrandDirectory})
  {visible&&total>0&&<div className={s.exposureBar} aria-label={game.awayPlayers.length+' picks on '+game.awayTeam+', '+game.homePlayers.length+' on '+game.homeTeam}><span style={{flex:game.awayPlayers.length,background:brandFor(game.awayTeam,teamBrands).primary}}/><span style={{flex:game.homePlayers.length,background:brandFor(game.homeTeam,teamBrands).primary}}/></div>}
  <footer>{visible?(game.state==='in'?risk+' entries currently at risk.':game.state==='pre'?'Waiting for tip-off.':'Result final.'):'Picks reveal at the daily deadline.'}{visible&&<span>{total} picks</span>}</footer></article>
  })}{!games.length&&<div className={s.empty}><h2>{data.games.length?'No '+filter.toLowerCase()+' games':'No games yet'}</h2><p>{data.games.length?'Choose another filter.':'The Sweatboard will fill in when the next slate is available.'}</p></div>}</section>
- <aside className={s.poolPulse}><h2>The pool today</h2><div className={s.poolCount}><strong>{field}</strong><span>entries on this game day</span></div>{visible?<><div className={s.poolProgress}><span style={{width:(field?(summary?.safe??0)/field*100:0)+'%'}}/></div><p><b>{summary?.safe} are through.</b> {(summary?.winning??0)+(summary?.losing??0)+(summary?.notStarted??0)} await a game result.</p>{!!summary?.losing&&<div className={s.riskNote}><strong>{summary.losing} on the edge</strong><span>Their teams are behind or tied. A final win is needed to advance.</span></div>}{!!summary?.noPick&&<p>{summary.noPick} missed the deadline. Auto-assignment uses the day’s last game; entries with no unused team are eliminated.</p>}</>:<p>See where the field stands after picks lock.</p>}<Link className={s.textButton} href="/standings">View standings <Arrow/></Link></aside></div></>}
+ <aside className={s.poolPulse}><h2>The pool today</h2><div className={s.poolCount}><strong>{field}</strong><span>entries on this game day</span></div>{visible?<><div className={s.poolProgress}><span style={{width:(field?(summary?.safe??0)/field*100:0)+'%'}}/></div><p><b>{summary?.safe} are through.</b> {(summary?.winning??0)+(summary?.losing??0)+(summary?.notStarted??0)} await a game result.</p>{!!summary?.losing&&<div className={s.riskNote}><strong>{summary.losing} on the edge</strong><span>Their teams are behind or tied. A final win is needed to advance.</span></div>}{!!summary?.noPick&&<p>{summary.noPick} missed the deadline. {autoPickRule(autoPickBehavior,data.mode==='march-madness')}</p>}</>:<p>See where the field stands after picks lock.</p>}<Link className={s.textButton} href="/standings">View standings <Arrow/></Link></aside></div></>}
  </div>
 }

@@ -6,6 +6,7 @@ import {
   COMPETITION_COPY,
   MODE_LABEL,
   POOL_STATUSES,
+  STATUS_DESCRIPTION,
   STATUS_LABEL,
   type CompetitionMode,
   type PoolConfig,
@@ -38,6 +39,11 @@ const REUSE_OPTIONS: [string, string, string][] = [
 
 const AUTO_PICK_OPTIONS: [string, string, string][] = [
   ['latest-game', 'Assign from the last game', "Missed the lock? The day's latest unused team is assigned."],
+  [
+    'highest-seed',
+    'Highest remaining seed',
+    'Tournament only: starts at No. 1, then moves down when that seed was already used. AP rank breaks ties.',
+  ],
   ['eliminate', 'Eliminate', 'Missing the lock ends the entry immediately.'],
   ['none', 'Leave blank', 'No pick is recorded and nothing is graded.'],
 ]
@@ -390,6 +396,48 @@ export default function PoolConfigForm({ pool }: { pool: PoolConfig }) {
               ))}
             </select>
           </Field>
+        </div>
+
+        <div className="border-t border-slate-700 pt-5">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Status guide</p>
+              <p className="mt-1 text-sm text-slate-400">What each stage means from setup through closeout.</p>
+            </div>
+            <p className="text-xs text-slate-500">
+              Status is a label. Dates and tip times still control signup and pick access.
+            </p>
+          </div>
+          <ol className="mt-4 grid gap-0 sm:grid-cols-6" aria-label="Pool lifecycle stages">
+            {POOL_STATUSES.map((status, index) => {
+              const active = draft.status === status
+              return (
+                <li
+                  key={status}
+                  aria-current={active ? 'step' : undefined}
+                  className="relative border-l border-slate-600 pb-5 pl-5 last:pb-0 sm:border-l-0 sm:border-t sm:pb-0 sm:pl-0 sm:pt-5"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="absolute -left-2 top-0 flex h-4 w-4 items-center justify-center rounded-full border text-[9px] font-bold sm:-top-2 sm:left-0"
+                    style={{
+                      background: active ? 'var(--red)' : '#0f172a',
+                      borderColor: active ? 'var(--red)' : '#64748b',
+                      color: active ? '#fff' : '#94a3b8',
+                    }}
+                  >
+                    {index + 1}
+                  </span>
+                  <div className="pr-4">
+                    <p className={active ? 'text-sm font-semibold text-white' : 'text-sm font-semibold text-slate-300'}>
+                      {STATUS_LABEL[status]}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">{STATUS_DESCRIPTION[status]}</p>
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
         </div>
 
         {error && (

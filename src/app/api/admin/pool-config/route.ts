@@ -15,7 +15,7 @@ import {
 const PICK_FREQUENCIES = ['every-game-day', 'weekends-only', 'tournament-round']
 const DEADLINE_RULES = ['first-tip', 'per-game']
 const REUSE_RULES = ['once-per-pool', 'once-per-round', 'unlimited']
-const AUTO_PICK = ['latest-game', 'eliminate', 'none']
+const AUTO_PICK = ['latest-game', 'highest-seed', 'eliminate', 'none']
 const TIEBREAKERS = ['seed-total', 'most-survived', 'none']
 
 // Read one enum field off the request body, rejecting anything not in the

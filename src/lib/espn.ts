@@ -10,6 +10,8 @@ import 'server-only'
 
 const SCOREBOARD_URL =
   'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard'
+const RANKINGS_URL =
+  'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/rankings'
 
 // ESPN conference group ids. The scoreboard honours `groups`; the /teams
 // endpoint does NOT (it returns the same 100 teams whatever you pass), which
@@ -69,6 +71,43 @@ export interface EspnEvent {
 // value is the AP poll rank rather than a seed; callers decide whether it
 // means anything by looking at `roundLabel`.
 export const UNRANKED = 99
+
+interface EspnRankingEntry {
+  current?: number
+  team?: { abbreviation?: string }
+}
+
+interface EspnRankingPoll {
+  name?: string
+  type?: string
+  ranks?: EspnRankingEntry[]
+}
+
+// A small lookup used only by the tournament auto-pick tiebreak. Scoreboard
+// curatedRank becomes the bracket seed in March, so AP rank must come from the
+// rankings endpoint instead of being inferred from a game row.
+export async function fetchApRankings(revalidateSeconds = 3600): Promise<Record<string, number>> {
+  try {
+    const res = await fetch(
+      RANKINGS_URL,
+      revalidateSeconds > 0 ? { next: { revalidate: revalidateSeconds } } : { cache: 'no-store' }
+    )
+    if (!res.ok) return {}
+    const data = (await res.json()) as { rankings?: EspnRankingPoll[] }
+    const poll = (data.rankings ?? []).find(
+      (ranking) => ranking.type?.toLowerCase() === 'ap' || ranking.name?.toLowerCase().includes('ap top 25')
+    )
+    const ranks: Record<string, number> = {}
+    for (const entry of poll?.ranks ?? []) {
+      const team = entry.team?.abbreviation
+      const rank = entry.current
+      if (team && Number.isInteger(rank) && rank! >= 1 && rank! <= 25) ranks[team] = rank!
+    }
+    return ranks
+  } catch {
+    return {}
+  }
+}
 
 export function seedOf(competitor: EspnCompetitor): number | null {
   const rank = competitor.curatedRank?.current
