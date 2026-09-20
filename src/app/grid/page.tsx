@@ -138,7 +138,9 @@ export default async function GridPage() {
   // Sort players: alive first (by slates survived desc, then name), then eliminated (by elimination_slate desc, then name)
   const withStats = players.map((p) => ({
     ...p,
-    weeksSurvived: Object.values(pickMap[p.id] ?? {}).reduce((total, teams) => total + teams.length, 0),
+    // Days entered, not picks made: pickMap is keyed by slate, and a round
+    // quota can put two teams under one of those keys.
+    weeksSurvived: Object.keys(pickMap[p.id] ?? {}).length,
   }))
   withStats.sort((a, b) => {
     if (a.status !== b.status) return a.status === 'alive' ? -1 : 1

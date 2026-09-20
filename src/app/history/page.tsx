@@ -9,6 +9,7 @@ import {
   formatPeriodDateShort,
   type PickPeriod,
 } from '@/lib/competition'
+import { slatesSurvivedByPlayer } from '@/lib/standings'
 import type { Slate, Game } from '@/types'
 import SiteHeader from '../components/SiteHeader'
 import { Footer } from '@/app/components/Sports'
@@ -111,12 +112,11 @@ export default async function HistoryPage() {
   const allTeams = await getTeamAbbrs(supabase)
   const teamsRemaining = allTeams.filter((t) => !usedTeams.has(t))
 
-  // Percentile: how many other players this player has outlasted (slates survived = picks made)
-  const survivedByPlayer: Record<string, number> = {}
-  for (const pick of allPicks) {
-    survivedByPlayer[pick.player_id] = (survivedByPlayer[pick.player_id] || 0) + 1
-  }
-  const mySurvived = picksData.length
+  // Percentile: how many other players this player has outlasted, measured in
+  // playing days entered. Distinct slates rather than pick rows — a round
+  // quota spent twice on one day is still one day.
+  const survivedByPlayer = slatesSurvivedByPlayer(allPicks)
+  const mySurvived = new Set(picksData.map((p: { slate_id: string }) => p.slate_id)).size
   const others = allPlayers.filter((p: { id: string }) => p.id !== session.player_id)
   const outlasted = others.filter((p: { id: string; status: string }) => {
     const theirSurvived = survivedByPlayer[p.id] || 0
