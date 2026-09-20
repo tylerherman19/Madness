@@ -25,7 +25,7 @@ export default async function HistoryPage() {
   const caps = capabilitiesFor(mode)
 
   const [picksRes, weeksRes, gamesRes, playersRes, allPicksRes, teamBrands] = await Promise.all([
-    supabase.from('picks').select('team, auto_assigned, slate_id').eq('player_id', session.player_id),
+    supabase.from('picks').select('id, team, seed, auto_assigned, slate_id').eq('player_id', session.player_id),
     supabase.from('slates').select('id, slate_number, slate_date, season_year, locks_at'),
     supabase.from('games').select('slate_id, home_team, away_team, result, round_label'),
     supabase.from('players').select('id, status, email'),
@@ -104,6 +104,7 @@ export default async function HistoryPage() {
   // Season summary stats for this player
   const wins = picks.filter((p) => p.outcome === 'won').length
   const losses = picks.filter((p) => p.outcome === 'lost').length
+  const seedTotal = picks.reduce((total, pick) => total + (pick.seed ?? 0), 0)
   const myStatus = allPlayers.find((p: { id: string }) => p.id === session.player_id)?.status ?? 'alive'
 
   const usedTeams = new Set(picksData.map((p: { team: string }) => p.team))
@@ -134,7 +135,7 @@ export default async function HistoryPage() {
         <h1 className="font-display text-5xl mb-8" style={{ color: 'var(--dark)' }}>Pick history</h1>
 
         {/* Season summary */}
-        <div className="grid grid-cols-3 border mb-8" style={{ borderColor: 'var(--border)', background: 'white' }}>
+        <div className={`grid ${caps.showSeedTotal ? 'grid-cols-4' : 'grid-cols-3'} border mb-8`} style={{ borderColor: 'var(--border)', background: 'white' }}>
           <div className="py-4 px-4 text-center">
             <p
               className="font-display text-3xl leading-none"
@@ -150,6 +151,12 @@ export default async function HistoryPage() {
             </p>
             <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Record</p>
           </div>
+          {caps.showSeedTotal && (
+            <div className="py-4 px-2 text-center" style={{ borderLeft: '1px solid var(--border)' }}>
+              <p className="font-display text-3xl leading-none" style={{ color: 'var(--dark)' }}>{seedTotal}</p>
+              <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Seed total</p>
+            </div>
+          )}
           <div className="py-4 px-4 text-center" style={{ borderLeft: '1px solid var(--border)' }}>
             <p className="font-display text-3xl leading-none" style={{ color: 'var(--dark)' }}>
               {outlasted}/{others.length}
@@ -164,7 +171,7 @@ export default async function HistoryPage() {
           <div>
             {picks.map((pick) => (
               <div
-                key={pick.slate_id}
+                key={pick.id}
                 className="flex items-center justify-between gap-4 py-3 border-b"
                 style={{ borderColor: 'var(--border)' }}
               >
@@ -177,6 +184,7 @@ export default async function HistoryPage() {
                   <TeamMark team={pick.team} directory={teamBrands} size={40} showName />
                 </div>
                 <div className="text-right">
+                  {caps.showSeedTotal && pick.seed && <span className="block text-xs font-bold mb-1" style={{ color: 'var(--orange-dark)' }}>+{pick.seed} seed</span>}
                   <span
                     className="text-xs font-bold tracking-wider"
                     style={{

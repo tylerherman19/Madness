@@ -2,8 +2,9 @@ import 'server-only'
 import type { StandingRow, TeamStat, Slate, Game } from '@/types'
 import { computeInsights } from '@/lib/insights'
 import { getPoolConfig } from '@/lib/pool'
-import { buildPickPeriods, type CompetitionMode, type PickPeriod } from '@/lib/competition'
+import { buildPickPeriods, capabilitiesFor, type CompetitionMode, type PickPeriod } from '@/lib/competition'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
+import { compareBySeedTotal, seedTotalsByPlayer } from '@/lib/standings'
 
 export async function getDashboardData() {
   try {
@@ -74,7 +75,7 @@ export async function getDashboardData() {
       (p: { slate_id: string; player_id: string }) => seasonWeekIds.has(p.slate_id) && realPlayerIds.has(p.player_id)
     )
 
-    let currentPicks: Record<string, string> = {}
+    const currentPicks: Record<string, string[]> = {}
     // Subset of currentPicks that can be shown publicly — all of them, once
     // the slate locks at its first tip.
     const revealedPicks: Record<string, string> = {}
@@ -86,11 +87,10 @@ export async function getDashboardData() {
       // Filter picks for current slate from allPicks
       const picksData = (allPicks || []).filter((p: { slate_id: string }) => p.slate_id === slate.id)
       if (picksData) {
-        currentPicks = Object.fromEntries(
-          picksData
-            .filter((p: { player_id: string }) => realPlayerIds.has(p.player_id))
-            .map((p: { player_id: string; team: string }) => [p.player_id, p.team])
-        )
+        for (const pick of picksData) {
+          if (!realPlayerIds.has(pick.player_id)) continue
+          currentPicks[pick.player_id] = [...(currentPicks[pick.player_id] ?? []), pick.team]
+        }
       }
 
       // Filter games for current slate from allGames
@@ -116,8 +116,8 @@ export async function getDashboardData() {
         // The slate reveals as a unit at its first tip, so this is one
         // decision for every pick rather than a per-team lookup.
         if (isPickRevealed(slate, gamesData, now)) {
-          for (const [playerId, team] of Object.entries(currentPicks)) {
-            revealedPicks[playerId] = team
+          for (const [playerId, teams] of Object.entries(currentPicks)) {
+            revealedPicks[playerId] = teams.join(', ')
           }
         }
       }
@@ -170,11 +170,9 @@ export async function getDashboardData() {
     // Sum of the seeds each player has taken — the tiebreak when more than
     // one survivor is left. Regular-season picks carry no seed, so this stays
     // at zero until the bracket is set.
-    const seedTotalByPlayer: Record<string, number> = {}
+    const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks)
     for (const pick of seasonPicks) {
       weeksSurvivedByPlayer[pick.player_id] = (weeksSurvivedByPlayer[pick.player_id] || 0) + 1
-      seedTotalByPlayer[pick.player_id] =
-        (seedTotalByPlayer[pick.player_id] || 0) + (pick.seed ?? 0)
     }
 
     const standings: StandingRow[] = players.map(
@@ -184,8 +182,9 @@ export async function getDashboardData() {
         status: p.status as 'alive' | 'eliminated',
         slates_survived: weeksSurvivedByPlayer[p.id] || 0,
         seed_total: seedTotalByPlayer[p.id] || 0,
-        current_pick: currentPicks[p.id] || null,
-        pick_locked: !!currentPicks[p.id],
+        current_pick: currentPicks[p.id]?.[0] || null,
+        current_picks: currentPicks[p.id] || [],
+        pick_locked: (currentPicks[p.id]?.length ?? 0) > 0,
         pick_revealed: !!revealedPicks[p.id],
         elimination_reason: p.elimination_reason,
         elimination_slate: p.elimination_slate,
@@ -194,7 +193,9 @@ export async function getDashboardData() {
 
     standings.sort((a, b) => {
       if (a.status !== b.status) return a.status === 'alive' ? -1 : 1
-      return b.slates_survived - a.slates_survived
+      return capabilitiesFor(mode).showSeedTotal
+        ? compareBySeedTotal(a, b)
+        : b.slates_survived - a.slates_survived || a.full_name.localeCompare(b.full_name)
     })
 
     // Filter picks to exclude current slate for team stats
@@ -225,7 +226,7 @@ export async function getDashboardData() {
       }))
       .sort((a, b) => b.times_picked - a.times_picked)
 
-    const picksMade = alive.filter((p: { id: string }) => currentPicks[p.id]).length
+    const picksMade = alive.filter((p: { id: string }) => (currentPicks[p.id]?.length ?? 0) > 0).length
     const picksPending = alive.length - picksMade
 
     // Everything the editorial modules need is already in hand — the insight

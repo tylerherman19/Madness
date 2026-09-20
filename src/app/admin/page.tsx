@@ -248,7 +248,7 @@ export default async function AdminDashboard() {
         <AdminCard
           href="/admin/players"
           title="Manage Players"
-          desc="Import CSV, toggle paid status, regen PINs, correct eliminations, submit picks"
+          desc="Import CSV, toggle paid status, reset passwords, correct eliminations, submit picks"
         />
         <AdminCard
           href="/admin/recap"

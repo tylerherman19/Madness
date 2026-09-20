@@ -8,7 +8,7 @@ import AuthShell from '@/app/components/AuthShell'
 export default function LoginPage() {
   const router = useRouter()
   const [fullName, setFullName] = useState('')
-  const [pin, setPin] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -20,7 +20,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: fullName.trim(), pin }),
+        body: JSON.stringify({ full_name: fullName.trim(), password }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Login failed'); return }
@@ -34,7 +34,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell eyebrow="Player access" title="Log in" description="Enter your name and six-digit PIN to make or change your pick.">
+    <AuthShell eyebrow="Player access" title="Log in" description="Enter your name and the password you chose when you joined.">
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Full name</label>
@@ -50,16 +50,16 @@ export default function LoginPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>PIN</label>
+                <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Password</label>
                 <input
                   type="password"
-                  inputMode="numeric"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  placeholder="6-digit PIN from your welcome email"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
                   required
-                  maxLength={6}
-                  className="field w-full px-3.5 py-2.5 text-sm tnum tracking-widest"
+                  maxLength={72}
+                  autoComplete="current-password"
+                  className="field w-full px-3.5 py-2.5 text-sm"
                   style={{ color: 'var(--dark)' }}
                 />
               </div>
@@ -78,7 +78,7 @@ export default function LoginPage() {
             </form>
           <div className="mt-6 space-y-3 text-center">
             <Link href="/forgot-pin" className="block text-sm font-bold underline" style={{ color: 'var(--muted)' }}>
-              Forgot your PIN?
+              Forgot your password?
             </Link>
             <p className="text-xs" style={{ color: 'var(--muted)' }}>
               New to the pool?{' '}

@@ -37,7 +37,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   const [bulkWorking, setBulkWorking] = useState(false)
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
-  const [newPlayer, setNewPlayer] = useState({ full_name: '', email: '' })
+  const [newPlayer, setNewPlayer] = useState({ full_name: '', email: '', password: '' })
   const [addError, setAddError] = useState('')
   const [addingPlayer, setAddingPlayer] = useState(false)
 
@@ -93,21 +93,19 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
     else setMessage('Failed to update')
   }
 
-  async function regenPin(playerId: string, fullName: string) {
-    if (!confirm(`Regenerate PIN for ${fullName}? Their current PIN stops working immediately.`)) return
-    const res = await fetch(`/api/players/${playerId}/regen-pin`, { method: 'POST' })
-    const data = await res.json().catch(() => null)
+  async function resetPassword(playerId: string, fullName: string) {
+    const password = prompt(`Set a temporary password for ${fullName}. It must be at least 8 characters.`)
+    if (!password) return
+    const res = await fetch(`/api/players/${playerId}/regen-pin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
     if (res.ok) {
-      // The route returns the PIN when this deployment sends no email — the
-      // admin is then the only way it reaches the player, so show it rather
-      // than claiming an email went out.
-      setMessage(
-        typeof data?.pin === 'string'
-          ? `${fullName}'s new PIN is ${data.pin} — no email was sent, pass it on directly.`
-          : `New PIN sent to ${fullName}`
-      )
+      setMessage(`Password updated for ${fullName}`)
     } else {
-      setMessage(data?.error || 'Failed to regen PIN')
+      const data = await res.json().catch(() => null)
+      setMessage(data?.error || 'Failed to update password')
     }
   }
 
@@ -226,7 +224,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       })
       const data = await res.json()
       if (res.ok) {
-        setMessage(`Imported ${data.count} players. Emails sent.`)
+        setMessage(`Imported ${data.count} players with their CSV passwords.`)
         setCsvText('')
         setShowImport(false)
         router.refresh()
@@ -252,12 +250,12 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       const data = await res.json().catch(() => null)
       if (res.ok) {
         setMessage(`Added ${newPlayer.full_name.trim()}`)
-        setNewPlayer({ full_name: '', email: '' })
+        setNewPlayer({ full_name: '', email: '', password: '' })
         setShowAdd(false)
         router.refresh()
       } else if (data?.playerAdded) {
         setMessage(data.error)
-        setNewPlayer({ full_name: '', email: '' })
+        setNewPlayer({ full_name: '', email: '', password: '' })
         setShowAdd(false)
         router.refresh()
       } else {
@@ -292,12 +290,12 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           <div className="card mt-4 p-4 space-y-3">
             <p className="text-sm" style={{ color: 'var(--muted)' }}>
               Paste CSV with headers:{' '}
-              <code style={{ color: 'var(--dark)' }}>Full Name, Phone, Email, Venmo, Paid</code>
+              <code style={{ color: 'var(--dark)' }}>Full Name, Phone, Email, Venmo, Paid, Password</code>
             </p>
             <textarea
               value={csvText}
               onChange={(e) => setCsvText(e.target.value)}
-              placeholder="Full Name,Phone,Email,Venmo,Paid&#10;John Smith,555-1234,john@example.com,@johnsmith,yes"
+              placeholder="Full Name,Phone,Email,Venmo,Paid,Password&#10;John Smith,555-1234,john@example.com,@johnsmith,yes,full-court-press"
               rows={8}
               className="field w-full px-3 py-2 text-sm font-mono"
               style={{ color: 'var(--dark)' }}
@@ -309,7 +307,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 className="rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-50"
                 style={{ background: 'var(--green)' }}
               >
-                {importing ? 'Importing…' : 'Import & Send Welcome Emails'}
+                {importing ? 'Importing…' : 'Import Players'}
               </button>
               <button
                 onClick={() => setShowImport(false)}
@@ -441,11 +439,11 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                   Edit
                 </button>
                 <button
-                  onClick={() => regenPin(p.id, p.full_name)}
+                  onClick={() => resetPassword(p.id, p.full_name)}
                   className="rounded border px-2 py-1 text-xs"
                   style={actionBtn('neutral')}
                 >
-                  Regen PIN
+                  Set Password
                 </button>
                 <button
                   onClick={() => toggleElimination(p)}
@@ -553,11 +551,11 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                         Edit
                       </button>
                       <button
-                        onClick={() => regenPin(p.id, p.full_name)}
+                        onClick={() => resetPassword(p.id, p.full_name)}
                         className="rounded border px-2 py-0.5 text-xs"
                         style={actionBtn('neutral')}
                       >
-                        Regen PIN
+                        Set Password
                       </button>
                       <button
                         onClick={() => toggleElimination(p)}
@@ -598,7 +596,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             <div>
               <h3 className="font-display text-2xl" style={{ color: 'var(--dark)' }}>Add Player</h3>
               <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
-                This bypasses the public signup deadline. Welcome email delivery follows the pool&apos;s current email settings.
+                This bypasses the public signup deadline. Give the player the password you set below.
               </p>
             </div>
             <div>
@@ -613,6 +611,21 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 autoFocus
                 required
                 maxLength={80}
+              />
+            </div>
+            <div>
+              <label className="eyebrow block mb-1" htmlFor="new-player-password">Temporary Password</label>
+              <input
+                id="new-player-password"
+                type="password"
+                value={newPlayer.password}
+                onChange={(event) => setNewPlayer({ ...newPlayer, password: event.target.value })}
+                className="field w-full px-3 py-2 text-sm"
+                style={{ color: 'var(--dark)' }}
+                required
+                minLength={8}
+                maxLength={72}
+                autoComplete="new-password"
               />
             </div>
             <div>
@@ -632,7 +645,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             <div className="flex gap-3">
               <button
                 type="submit"
-                disabled={addingPlayer || !newPlayer.full_name.trim() || !newPlayer.email.trim()}
+                disabled={addingPlayer || !newPlayer.full_name.trim() || !newPlayer.email.trim() || newPlayer.password.length < 8}
                 className="btn-primary flex-1 py-2 font-semibold disabled:opacity-50"
               >
                 {addingPlayer ? 'Adding…' : 'Add Player'}

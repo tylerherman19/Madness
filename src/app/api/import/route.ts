@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, escapeIlike } from '@/lib/api'
-import { generatePin, hashPin } from '@/lib/pin'
-import { sendWelcomeEmail, sleep, SEND_DELAY_MS } from '@/lib/email'
+import { hashPassword, passwordValidationError } from '@/lib/password'
 import { logAudit } from '@/lib/audit'
 
-// bcrypt cost-12 hash (~250ms) plus a Resend call, serially, per row — allow
-// enough runtime that a full-size batch can't be killed mid-row by a platform
-// timeout (which would leave a player created with a PIN nobody ever received).
+// bcrypt cost-12 hashing is intentionally serial per row. Allow enough runtime
+// that a full-size batch cannot be killed halfway through credential creation.
 export const maxDuration = 300
 const MAX_ROWS = 100
 
@@ -17,6 +15,7 @@ interface CSVRow {
   email: string
   venmo_handle: string
   paid: boolean
+  password: string
 }
 
 function parseCSV(csv: string): CSVRow[] {
@@ -28,13 +27,13 @@ function parseCSV(csv: string): CSVRow[] {
   return rows.map((line) => {
     // Simple CSV parse (handles unquoted fields)
     const cols = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
-    const [full_name = '', phone = '', email = '', venmo_handle = '', paidStr = ''] = cols
+    const [full_name = '', phone = '', email = '', venmo_handle = '', paidStr = '', password = ''] = cols
     const paid =
       paidStr.toLowerCase() === 'yes' ||
       paidStr.toLowerCase() === 'true' ||
       paidStr === '1'
-    return { full_name, phone, email: email.toLowerCase(), venmo_handle, paid }
-  }).filter((r) => r.full_name && r.email)
+    return { full_name, phone, email: email.toLowerCase(), venmo_handle, paid, password }
+  }).filter((r) => r.full_name && r.email && r.password)
 }
 
 export async function POST(req: NextRequest) {
@@ -64,7 +63,13 @@ export async function POST(req: NextRequest) {
 
     for (const row of rows) {
       try {
-        // Check if player already exists — never overwrite their PIN or send a new welcome email
+        const passwordError = passwordValidationError(row.password)
+        if (passwordError) {
+          errors.push(`${row.full_name}: ${passwordError}`)
+          continue
+        }
+
+        // Check if player already exists — never overwrite their password.
         const { data: existing } = await supabase
           .from('players')
           .select('id')
@@ -76,8 +81,7 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        const pin = generatePin()
-        const pin_hash = await hashPin(pin)
+        const pin_hash = await hashPassword(row.password)
 
         const { error } = await supabase.from('players').insert({
           full_name: row.full_name,
@@ -94,14 +98,7 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        // A dropped welcome email means a player who never receives their PIN
-        // — surface it to the admin instead of reporting silent success.
-        const emailResult = await sendWelcomeEmail(row.email, row.full_name, pin)
-        if (!emailResult.ok) {
-          errors.push(`${row.full_name}: created, but welcome email failed — regenerate their PIN to resend it`)
-        }
         count++
-        await sleep(SEND_DELAY_MS)
       } catch {
         errors.push(`${row.full_name}: unexpected error`)
       }

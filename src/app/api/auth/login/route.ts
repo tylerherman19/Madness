@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { verifyPin } from '@/lib/pin'
+import { MAX_PASSWORD_LENGTH, verifyPassword } from '@/lib/password'
 import { createSession } from '@/lib/session'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
@@ -16,17 +16,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { full_name, pin } = await req.json()
+    const { full_name, password } = await req.json()
 
-    if (!full_name || !pin) {
-      return NextResponse.json({ error: 'Name and PIN are required' }, { status: 400 })
+    if (!full_name || !password) {
+      return NextResponse.json({ error: 'Name and password are required' }, { status: 400 })
     }
 
     if (typeof full_name !== 'string' || full_name.length > 80) {
       return NextResponse.json({ error: 'Invalid name' }, { status: 400 })
     }
-    if (typeof pin !== 'string' || pin.length > 20) {
-      return NextResponse.json({ error: 'Invalid PIN' }, { status: 400 })
+    if (typeof password !== 'string' || password.length > MAX_PASSWORD_LENGTH) {
+      return NextResponse.json({ error: 'Invalid password' }, { status: 400 })
     }
 
     // Case-insensitive name lookup
@@ -38,24 +38,24 @@ export async function POST(req: NextRequest) {
 
     if (error || !players || players.length === 0) {
       return NextResponse.json(
-        { error: 'Invalid name or PIN. Check spelling and try again.' },
+        { error: 'Invalid name or password. Check both and try again.' },
         { status: 401 }
       )
     }
 
     // Names aren't guaranteed unique (the CSV importer only dedupes on email),
-    // so try every candidate's PIN rather than assuming players[0] is the right
+    // so try every candidate's password rather than assuming players[0] is the right
     // one — otherwise a same-named player can be locked out at random.
     let player: (typeof players)[number] | null = null
     for (const candidate of players) {
-      if (await verifyPin(pin, candidate.pin_hash)) {
+      if (await verifyPassword(password, candidate.pin_hash)) {
         player = candidate
         break
       }
     }
 
     if (!player) {
-      return NextResponse.json({ error: 'Invalid name or PIN. Check spelling and try again.' }, { status: 401 })
+      return NextResponse.json({ error: 'Invalid name or password. Check both and try again.' }, { status: 401 })
     }
 
     await createSession({

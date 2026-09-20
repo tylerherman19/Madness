@@ -96,7 +96,11 @@ export async function GET() {
       allGames.map((game) => ({ slate_id: game.slate_id, round_label: game.round_label }))
     )
     const periodById = new Map(periods.map((period) => [period.id, period]))
-    const pickMap = new Map(includedPicks.map((pick) => [`${pick.player_id}:${pick.slate_id}`, pick.team]))
+    const pickMap = new Map<string, string[]>()
+    for (const pick of includedPicks) {
+      const key = `${pick.player_id}:${pick.slate_id}`
+      pickMap.set(key, [...(pickMap.get(key) ?? []), pick.team])
+    }
     const pickCountByPlayer = new Map<string, number>()
     for (const pick of includedPicks) {
       pickCountByPlayer.set(pick.player_id, (pickCountByPlayer.get(pick.player_id) ?? 0) + 1)
@@ -137,11 +141,11 @@ export async function GET() {
           height: 22,
         },
         ...includedSlates.map((slate): Cell => {
-          const team = pickMap.get(`${player.id}:${slate.id}`)
-          const value = !team
+          const teams = pickMap.get(`${player.id}:${slate.id}`) ?? []
+          const value = !teams.length
             ? ''
             : isPickRevealed(slate, gamesBySlate.get(slate.id) ?? [], now)
-              ? team
+              ? teams.join(' / ')
               : 'Hidden'
           return {
             value,

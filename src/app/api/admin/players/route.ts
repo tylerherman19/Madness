@@ -2,8 +2,7 @@ import { revalidatePath } from 'next/cache'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, escapeIlike } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
-import { sendWelcomeEmail } from '@/lib/email'
-import { generatePin, hashPin } from '@/lib/pin'
+import { hashPassword, passwordValidationError } from '@/lib/password'
 import { getDb } from '@/lib/testMode'
 
 export async function POST(req: NextRequest) {
@@ -14,12 +13,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const name = typeof body.full_name === 'string' ? body.full_name.trim() : ''
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const passwordError = passwordValidationError(body.password)
 
     if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     if (name.length > 80) return NextResponse.json({ error: 'Name too long (max 80 characters)' }, { status: 400 })
     if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
     }
+    if (passwordError) return NextResponse.json({ error: passwordError }, { status: 400 })
 
     const supabase = await getDb()
     const { data: existing, error: lookupError } = await supabase
@@ -35,7 +36,6 @@ export async function POST(req: NextRequest) {
     }
     if (existing) return NextResponse.json({ error: 'An account with that email already exists' }, { status: 409 })
 
-    const pin = generatePin()
     const { data: player, error: insertError } = await supabase
       .from('players')
       .insert({
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
         email,
         phone: null,
         venmo_handle: null,
-        pin_hash: await hashPin(pin),
+        pin_hash: await hashPassword(body.password),
         paid: false,
         status: 'alive',
       })
@@ -66,25 +66,6 @@ export async function POST(req: NextRequest) {
       message: `Admin added ${name}`,
       details: { email },
     })
-
-    const emailResult = await sendWelcomeEmail(email, name, pin)
-    if (!emailResult.ok) {
-      await logAudit(supabase, {
-        event_type: 'welcome-email-failed',
-        actor: 'system',
-        player_id: player.id,
-        player_name: name,
-        message: `Welcome email failed to send to ${email}`,
-        details: { error: emailResult.error },
-      })
-      revalidatePath('/')
-      revalidatePath('/standings')
-      revalidatePath('/admin/players')
-      return NextResponse.json({
-        error: 'Player was added, but the welcome email failed. Use Regen PIN to send a new login email.',
-        playerAdded: true,
-      }, { status: 502 })
-    }
 
     revalidatePath('/')
     revalidatePath('/standings')

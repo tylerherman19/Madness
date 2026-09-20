@@ -1,7 +1,6 @@
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { generatePin, hashPin } from '@/lib/pin'
-import { emailsEnabled, sendWelcomeEmail } from '@/lib/email'
+import { hashPassword, passwordValidationError } from '@/lib/password'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
 import { haveSignupsClosed } from '@/lib/season'
@@ -24,10 +23,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { full_name, email, phone, venmo } = await req.json()
+    const { full_name, email, phone, venmo, password } = await req.json()
 
     if (!full_name?.trim() || !email?.trim() || !phone?.trim() || !venmo?.trim()) {
       return NextResponse.json({ error: 'Name, email, phone, and Venmo handle are required' }, { status: 400 })
+    }
+    const passwordError = passwordValidationError(password)
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 })
     }
 
     const name = full_name.trim()
@@ -61,15 +64,15 @@ export async function POST(req: NextRequest) {
 
     if (byEmail) {
       return NextResponse.json(
-        { error: 'An account with that email already exists. Check your inbox for your PIN, or use "Forgot PIN" on the login page.' },
+        { error: 'An account with that email already exists. Log in with the password you chose.' },
         { status: 409 }
       )
     }
 
-    // Names don't have to be unique — two Jasons are fine, login tries every
-    // same-named candidate's PIN (see /api/auth/login). Only email is unique.
-    const pin = generatePin()
-    const pinHash = await hashPin(pin)
+    // The legacy database column is still named pin_hash, but it now stores
+    // the bcrypt hash of the player-chosen password. Keeping the column avoids
+    // a risky credential migration and lets existing entries keep logging in.
+    const passwordHash = await hashPassword(password)
 
     const { data: inserted, error: insertError } = await supabase
       .from('players')
@@ -78,7 +81,7 @@ export async function POST(req: NextRequest) {
         email: emailLower,
         phone: phone?.trim() || null,
         venmo_handle: venmo?.trim() || null,
-        pin_hash: pinHash,
+        pin_hash: passwordHash,
         paid: false,
         status: 'alive',
       })
@@ -92,7 +95,7 @@ export async function POST(req: NextRequest) {
       // normal "already exists" case instead of a generic 500.
       if (insertError.code === '23505') {
         return NextResponse.json(
-          { error: 'An account with that email already exists. Use "Forgot PIN" on the login page.' },
+          { error: 'An account with that email already exists. Log in with your password.' },
           { status: 409 }
         )
       }
@@ -109,33 +112,7 @@ export async function POST(req: NextRequest) {
       details: { email: emailLower },
     })
 
-    // Send the welcome email after the response goes out instead of
-    // awaiting it here. Resend is a third network hop with no timeout of
-    // its own; awaiting it kept the signup request open long enough to hit
-    // the platform's function timeout on a slow send, which returns a
-    // non-JSON error page and shows the client's generic catch-all message.
-    // Failures are logged to the audit trail instead of surfaced inline —
-    // the player can always use "Forgot PIN" to recover.
-    after(async () => {
-      const emailResult = await sendWelcomeEmail(emailLower, name, pin)
-      if (!emailResult.ok) {
-        await logAudit(supabase, {
-          event_type: 'welcome-email-failed',
-          actor: 'system',
-          player_id: null,
-          player_name: name,
-          message: `Welcome email failed to send to ${emailLower}`,
-          details: { error: emailResult.error },
-        })
-      }
-    })
-
-    // This pool sends no email (see lib/email.ts), so the welcome message
-    // that normally carries the PIN is discarded. Hand it back in the response
-    // instead: the account is worthless to its owner without it, and this is
-    // the one moment the right person is guaranteed to be looking. When
-    // EMAILS_ENABLED is on, the email carries it and nothing is echoed.
-    return NextResponse.json(emailsEnabled() ? { ok: true } : { ok: true, pin })
+    return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('signup error', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
