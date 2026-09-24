@@ -172,11 +172,15 @@
 .gameTable:focus-visible { outline:3px solid #9aafff; outline-offset:-3px; }
 .gameHead,.gameRow { grid-template-columns:80px minmax(0,1fr) 112px; column-gap:16px; }
 .gameHead { position:sticky; top:0; z-index:1; height:36px; padding:0 22px; background:#f6f8fb; font-size:11px; letter-spacing:.04em; }
+.gameHead span:nth-child(2) { text-align:center; }
+.gameHead span:last-child { text-align:right; }
 .gameRow { min-height:72px; padding:10px 22px; }
 .gameRow:hover { background:#f7faff; }
 .gameRow time { font-size:14px; }
-.gameTeams { gap:12px; min-width:0; flex-wrap:wrap; }
-.gameTeams i { gap:8px; min-width:0; font-size:14px; }
+.gameTeams { display:grid; width:100%; max-width:560px; min-width:0; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; justify-self:center; gap:12px; }
+.gameTeams i { gap:8px; min-width:0; font-size:14px; line-height:1.25; overflow-wrap:anywhere; }
+.gameTeams i:first-child { justify-content:flex-end; text-align:right; }
+.gameTeams i:last-child { justify-content:flex-start; text-align:left; }
 .gameTeams i .logo { width:30px!important; height:30px!important; }
 .gameTeams small { font-size:12px; }
 .gameRow>b { overflow:hidden; color:#435d81; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
@@ -272,12 +276,12 @@
   .dateBar + .sectionTitle .search { width:100%; min-height:44px; }
   .dateBar + .sectionTitle .search input { width:100%; }
   .gameHead { display:none; }
-  .gameRow { grid-template-columns:1fr auto; grid-template-areas:'time status' 'matchup matchup'; gap:7px 12px; min-height:92px; padding:12px 16px; }
+  .gameRow { grid-template-columns:1fr auto; grid-template-areas:'time status' 'matchup matchup'; gap:10px 12px; min-height:112px; padding:12px 16px; }
   .gameRow time { grid-area:time; font-size:13px; }
   .gameRow>b { grid-area:status; font-size:12px; }
   .gameTeams { grid-area:matchup; gap:8px; }
-  .gameTeams i { gap:6px; font-size:12px; }
-  .gameTeams i .logo { width:26px!important; height:26px!important; }
+  .gameTeams i,.gameTeams i:first-child,.gameTeams i:last-child { flex-direction:column; align-items:center; justify-content:center; gap:5px; font-size:12px; text-align:center; }
+  .gameTeams i .logo { width:28px!important; height:28px!important; }
   .howCard .steps { grid-template-columns:1fr; padding:4px 16px; }
   .howCard .steps>div { min-height:70px; padding:10px 0; border:0; border-bottom:1px solid #edf1f5; }
   .howCard .steps>div:last-child { border:0; }
