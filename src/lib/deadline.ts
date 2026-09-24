@@ -63,6 +63,16 @@ export function gameForTeam(team: string, games: Game[]): Game | undefined {
   return games.find((g) => g.home_team === team || g.away_team === team)
 }
 
+// Early access to the next day requires a final win, not merely a game that
+// has tipped or a player row that has not yet been graded as eliminated.
+export function didPickWin(pick: { slate_id: string; team: string }, games: Game[]): boolean {
+  const game = games.find((g) =>
+    g.slate_id === pick.slate_id && (g.home_team === pick.team || g.away_team === pick.team)
+  )
+  if (!game) return false
+  return game.result === (game.home_team === pick.team ? 'home_win' : 'away_win')
+}
+
 // Tournament seed only. Outside the tournament ESPN's curatedRank is the AP
 // poll rank, which is stored on the game for display but must never reach a
 // pick's `seed` — the endgame tiebreak sums seeds, and counting a #20 AP

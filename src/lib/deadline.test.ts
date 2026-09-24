@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { autoAssignHighestSeed } from './deadline.ts'
+import { autoAssignHighestSeed, didPickWin, isSlateLocked } from './deadline.ts'
 import type { Game } from '../types/index.ts'
 
 function game(
@@ -73,4 +73,23 @@ test('seed priority does not treat regular-season rankings as tournament seeds',
   const games = [game('a', 'DUKE', 1, 'UNC', 8, null)]
 
   assert.equal(autoAssignHighestSeed(games, [], [], { DUKE: 1 }), null)
+})
+
+test('the next pick opens only when the previous team has a final win', () => {
+  const previous = game('early', 'DUKE', null, 'UNC', null, null)
+  const pick = { slate_id: previous.slate_id, team: 'DUKE' }
+  assert.equal(didPickWin(pick, [previous]), false)
+  assert.equal(didPickWin(pick, [{ ...previous, status_state: 'in' }]), false)
+  assert.equal(didPickWin(pick, [{ ...previous, status_state: 'post', result: 'away_win' }]), true)
+  assert.equal(didPickWin({ ...pick, team: 'UNC' }, [{ ...previous, result: 'away_win' }]), false)
+  assert.equal(didPickWin({ ...pick, slate_id: 'another-day' }, [{ ...previous, result: 'away_win' }]), false)
+})
+
+test('an early winner can pick until the next day first tips', () => {
+  const tomorrow = game('next', 'MSU', null, 'Purdue', null, null)
+  tomorrow.tip_time = '2027-03-19T16:00:00.000Z' // 11:00 AM Central
+  const next = { locks_at: tomorrow.tip_time }
+  assert.equal(isSlateLocked(next, [tomorrow], new Date('2027-03-18T20:00:00.000Z')), false)
+  assert.equal(isSlateLocked(next, [tomorrow], new Date('2027-03-19T15:59:59.000Z')), false)
+  assert.equal(isSlateLocked(next, [tomorrow], new Date('2027-03-19T16:00:00.000Z')), true)
 })

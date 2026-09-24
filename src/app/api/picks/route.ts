@@ -5,6 +5,7 @@ import { getPoolConfig } from '@/lib/pool'
 import { getSession, getAdminSession } from '@/lib/session'
 import { isUuid } from '@/lib/api'
 import { isSlateLocked, seedForTeam } from '@/lib/deadline'
+import { loadPickWindow } from '@/lib/pickWindow'
 import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
 import { sendPickConfirmationEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
@@ -60,29 +61,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'You are eliminated' }, { status: 403 })
     }
 
-    // Check slate is active
-    const { data: slate } = await supabase
-      .from('slates')
-      .select('id, slate_number, slate_date, season_year, is_active, locks_at')
-      .eq('id', slate_id)
-      .single()
-
-    if (!slate?.is_active) {
-      return NextResponse.json({ error: 'This slate is not active' }, { status: 400 })
+    const now = await getEffectiveNow()
+    const window = await loadPickWindow(supabase, playerId, pool, now, !isAdmin)
+    const slate = window.seasonSlates.find((row) => row.id === slate_id)
+    if (!slate || (isAdmin ? !slate.is_active : window.pickSlate?.id !== slate_id)) {
+      return NextResponse.json(
+        { error: 'This game day is not open for you yet. Your previous pick must finish with a win first.' },
+        { status: 400 }
+      )
     }
 
-    const [{ data: seasonSlates }, { data: playerPicks }] = await Promise.all([
-      supabase
-        .from('slates')
-        .select('id, slate_number, slate_date, locks_at')
-        .eq('season_year', slate.season_year),
-      supabase.from('picks').select('id, team, slate_id').eq('player_id', playerId),
-    ])
-    const seasonSlateIds = (seasonSlates ?? []).map((row) => row.id)
-    const { data: seasonGames } = seasonSlateIds.length
-      ? await supabase.from('games').select('*').in('slate_id', seasonSlateIds)
-      : { data: [] as Game[] }
-    const allGames: Game[] = seasonGames || []
+    const seasonSlates = window.seasonSlates
+    const playerPicks = window.picks
+    const allGames: Game[] = window.games
     const gamesData = allGames.filter((game) => game.slate_id === slate_id)
     const teamGame = gamesData.find((g) => g.home_team === team || g.away_team === team)
 
@@ -94,8 +85,10 @@ export async function POST(req: NextRequest) {
     // any more, so submitting and changing a pick close at the same instant.
     // Admins can still submit manually after the lock.
     if (!isAdmin) {
-      const now = await getEffectiveNow()
-      if (isSlateLocked(slate, gamesData, now)) {
+      // Refresh the clock after ESPN and database reads. A request that began
+      // just before first tip cannot save after the deadline passed.
+      const submissionNow = await getEffectiveNow()
+      if (isSlateLocked(slate, gamesData, submissionNow)) {
         return NextResponse.json(
           { error: 'Picks for today are locked — the first game has tipped off' },
           { status: 400 }

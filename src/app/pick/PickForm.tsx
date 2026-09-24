@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
 import { roundDisplay } from '@/lib/competition'
@@ -78,6 +78,14 @@ export default function PickForm({
   const editingPick = picks.find((pick) => pick.id === editingId) ?? null
   const canAdd = picks.length < requiredPicks
   const actionAvailable = !locked && (canAdd || picks.some((pick) => pick.editable))
+
+  // Keep an open pick page current when the selected game becomes final.
+  // The server checks the result again before it shows the next game day.
+  useEffect(() => {
+    if (!locked) return
+    const timer = window.setInterval(() => router.refresh(), 30_000)
+    return () => window.clearInterval(timer)
+  }, [locked, router])
 
   const filters = [
     'All games',
@@ -198,7 +206,9 @@ export default function PickForm({
     ? `${requiredPicks} picks. Use them across the round.`
     : 'One team. Your daily pick.'
   const helper = locked
-    ? `This game day is locked. Your ${picks.length === 1 ? 'pick is' : 'picks are'} final.`
+    ? picks.length > 0
+      ? `This game day is locked. Your ${picks.length === 1 ? 'pick is' : 'picks are'} final. If your team wins, your next pick opens when the game is final.`
+      : 'This game day is locked. Check back when results are final.'
     : sharedRound
       ? `Choose ${requiredPicks} different teams before the round ends. You can make both picks on the same game day.`
       : 'Choose one team from the entire slate. A new pick replaces your previous one.'

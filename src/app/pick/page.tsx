@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
+import { loadPickWindow } from '@/lib/pickWindow'
+import type { PoolConfig } from '@/lib/competition'
 import {
   buildPickPeriods,
   capabilitiesFor,
@@ -42,15 +44,13 @@ type PickPageData =
 
 async function loadPickData(
   playerId: string,
-  mode: CompetitionMode,
-  pickFrequency: 'every-game-day' | 'weekends-only' | 'tournament-round'
+  pool: PoolConfig
 ): Promise<PickPageData> {
+  const mode = pool.competition_mode
+  const pickFrequency = pool.pick_frequency
   const caps = capabilitiesFor(mode)
   try {
     const supabase = await getDb()
-    const { data: slate } = await supabase.from('slates').select('*').eq('is_active', true).single()
-    if (!slate) return { kind: 'no-slate' }
-
     const { data: player } = await supabase
       .from('players')
       .select('id, full_name, status, paid')
@@ -58,37 +58,32 @@ async function loadPickData(
       .single()
     if (!player) return { kind: 'no-session' }
 
-    const [{ data: pastPicks }, { data: allSlates }, teamBrands] = await Promise.all([
-      supabase.from('picks').select('id, team, slate_id, auto_assigned').eq('player_id', playerId),
-      supabase
-        .from('slates')
-        .select('id, slate_number, slate_date, locks_at')
-        .eq('season_year', slate.season_year),
+    const now = await getEffectiveNow()
+    const [window, teamBrands] = await Promise.all([
+      loadPickWindow(supabase, playerId, pool, now),
       getTeamBrandDirectory(),
     ])
+    const slate = window.pickSlate
+    if (!slate) return { kind: 'no-slate' }
+    const pastPicks = window.picks
+    const allSlates = window.seasonSlates
+    const allGames: Game[] = window.games
 
     // Teams burned on previous pick periods — this period's pick isn't "used"
     // while it can still be changed. The date a team was spent travels with
     // it so the board can say *when*: "USED · JAN 18" is the difference
     // between a dead row and a useful one.
     const slateDateById: Record<string, string> = {}
-    for (const s of allSlates ?? []) slateDateById[s.id] = String(s.slate_date)
+    for (const s of allSlates) slateDateById[s.id] = String(s.slate_date)
 
     const usedOn: Record<string, string> = {}
-    for (const p of pastPicks ?? []) {
+    for (const p of pastPicks) {
       if (p.slate_id === slate.id) continue
       usedOn[p.team] = slateDateById[p.slate_id] ?? ''
     }
     const usedTeams = Object.keys(usedOn)
 
-    const allSlateIds = (allSlates ?? []).map((row) => row.id)
-    const { data: allGamesResult } = allSlateIds.length
-      ? await supabase.from('games').select('*').in('slate_id', allSlateIds).order('tip_time')
-      : { data: [] as Game[] }
-    const allGames: Game[] = allGamesResult || []
     const gamesData = allGames.filter((game) => game.slate_id === slate.id)
-
-    const now = await getEffectiveNow()
 
     // Every pick on the slate locks together, at the day's first tip.
     const lockTime = slateDeadline(slate, gamesData)
@@ -145,7 +140,7 @@ async function loadPickData(
     // competition names it.
     const periods = buildPickPeriods(
       mode,
-      (allSlates ?? []).map((s) => ({
+      allSlates.map((s) => ({
         id: s.id,
         slate_number: s.slate_number,
         slate_date: String(s.slate_date),
@@ -158,7 +153,7 @@ async function loadPickData(
     const periodSlateIds = sharedQuota
       ? new Set(periods.filter((candidate) => candidate.round === period?.round).map((candidate) => candidate.id))
       : new Set([slate.id])
-    const savedPicks: SavedPick[] = (pastPicks ?? [])
+    const savedPicks: SavedPick[] = pastPicks
       .filter((pick) => periodSlateIds.has(pick.slate_id))
       .map((pick) => ({
         id: pick.id,
@@ -195,7 +190,7 @@ export default async function PickPage() {
   const mode: CompetitionMode = pool.competition_mode
   const caps = capabilitiesFor(mode)
 
-  const data = await loadPickData(session.player_id, mode, pool.pick_frequency)
+  const data = await loadPickData(session.player_id, pool)
   if (data.kind === 'no-session') redirect('/login')
 
   if (data.kind === 'failed') {
@@ -236,6 +231,7 @@ export default async function PickPage() {
   return (
     <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
       <PickForm
+        key={data.slateId}
         slateId={data.slateId}
         periodLabel={data.periodLabel}
         gameRows={data.gameRows}
