@@ -124,16 +124,16 @@
 .brandIcon { width:34px; height:34px; margin:0; color:#0d1c34; flex:0 0 auto; }
 .brandLockup { color:#0d1c34; font-family:var(--concept-display),sans-serif; font-size:27px; line-height:.72; font-weight:700; letter-spacing:-.03em; }
 .brandLockup small { display:block; margin-top:8px; font-family:var(--concept-text),sans-serif; font-size:7px; line-height:1; font-weight:800; letter-spacing:.29em; }
-.modeBadge { display:inline-flex; align-items:center; align-self:flex-start; margin:19px 7px 0; min-height:26px; padding:0 9px; border:1px solid #d7e1ee; border-radius:6px; background:#eef4fd; color:#35557e; font-size:9px; font-weight:750; }
-.railLabel { margin:27px 11px 10px!important; color:#9aa6b6; font-size:9px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }
+.modeBadge { display:inline-flex; align-items:center; align-self:flex-start; margin:19px 7px 0; min-height:32px; padding:0 11px; border:1px solid #d7e1ee; border-radius:6px; background:#eef4fd; color:#35557e; font-size:12px; font-weight:750; }
+.railLabel { margin:27px 11px 10px!important; color:#77869b; font-size:11px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }
 .desktopNav { height:auto; display:flex; flex-direction:column; align-items:stretch; gap:5px; }
-.desktopNav a { min-height:43px; padding:0 11px; display:flex; align-items:center; gap:12px; border-radius:7px; border:0; color:#4e5f76; font-size:11px; font-weight:650; }
+.desktopNav a { min-height:48px; padding:0 11px; display:flex; align-items:center; gap:12px; border-radius:7px; border:0; color:#4e5f76; font-size:14px; font-weight:650; }
 .desktopNav a svg { width:18px; height:18px; flex:0 0 auto; }
 .desktopNav a[aria-current=page] { color:#075ce5; background:#e9f1ff; }
 .desktopNav a[aria-current=page]:after { content:none; }
 .desktopNav a:hover { color:#075ce5; background:#f0f5fd; }
 .accountMenu { position:relative; border-top:1px solid #dfe6ef; padding-top:14px; }
-.profile { width:100%; margin:0; padding:6px 8px; justify-content:flex-start; gap:10px; border-radius:7px; text-align:left; }
+.profile { width:100%; margin:0; padding:6px 8px; justify-content:flex-start; gap:10px; border-radius:7px; text-align:left; font-size:13px!important; }
 .profile:hover { background:#edf3fb; }
 .profile .avatar { order:-1; }
 .avatar { width:31px; height:31px; background:#dfe8f4; color:#19324f; }
@@ -147,51 +147,65 @@
 .welcomeCopy { position:relative; z-index:2; padding:35px 36px; align-self:center; }
 .heroKicker { color:#dce6f5; font-size:10px; font-weight:800; letter-spacing:.2em; text-transform:uppercase; }
 .welcome h1 { margin:14px 0 10px; color:#fff; font-family:var(--concept-display),sans-serif; font-size:58px; line-height:.82; font-weight:700; letter-spacing:-.025em; text-transform:none; }
-.welcome p { margin:0 0 17px; color:#f2f6fb; font-size:12px; line-height:1.55; }
+.welcome p { margin:0 0 20px; color:#f2f6fb; font-size:15px; line-height:1.5; }
 .heroActions { display:flex; gap:10px; }
-.welcome .primary { min-height:42px; margin:0; background:#fff; color:#0d1c34; }
+.welcome .primary { min-height:44px; margin:0; background:#fff; color:#0d1c34; font-size:14px!important; }
 .welcome .primary:hover { background:#edf4ff; }
-.heroSecondary { display:inline-flex; align-items:center; min-height:42px; padding:10px 17px; border:1px solid rgba(255,255,255,.55); border-radius:6px; color:#fff; background:rgba(6,20,39,.35); font-size:11px; font-weight:650; }
+.heroSecondary { display:inline-flex; align-items:center; min-height:44px; padding:10px 17px; border:1px solid rgba(255,255,255,.55); border-radius:6px; color:#fff; background:rgba(6,20,39,.35); font-size:14px; font-weight:650; }
 .heroArt { position:relative; z-index:2; display:flex; align-items:center; justify-content:flex-end; padding:34px; }
 .heroArt:before,.heroBall { display:none; }
 .heroArt>span { color:#fff; font-family:var(--concept-display),sans-serif; font-size:22px; line-height:.95; font-style:italic; font-weight:700; letter-spacing:.01em; text-align:left; text-shadow:0 2px 12px rgba(0,0,0,.5); }
 .heroArt b { color:#fff; }
 
-.stats { margin:10px 0; padding:0; gap:1px; border:1px solid #dfe6ef; background:#dfe6ef; border-radius:8px; }
-.stats>div { min-height:78px; padding:14px 17px; border:0; background:#fff; }
-.stats dt { color:#6e7c90; font-size:9px; letter-spacing:.04em; text-transform:none; }
-.stats dd { margin-top:5px; color:#0d1c34; font-size:23px; }
-.stats small { color:#8290a3; }
-.dashboardGrid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(210px,.9fr) minmax(210px,.72fr); gap:10px; align-items:stretch; }
+.stats { margin:14px 0 18px; padding:0; gap:1px; border:1px solid #dfe6ef; background:#dfe6ef; border-radius:8px; }
+.stats>div { min-height:94px; padding:17px 22px; border:0; background:#fff; }
+.stats dt { color:#52647d; font-size:12px; letter-spacing:0; text-transform:none; }
+.stats dd { margin-top:5px; color:#0d1c34; font-size:30px; }
+.stats small { color:#64748b; font-size:11px; }
+.dashboardGrid { display:grid; grid-template-columns:minmax(0,2.1fr) minmax(280px,.8fr); gap:16px; align-items:start; }
 .gamesCard,.howCard,.deadlineCard { margin:0; overflow:hidden; border:1px solid #dfe6ef; border-radius:8px; background:#fff; box-shadow:0 1px 2px rgba(13,28,52,.04); }
-.sectionTitle { height:48px; margin:0; padding:0 14px; border-bottom:1px solid #e7ecf3; }
-.sectionTitle h2 { font-size:13px; letter-spacing:-.01em; text-transform:none; }
-.sectionTitle a { color:#0b63f6; font-size:9px; }
-.gameHead { grid-template-columns:58px 1fr 70px; height:25px; padding:0 11px; background:#f6f8fb; }
-.gameRow { grid-template-columns:58px 1fr 70px; min-height:47px; padding:5px 11px; }
-.gameTeams { gap:6px; min-width:0; }
-.gameTeams i { gap:5px; min-width:0; font-size:9px; }
-.gameTeams i .logo { width:20px!important; height:20px!important; }
-.gameRow>b { overflow:hidden; color:#547096; text-overflow:ellipsis; white-space:nowrap; }
-.oddsDemo { padding:7px 11px; font-size:8px; }
-.howCard .steps { display:grid; grid-template-columns:1fr; padding:7px 14px 10px; }
-.howCard .steps>div { padding:8px 0; gap:9px; border:0; border-bottom:1px solid #edf1f5; }
+.gamesCard { grid-column:1; grid-row:1; height:480px; display:flex; flex-direction:column; }
+.dashboardGrid .sectionTitle { flex:0 0 auto; height:64px; margin:0; padding:0 22px; border-bottom:1px solid #e7ecf3; }
+.dashboardGrid .sectionTitle h2 { font-size:20px; letter-spacing:-.02em; text-transform:none; }
+.dashboardGrid .sectionTitle a { color:#0b63f6; font-size:13px; }
+.gameTable { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.gameTable:focus-visible { outline:3px solid #9aafff; outline-offset:-3px; }
+.gameHead,.gameRow { grid-template-columns:80px minmax(0,1fr) 112px; column-gap:16px; }
+.gameHead { position:sticky; top:0; z-index:1; height:36px; padding:0 22px; background:#f6f8fb; font-size:11px; letter-spacing:.04em; }
+.gameRow { min-height:72px; padding:10px 22px; }
+.gameRow:hover { background:#f7faff; }
+.gameRow time { font-size:14px; }
+.gameTeams { gap:12px; min-width:0; flex-wrap:wrap; }
+.gameTeams i { gap:8px; min-width:0; font-size:14px; }
+.gameTeams i .logo { width:30px!important; height:30px!important; }
+.gameTeams small { font-size:12px; }
+.gameRow>b { overflow:hidden; color:#435d81; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+.gamesCard .empty { border:0; box-shadow:none; font-size:14px; color:#52647d; }
+.howCard { grid-column:1/-1; grid-row:2; }
+.howCard .steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); padding:22px; }
+.howCard .steps>div { padding:0 18px; gap:12px; border:0; border-right:1px solid #e6ebf2; }
+.howCard .steps>div:first-child { padding-left:0; }
 .howCard .steps>div:last-child { border:0; }
-.howCard .steps>div>b { width:25px; height:25px; flex:0 0 auto; }
-.howCard .steps strong { font-size:10px; }
-.howCard .steps small { font-size:8px; }
-.deadlineCard { display:grid; grid-template-columns:34px 1fr; gap:10px; padding:15px; align-content:start; }
-.deadlineIcon { width:34px; height:34px; }
-.deadlineCard span,.deadlineCard small { font-size:8px; }
-.deadlineCard b { font-size:20px; }
-.roundTrack { margin-top:7px; padding-top:12px; }
+.howCard .steps>div>b { width:36px; height:36px; flex:0 0 auto; font-size:14px; }
+.howCard .steps strong { font-size:15px; }
+.howCard .steps small { font-size:12px; line-height:1.45; }
+.deadlineCard { grid-column:2; grid-row:1; display:grid; grid-template-columns:44px minmax(0,1fr); gap:14px; min-height:222px; padding:24px; align-content:start; }
+.deadlineIcon { width:44px; height:44px; }
+.deadlineCard span,.deadlineCard small { font-size:11px; }
+.deadlineCard b { font-size:29px; }
+.deadlineCard small { font-size:12px; }
+.roundTrack { margin-top:14px; padding-top:17px; }
+.roundTrack strong { display:block; margin-top:4px; font-size:16px; }
 .footer { max-width:1280px; padding:20px 22px 32px; }
 
 @media (max-width:1050px) and (min-width:701px) {
   .root { padding-left:204px; }
   .header { width:204px; }
-  .dashboardGrid { grid-template-columns:1fr 1fr; }
-  .gamesCard { grid-column:1/-1; }
+  .dashboardGrid { grid-template-columns:1fr; }
+  .gamesCard,.deadlineCard,.howCard { grid-column:1; grid-row:auto; }
+  .deadlineCard { min-height:0; }
+  .howCard .steps { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 0; }
+  .howCard .steps>div:nth-child(2) { border:0; }
 }
 
 @media (max-width:700px) {
@@ -224,27 +238,32 @@
   .mobileNav svg { width:19px; height:19px; }
   .ticker { display:none; }
   .main { width:100%; padding:10px 10px 88px; }
-  .welcome { min-height:330px; display:flex; align-items:flex-end; border-radius:8px; background-image:linear-gradient(180deg,rgba(3,12,26,.12) 0%,rgba(3,12,26,.66) 45%,rgba(3,12,26,.97) 100%),url('/kohl-center-hero.jpg'); background-position:62% center; }
+  .welcome { min-height:350px; display:flex; align-items:flex-end; border-radius:8px; background-image:linear-gradient(180deg,rgba(3,12,26,.12) 0%,rgba(3,12,26,.66) 45%,rgba(3,12,26,.97) 100%),url('/kohl-center-hero.jpg'); background-position:62% center; }
   .welcome:after { height:4px; }
   .welcomeCopy { width:100%; padding:20px 18px 23px; }
   .heroKicker { display:none; }
   .welcome h1 { margin:0 0 8px; font-size:40px; line-height:.88; }
-  .welcome p { max-width:290px; margin-bottom:13px; font-size:10px; line-height:1.5; }
+  .welcome p { max-width:310px; margin-bottom:15px; font-size:13px; line-height:1.5; }
   .heroActions { display:block; }
   .welcome .primary { width:100%; min-height:39px; background:#0b63f6; color:#fff; }
   .heroSecondary { display:none; }
   .heroArt { display:none; }
-  .stats { grid-template-columns:repeat(3,1fr); margin:9px 0; }
-  .stats>div { min-height:66px; padding:11px 5px; text-align:center; }
-  .stats>div:nth-child(4) { display:none; }
-  .stats dt { font-size:7px; }
-  .stats dd { display:block; margin-top:4px; font-size:17px; }
-  .stats small { display:block; margin-top:1px; font-size:7px; }
-  .dashboardGrid { display:grid; grid-template-columns:1fr; gap:9px; }
-  .gamesCard { order:1; }
-  .howCard { order:3; }
-  .deadlineCard { order:2; margin:0; }
-  .sectionTitle { height:43px; padding:0 11px; }
+  .stats { grid-template-columns:repeat(2,minmax(0,1fr)); margin:12px 0 16px; }
+  .stats>div { min-height:84px; padding:12px 15px; text-align:left; }
+  .stats>div:nth-child(4) { display:block; }
+  .stats dt { font-size:12px; }
+  .stats dd { display:block; margin-top:4px; font-size:25px; }
+  .stats small { display:block; margin-top:1px; font-size:11px; }
+  .dashboardGrid { display:grid; grid-template-columns:1fr; gap:12px; }
+  .gamesCard,.deadlineCard,.howCard { grid-column:1; grid-row:auto; }
+  .gamesCard { height:420px; }
+  .deadlineCard { min-height:0; padding:20px; grid-template-columns:42px minmax(0,1fr); }
+  .deadlineIcon { width:42px; height:42px; }
+  .deadlineCard b { font-size:27px; }
+  .roundTrack { display:block; }
+  .dashboardGrid .sectionTitle { height:56px; padding:0 16px; }
+  .dashboardGrid .sectionTitle h2 { font-size:18px; }
+  .dashboardGrid .sectionTitle a { font-size:12px; }
   .dateBar { margin:16px 0 15px; padding:0 0 14px; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; }
   .dateBar::-webkit-scrollbar { display:none; }
   .dateBar button { min-width:66px; min-height:60px; flex:0 0 auto; }
@@ -252,10 +271,18 @@
   .dateBar + .sectionTitle { height:auto; padding:12px; align-items:stretch; flex-direction:column; }
   .dateBar + .sectionTitle .search { width:100%; min-height:44px; }
   .dateBar + .sectionTitle .search input { width:100%; }
-  .gameHead,.gameRow { grid-template-columns:49px 1fr 58px; padding-inline:8px; }
-  .gameRow { min-height:44px; }
-  .gameTeams i { font-size:8px; }
-  .gameTeams i .logo { width:18px!important; height:18px!important; }
+  .gameHead { display:none; }
+  .gameRow { grid-template-columns:1fr auto; grid-template-areas:'time status' 'matchup matchup'; gap:7px 12px; min-height:92px; padding:12px 16px; }
+  .gameRow time { grid-area:time; font-size:13px; }
+  .gameRow>b { grid-area:status; font-size:12px; }
+  .gameTeams { grid-area:matchup; gap:8px; }
+  .gameTeams i { gap:6px; font-size:12px; }
+  .gameTeams i .logo { width:26px!important; height:26px!important; }
+  .howCard .steps { grid-template-columns:1fr; padding:4px 16px; }
+  .howCard .steps>div { min-height:70px; padding:10px 0; border:0; border-bottom:1px solid #edf1f5; }
+  .howCard .steps>div:last-child { border:0; }
+  .howCard .steps strong { font-size:14px; }
+  .howCard .steps small { font-size:12px; }
   .footer { display:none; }
   .selectionDesk.deskActive { position:fixed!important; left:10px; right:10px; bottom:calc(72px + env(safe-area-inset-bottom)); width:auto; max-height:calc(100dvh - 150px); margin:0; overflow:auto; z-index:76; }
   .sweatControls { align-items:stretch; gap:10px; }
