@@ -12,6 +12,7 @@ export const AUDIT_EVENT_TYPES: Record<string, string> = {
   'player-eliminated': 'Player eliminated',
   'player-updated': 'Player updated',
   'player-deleted': 'Player deleted',
+  'password-reset-requested': 'Password reset requested',
   'password-reset': 'Password reset',
   'players-imported': 'Players imported',
   'result-set': 'Result set',

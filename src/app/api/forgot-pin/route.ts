@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
     await req.json().catch(() => null)
     return NextResponse.json(
-      { error: 'Ask the pool organizer to set a temporary password for your entry.' },
+      { error: 'Ask the pool organizer to request a password reset for your entry.' },
       { status: 410 }
     )
   } catch (err) {

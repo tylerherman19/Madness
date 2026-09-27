@@ -1,11 +1,12 @@
+import { randomBytes, createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
-import { hashPassword, passwordValidationError } from '@/lib/password'
 import { logAudit } from '@/lib/audit'
+import { sendPasswordResetEmail } from '@/lib/email'
 
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const unauthorized = await requireAdmin()
@@ -25,22 +26,28 @@ export async function POST(
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
 
-  const { password } = await req.json().catch(() => ({ password: null }))
-  const passwordError = passwordValidationError(password)
-  if (passwordError) return NextResponse.json({ error: passwordError }, { status: 400 })
-  const pin_hash = await hashPassword(password)
+  const token = randomBytes(32).toString('hex')
+  const tokenHash = createHash('sha256').update(token).digest('hex')
+  const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  const { error } = await supabase.from('players').update({
+    pin_reset_token: tokenHash,
+    pin_reset_expires: expires,
+  }).eq('id', id)
+  if (error) return NextResponse.json({ error: 'Failed to create reset request' }, { status: 500 })
 
-  const { error } = await supabase.from('players').update({ pin_hash }).eq('id', id)
-  if (error) return NextResponse.json({ error: 'Failed to update password' }, { status: 500 })
+  const delivery = await sendPasswordResetEmail(player.email, player.full_name, token)
 
   await logAudit(supabase, {
-    event_type: 'password-reset',
+    event_type: 'password-reset-requested',
     actor: 'admin',
     player_id: player.id,
     player_name: player.full_name,
-    message: `Admin reset the password for ${player.full_name}`,
-    details: null,
+    message: `Admin requested a password reset for ${player.full_name}`,
+    details: { email_sent: delivery.sent },
   })
 
-  return NextResponse.json({ ok: true })
+  if (!delivery.ok) {
+    return NextResponse.json({ error: 'Reset request created, but the email could not be sent.' }, { status: 502 })
+  }
+  return NextResponse.json({ ok: true, emailSent: delivery.sent })
 }

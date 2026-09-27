@@ -30,7 +30,7 @@ export function getResend(): Resend {
 }
 
 export const FROM_EMAIL = 'Griffin Sell - NFL Survivor <pool@pickandpray.org>'
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://pickandpray.org'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://madness-cyan.vercel.app'
 
 // Resend's free tier allows ~2 requests/sec — loops sending to many
 // recipients must pace themselves with this delay between sends.
@@ -47,6 +47,37 @@ export function sleep(ms: number): Promise<void> {
 export interface SendResult {
   ok: boolean
   error?: string
+}
+
+// Reset delivery has its own switch while account email is being configured.
+// Both switches must be enabled before a reset link can leave the app.
+export async function sendPasswordResetEmail(
+  email: string,
+  fullName: string,
+  token: string
+): Promise<{ ok: boolean; sent: boolean }> {
+  if (process.env.EMAILS_ENABLED !== 'true' || process.env.PASSWORD_RESET_EMAILS_ENABLED !== 'true') {
+    console.log('[password reset email suppressed] delivery disabled')
+    return { ok: true, sent: false }
+  }
+  if (!isDeliverable(email)) return { ok: true, sent: false }
+
+  const resetUrl = new URL('/reset-password', APP_URL)
+  resetUrl.searchParams.set('token', token)
+  const result = await sendChecked({
+    to: email,
+    subject: 'Reset your Madness password',
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        ${LOGO_HEADER}
+        <p>Hi ${esc(fullName)},</p>
+        <p>A password reset was requested for your Madness account. This link expires in one hour.</p>
+        <a href="${esc(resetUrl.toString())}" style="display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Choose a new password</a>
+        <p>If you did not request this, you can ignore this email. Your password has not changed.</p>
+      </div>
+    `,
+  })
+  return { ok: result.ok, sent: result.ok }
 }
 
 const LOGO_HEADER = `

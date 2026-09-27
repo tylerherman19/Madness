@@ -40,6 +40,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   const [newPlayer, setNewPlayer] = useState({ full_name: '', email: '', password: '' })
   const [addError, setAddError] = useState('')
   const [addingPlayer, setAddingPlayer] = useState(false)
+  const [resettingPlayerId, setResettingPlayerId] = useState<string | null>(null)
 
   const query = search.trim().toLowerCase()
   const filtered = query
@@ -93,19 +94,23 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
     else setMessage('Failed to update')
   }
 
-  async function resetPassword(playerId: string, fullName: string) {
-    const password = prompt(`Set a temporary password for ${fullName}. It must be at least 8 characters.`)
-    if (!password) return
-    const res = await fetch(`/api/players/${playerId}/regen-pin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    })
-    if (res.ok) {
-      setMessage(`Password updated for ${fullName}`)
-    } else {
+  async function requestPasswordReset(playerId: string, fullName: string) {
+    setResettingPlayerId(playerId)
+    setMessage('')
+    try {
+      const res = await fetch(`/api/players/${playerId}/regen-pin`, { method: 'POST' })
       const data = await res.json().catch(() => null)
-      setMessage(data?.error || 'Failed to update password')
+      if (res.ok) {
+        setMessage(data?.emailSent
+          ? `Password reset email sent to ${fullName}`
+          : `Reset request created for ${fullName}. Email delivery is off, so no email was sent.`)
+      } else {
+        setMessage(data?.error || 'Failed to create reset request')
+      }
+    } catch {
+      setMessage('Failed to create reset request')
+    } finally {
+      setResettingPlayerId(null)
     }
   }
 
@@ -439,11 +444,12 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                   Edit
                 </button>
                 <button
-                  onClick={() => resetPassword(p.id, p.full_name)}
+                  onClick={() => requestPasswordReset(p.id, p.full_name)}
+                  disabled={resettingPlayerId === p.id}
                   className="rounded border px-2 py-1 text-xs"
                   style={actionBtn('neutral')}
                 >
-                  Set Password
+                  {resettingPlayerId === p.id ? 'Creating request…' : 'Send Reset Email'}
                 </button>
                 <button
                   onClick={() => toggleElimination(p)}
@@ -551,11 +557,12 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                         Edit
                       </button>
                       <button
-                        onClick={() => resetPassword(p.id, p.full_name)}
+                        onClick={() => requestPasswordReset(p.id, p.full_name)}
+                        disabled={resettingPlayerId === p.id}
                         className="rounded border px-2 py-0.5 text-xs"
                         style={actionBtn('neutral')}
                       >
-                        Set Password
+                        {resettingPlayerId === p.id ? 'Creating request…' : 'Send Reset Email'}
                       </button>
                       <button
                         onClick={() => toggleElimination(p)}

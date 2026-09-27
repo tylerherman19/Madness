@@ -69,6 +69,7 @@ npm run dev
 | `ADMIN_PASSWORD_HASH` | bcrypt hash of the admin password |
 | `RESEND_API_KEY` | Unused while `EMAILS_ENABLED` is off |
 | `EMAILS_ENABLED` | Must be exactly `true` to send mail. Anything else = silence |
+| `PASSWORD_RESET_EMAILS_ENABLED` | Also must be exactly `true` to deliver password reset links. Defaults to off. |
 | `CRON_SECRET` | Authenticates Vercel cron requests |
 | `NEXT_PUBLIC_APP_URL` | Base URL used in links |
 
