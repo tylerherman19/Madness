@@ -14,6 +14,7 @@ import SiteHeader from '../components/SiteHeader'
 import { Footer } from '@/app/components/Sports'
 import TeamMark from '../components/TeamMark'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
+import { loadAll } from '@/lib/seasonData'
 
 export default async function HistoryPage() {
   const session = await getSession()
@@ -27,9 +28,11 @@ export default async function HistoryPage() {
   const [picksRes, weeksRes, gamesRes, playersRes, allPicksRes, teamBrands] = await Promise.all([
     supabase.from('picks').select('id, team, seed, auto_assigned, slate_id').eq('player_id', session.player_id),
     supabase.from('slates').select('id, slate_number, slate_date, season_year, locks_at'),
-    supabase.from('games').select('slate_id, home_team, away_team, result, round_label'),
+    loadAll<{ slate_id: string; home_team: string; away_team: string; result: string; round_label: string | null }>(
+      supabase, 'games', 'slate_id, home_team, away_team, result, round_label'
+    ).then((data) => ({ data })),
     supabase.from('players').select('id, status, email'),
-    supabase.from('picks').select('player_id, slate_id'),
+    loadAll<{ player_id: string; slate_id: string }>(supabase, 'picks', 'player_id, slate_id').then((data) => ({ data })),
     getTeamBrandDirectory(),
   ])
 

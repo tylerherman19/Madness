@@ -5,6 +5,7 @@ import { getPoolConfig } from '@/lib/pool'
 import { buildPickPeriods, capabilitiesFor, type CompetitionMode, type PickPeriod } from '@/lib/competition'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
 import { compareBySeedTotal, seedTotalsByPlayer } from '@/lib/standings'
+import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from '@/lib/seasonData'
 
 export async function getDashboardData() {
   try {
@@ -21,17 +22,24 @@ export async function getDashboardData() {
       const { getDb } = await import('@/lib/testMode')
       const supabase = await getDb()
 
-      // Single Promise.all with 4 queries: all slates, all players, all picks with team, all games
-      const [weeksRes, playersRes, picksRes, gamesRes] = await Promise.all([
-        supabase.from('slates').select('*').order('slate_number'),
+      // Slates and players first; games and picks are then read for the
+      // season being played only, and paged — a season outgrows PostgREST's
+      // 1,000-row response cap (see lib/db.ts).
+      const [weeks, playersRes] = await Promise.all([
+        loadAll<{ id: string; season_year: number; is_active: boolean }>(supabase, 'slates', '*'),
         supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name'),
-        supabase.from('picks').select('player_id, slate_id, team, seed'),
-        supabase.from('games').select('*')
       ])
-      allWeeks = weeksRes.data
+      if (playersRes.error) throw playersRes.error
+      const seasonYear = seasonYearOf(weeks)
+      const seasonIds = weeks.filter((w) => w.season_year === seasonYear).map((w) => w.id)
+      const [picks, games] = await Promise.all([
+        loadPicksForSlates(supabase, seasonIds, 'player_id, slate_id, team, seed'),
+        loadGamesForSlates(supabase, seasonIds),
+      ])
+      allWeeks = weeks
       allPlayers = playersRes.data
-      allPicks = picksRes.data
-      allGames = gamesRes.data
+      allPicks = picks
+      allGames = games
     }
 
     if (!allPlayers) return null

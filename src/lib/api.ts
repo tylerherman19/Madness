@@ -30,10 +30,12 @@ export function isCronRequest(req: NextRequest): boolean {
   return !!secret && req.headers.get('authorization') === `Bearer ${secret}`
 }
 
-// Cron endpoints accept the Vercel Cron secret (always runs against
-// production — no cookies) or a logged-in admin, which lets the Testing
-// panel exercise these flows against the sandbox.
-export async function requireCronOrAdmin(req: NextRequest): Promise<NextResponse | null> {
+// Cron endpoints split by method. GET is what Vercel Cron sends and accepts
+// only the cron secret (always runs against production — no cookies). Admins
+// run the same jobs with POST: the admin cookie is SameSite=Lax, which a
+// browser attaches to a cross-site GET navigation but never to a cross-site
+// POST, so a link planted somewhere can't trigger a job as the admin.
+export function requireCron(req: NextRequest): NextResponse | null {
   if (isCronRequest(req)) return null
-  return requireAdmin()
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 }

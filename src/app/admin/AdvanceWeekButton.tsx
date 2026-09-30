@@ -23,7 +23,7 @@ export default function AdvanceSlateButton({ currentSlateDate }: Props) {
     setLoading(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/cron/auto-advance')
+      const res = await fetch('/api/cron/auto-advance', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) {
         setMessage({ tone: 'error', text: `Error: ${data.error}` })

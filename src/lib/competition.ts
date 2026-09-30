@@ -285,6 +285,48 @@ export function sharedRoundPickQuota(
   return null
 }
 
+// How many calendar days each round is played over, and the weekday
+// (0 = Sunday) a two-day round opens on. The bracket calendar is fixed:
+// First Four Tue/Wed, Round of 64 Thu/Fri, Round of 32 Sat/Sun, Sweet 16
+// Thu/Fri, Elite Eight Sat/Sun, then single-day Final Four and title game.
+const ROUND_PLAYING_DAYS: Record<TournamentRound, number> = {
+  'First Four': 2,
+  '1st Round': 2,
+  '2nd Round': 2,
+  'Sweet 16': 2,
+  'Elite 8': 2,
+  'Final Four': 1,
+  'National Championship': 1,
+}
+
+const ROUND_OPENING_WEEKDAY: Partial<Record<TournamentRound, number>> = {
+  'First Four': 2,
+  '1st Round': 4,
+  '2nd Round': 6,
+  'Sweet 16': 4,
+  'Elite 8': 6,
+}
+
+// Whether a pick period is the last playing day of its round — the point at
+// which a shared round quota has to be complete.
+//
+// The stored games alone can't answer this: the second day of a round is
+// often not synced yet when the first day locks (ESPN lists its matchups as
+// TBD until the previous round finishes), so "no later day in the database"
+// does not mean "no later day". A later stored day of the same round settles
+// it; otherwise the bracket calendar does.
+export function isFinalDayOfRound(
+  period: Pick<PickPeriod, 'date' | 'round'>,
+  periods: Pick<PickPeriod, 'date' | 'round'>[]
+): boolean {
+  const round = period.round
+  if (!round) return true
+  if (periods.some((other) => other.round === round && other.date > period.date)) return false
+  if (ROUND_PLAYING_DAYS[round] < 2) return true
+  const weekday = new Date(`${period.date.slice(0, 10)}T12:00:00Z`).getUTCDay()
+  return weekday !== ROUND_OPENING_WEEKDAY[round]
+}
+
 // ------------------------------------------------------------- pick periods
 
 // A pick period is the set of games a player may choose from for one required

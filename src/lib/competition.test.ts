@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   buildPickPeriods,
   capabilitiesFor,
+  isFinalDayOfRound,
   normalizeRound,
   roundDisplay,
   roundOrder,
@@ -224,4 +225,41 @@ test('a finished tournament rolls the countdown to the next one', () => {
   assert.equal(countdown.year, 2028)
   assert.equal(countdown.dateLabel, 'March 16, 2028')
   assert.ok(countdown.days > 0)
+})
+
+// 2027 bracket: Elite Eight Sat Mar 27 / Sun Mar 28, Final Four Sat Apr 3.
+test('the first day of a two-day round is not its last, even before day two is synced', () => {
+  const saturday = { date: '2027-03-27', round: 'Elite 8' as const }
+  assert.equal(isFinalDayOfRound(saturday, [saturday]), false)
+})
+
+test('the second day of a two-day round is its last', () => {
+  const saturday = { date: '2027-03-27', round: 'Elite 8' as const }
+  const sunday = { date: '2027-03-28', round: 'Elite 8' as const }
+  assert.equal(isFinalDayOfRound(sunday, [saturday, sunday]), true)
+  assert.equal(isFinalDayOfRound(saturday, [saturday, sunday]), false)
+})
+
+test('a stored later day of the same round wins over the calendar', () => {
+  const friday = { date: '2027-03-19', round: '1st Round' as const }
+  const saturday = { date: '2027-03-20', round: '1st Round' as const }
+  assert.equal(isFinalDayOfRound(friday, [friday, saturday]), false)
+})
+
+test('single-day rounds and non-tournament days are always final', () => {
+  const finalFour = { date: '2027-04-03', round: 'Final Four' as const }
+  assert.equal(isFinalDayOfRound(finalFour, [finalFour]), true)
+  assert.equal(isFinalDayOfRound({ date: '2027-01-09', round: null }, []), true)
+})
+
+test('opening days follow the bracket calendar for every two-day round', () => {
+  // First Four Tue, Round of 64 Thu, Round of 32 Sat, Sweet 16 Thu.
+  for (const [date, round] of [
+    ['2027-03-16', 'First Four'],
+    ['2027-03-18', '1st Round'],
+    ['2027-03-20', '2nd Round'],
+    ['2027-03-25', 'Sweet 16'],
+  ] as const) {
+    assert.equal(isFinalDayOfRound({ date, round }, [{ date, round }]), false, round)
+  }
 })

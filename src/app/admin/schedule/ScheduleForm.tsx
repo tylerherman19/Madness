@@ -221,7 +221,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
         <div>
           <h2 className="text-base font-bold text-green-400 tracking-wide">Auto-Sync from ESPN</h2>
           <p className="text-xs text-slate-400 mt-1">
-            Pulls one day at a time across the ACC, Big Ten, Big 12, SEC, Pac-12 and the NCAA
+            Pulls one day at a time across the ACC, Big East, Big Ten, Big 12, SEC, Pac-12 and the NCAA
             tournament. Seeds, regions, round labels, venue and TV come with it.
           </p>
         </div>

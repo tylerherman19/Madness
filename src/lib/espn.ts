@@ -18,6 +18,7 @@ const RANKINGS_URL =
 // is why the team universe is discovered from game results instead.
 export const CONFERENCES: Record<string, number> = {
   ACC: 2,
+  'Big East': 4,
   'Big Ten': 7,
   'Big 12': 8,
   SEC: 23,
@@ -142,7 +143,7 @@ export interface ScoreboardFetch {
   failedGroups: string[]
 }
 
-// Fetch one day across all five conferences plus the tournament, unioned and
+// Fetch one day across every tracked conference plus the tournament, unioned and
 // deduped by event id. Dedupe is load-bearing: a non-conference matchup (say
 // Big Ten vs SEC) is returned by both of those calls, and the tournament
 // group overlaps every conference once March arrives.

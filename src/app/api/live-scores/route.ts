@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { isDeliverable } from '@/lib/email'
 import { fetchDayScoreboard, eventCompetitors, seedOf } from '@/lib/espn'
 import { isSlateLocked } from '@/lib/deadline'
+import { autoAssignIfDue } from '@/lib/autoAssign'
 import type { Game } from '@/types'
 
 export interface LiveGame {
@@ -39,6 +40,9 @@ export interface LiveScoresResponse {
   // schedule table (the sandbox, or a slate ESPN can't serve yet).
   source: 'espn' | 'schedule' | 'none'
 }
+
+// Room for the auto-assign run this route may kick off after responding.
+export const maxDuration = 60
 
 const EMPTY: LiveScoresResponse = {
   slateNumber: null, games: [], picksVisible: false, hasLiveGames: false, season: null, source: 'none',
@@ -120,6 +124,11 @@ export async function GET() {
             .catch(() => null),
       getEffectiveNow(),
     ])
+
+    // Every open page polls this ticker, so it is the heartbeat that fills in
+    // missed picks within a minute or two of first tip. Runs after the
+    // response is sent; a no-op until the slate locks and once it's done.
+    after(() => autoAssignIfDue(supabase, now))
 
     const dbGames = (dbGamesRes.data ?? []) as Game[]
     const teamRows = Object.fromEntries((teamsRes.data ?? []).map((team) => [team.abbr, team]))

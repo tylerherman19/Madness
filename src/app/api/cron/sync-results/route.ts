@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { requireCronOrAdmin } from '@/lib/api'
+import { requireAdmin, requireCron } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { gradeSlatePicks } from '@/lib/grading'
 import type { Game } from '@/types'
@@ -14,9 +14,20 @@ import type { Game } from '@/types'
 export const maxDuration = 300
 
 export async function GET(req: NextRequest) {
-  const unauthorized = await requireCronOrAdmin(req)
+  const unauthorized = requireCron(req)
   if (unauthorized) return unauthorized
+  return run()
+}
 
+// Admin-triggered run (the admin UI). POST rather than GET so a cross-site
+// link can't fire it with the admin's cookie — see requireCron.
+export async function POST() {
+  const unauthorized = await requireAdmin()
+  if (unauthorized) return unauthorized
+  return run()
+}
+
+async function run() {
   try {
     const supabase = await getDb()
     const { data: slate } = await supabase

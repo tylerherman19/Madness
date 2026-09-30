@@ -4,6 +4,7 @@ import { getDb } from '@/lib/testMode'
 import PlayersManager from './PlayersManager'
 import type { Player } from '@/types'
 import { getTeamAbbrs } from '@/lib/teams'
+import { loadAll } from '@/lib/seasonData'
 
 export default async function PlayersPage() {
   const isAdmin = await getAdminSession()
@@ -28,7 +29,7 @@ export default async function PlayersPage() {
 
   const teams = await getTeamAbbrs(supabase)
 
-  const { data: allPicks } = await supabase.from('picks').select('player_id')
+  const allPicks = await loadAll<{ player_id: string }>(supabase, 'picks', 'player_id')
   const weeksSurvived: Record<string, number> = {}
   for (const p of allPicks || []) {
     weeksSurvived[p.player_id] = (weeksSurvived[p.player_id] || 0) + 1

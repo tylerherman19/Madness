@@ -75,8 +75,34 @@ npm run dev
 
 ## Database
 
-`supabase/migrations/` — apply `001` through `017` in order against a blank project.
+`supabase/migrations/` — apply `001` through `021` in order against a blank project.
 They create the `public` schema plus a mirrored `sandbox` schema used by Test Mode.
+
+- `020` turns row-level security back on for `slates`, `teams`, `games`, `picks`
+  and `pools` (014/017 had left it off, exposing them to the anon key). The app
+  uses the service role key, which bypasses RLS, so nothing else changes.
+- `021` adds per-slate sync/auto-assign bookkeeping and the
+  `claim_slate_auto_assign()` function. The app runs without it, but first-tip
+  auto-assign stays off until it is applied (the daily cron still runs).
+
+Large reads (a season's games and picks) are paged through `src/lib/db.ts`:
+PostgREST silently caps every response at 1,000 rows by default.
+
+## Scheduled jobs
+
+| Job | When |
+| --- | --- |
+| Auto-assign missed picks | Minutes after the active day's first tip — triggered by the live ticker, sweat board and pick page (`src/lib/autoAssign.ts`). The 08:00 UTC cron is a backstop for a day nobody visits. |
+| Sync results + grade | 09:00 UTC |
+| Advance to the next game day | 6:00 AM Central (two UTC entries cover DST) |
+| Reminders | 15:00 UTC (no-op while email is off) |
+
+Cron routes accept `GET` with the `CRON_SECRET` bearer token only. The admin
+buttons call the same routes with `POST` and the admin session, so a link
+can't trigger a job through the admin's cookie.
+
+ESPN is polled for the ACC, Big East, Big Ten, Big 12, SEC, Pac-12 and the NCAA
+tournament.
 
 ## Scripts
 

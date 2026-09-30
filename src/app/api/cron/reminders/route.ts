@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
-import { requireCronOrAdmin } from '@/lib/api'
+import { requireAdmin, requireCron } from '@/lib/api'
 import { formatCentralTime, slateDeadline } from '@/lib/deadline'
 import { sendReminderEmail, sleep, SEND_DELAY_MS } from '@/lib/email'
 import type { Game } from '@/types'
@@ -17,9 +17,20 @@ export const maxDuration = 300
 const REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000
 
 export async function GET(req: NextRequest) {
-  const unauthorized = await requireCronOrAdmin(req)
+  const unauthorized = requireCron(req)
   if (unauthorized) return unauthorized
+  return run()
+}
 
+// Admin-triggered run (the admin UI). POST rather than GET so a cross-site
+// link can't fire it with the admin's cookie — see requireCron.
+export async function POST() {
+  const unauthorized = await requireAdmin()
+  if (unauthorized) return unauthorized
+  return run()
+}
+
+async function run() {
   try {
     const supabase = await getDb()
     const { data: slate } = await supabase

@@ -12,7 +12,7 @@ import {
   isTimeTbd,
   CONFERENCES,
 } from './espn'
-import { getOrCreateSlate, renumberSlates } from './slates'
+import { getOrCreateSlate, refreshLockTime, renumberSlates } from './slates'
 
 export interface SyncResult {
   ok: boolean
@@ -35,12 +35,17 @@ export interface SyncResult {
 //
 // Only activates a slate if nothing else is active — syncing tomorrow must
 // not switch the active slate out from under today.
+//
+// `revalidateSeconds` lets callers on a hot path (the pick page) share one
+// cached ESPN response across every request instead of each hitting ESPN.
+// Crons and admin syncs leave it at 0 so they always read the live feed.
 export async function syncSlateFromEspn(
   supabase: SupabaseClient,
   yyyymmdd: string,
-  seasonYear: number
+  seasonYear: number,
+  { revalidateSeconds = 0 }: { revalidateSeconds?: number } = {}
 ): Promise<SyncResult> {
-  const { events, failedGroups } = await fetchDayScoreboard(yyyymmdd, 0)
+  const { events, failedGroups } = await fetchDayScoreboard(yyyymmdd, revalidateSeconds)
 
   if (failedGroups.length === Object.keys(CONFERENCES).length + 1) {
     return { ok: false, error: 'ESPN unavailable — every conference request failed' }
@@ -83,7 +88,6 @@ export async function syncSlateFromEspn(
     if (slateDate === requestedDate) primarySlateId = slateId
 
     const rows = []
-    let earliestTip: string | null = null
 
     for (const event of dayEvents) {
       const teams = eventCompetitors(event)
@@ -111,10 +115,6 @@ export async function syncSlateFromEspn(
       const state = comp.status?.type?.state
       const homeScore = teams.home.score != null ? Number(teams.home.score) : null
       const awayScore = teams.away.score != null ? Number(teams.away.score) : null
-
-      // A placeholder time must never set the lock — one TBD game would
-      // otherwise lock the whole slate at 11pm the previous night.
-      if (!tbd && (!earliestTip || event.date < earliestTip)) earliestTip = event.date
 
       rows.push({
         slate_id: slateId,
@@ -150,25 +150,18 @@ export async function syncSlateFromEspn(
       totalGames += rows.length
     }
 
-    await supabase.from('slates').update({ locks_at: earliestTip }).eq('id', slateId)
-
-    // Drop games ESPN no longer lists for this slate — but only when every
-    // conference answered. After a partial fetch, a missing game means "we
-    // didn't ask successfully", not "it was cancelled", and deleting it would
-    // silently void the picks that reference it.
-    if (failedGroups.length === 0) {
-      const { data: stored } = await supabase
-        .from('games')
-        .select('id, espn_event_id')
-        .eq('slate_id', slateId)
-      const live = new Set(rows.map((r) => r.espn_event_id))
-      const staleIds = (stored ?? [])
-        .filter((g) => !live.has(g.espn_event_id))
-        .map((g) => g.id)
-      if (staleIds.length > 0) {
-        await supabase.from('games').delete().in('id', staleIds)
-      }
+    // Only the requested day is authoritative. A bucket for any other date
+    // holds just the stray games this query happened to return (a late tip
+    // that spills past midnight), not that day's full schedule — pruning it
+    // would delete every other game on that day.
+    if (slateDate === requestedDate && failedGroups.length === 0) {
+      await pruneMissingGames(supabase, slateId, new Set(rows.map((r) => r.espn_event_id)))
     }
+
+    // Recompute the lock from everything stored on the slate — manual games
+    // included, placeholder tips excluded — rather than from this query's
+    // rows, which for a spill-over bucket are a single late game.
+    await refreshLockTime(supabase, slateId)
   }
 
   await renumberSlates(supabase, seasonYear)
@@ -181,6 +174,13 @@ export async function syncSlateFromEspn(
     await supabase.from('slates').update({ is_active: true }).eq('id', primarySlateId)
   }
 
+  if (primarySlateId) {
+    // Freshness marker read by the pick window so page views reuse a recent
+    // sync instead of re-syncing. Best effort: the column arrives with
+    // migration 021 and the sync must still succeed without it.
+    await supabase.from('slates').update({ synced_at: new Date().toISOString() }).eq('id', primarySlateId)
+  }
+
   return {
     ok: true,
     slateId: primarySlateId,
@@ -188,4 +188,42 @@ export async function syncSlateFromEspn(
     teamsSeen: teamRows.size,
     partial: failedGroups.length > 0 ? failedGroups : undefined,
   }
+}
+
+// Drop games ESPN no longer lists for a day it fully answered for. Two kinds
+// of row are never touched:
+//
+//   * Rows ESPN never supplied (`manual:` from the admin schedule form,
+//     `sandbox:` from Test Mode). ESPN not listing them is expected, not a
+//     cancellation.
+//   * Games someone has picked. Deleting one would leave that pick with no
+//     game to grade against; an admin should resolve it instead.
+async function pruneMissingGames(
+  supabase: SupabaseClient,
+  slateId: string,
+  listed: Set<string>
+): Promise<void> {
+  const [{ data: stored }, { data: picks }] = await Promise.all([
+    supabase.from('games').select('id, espn_event_id, home_team, away_team').eq('slate_id', slateId),
+    supabase.from('picks').select('team').eq('slate_id', slateId),
+  ])
+  const pickedTeams = new Set((picks ?? []).map((pick: { team: string }) => pick.team))
+
+  const staleIds: string[] = []
+  for (const game of stored ?? []) {
+    if (listed.has(game.espn_event_id)) continue
+    if (!isEspnSourced(game.espn_event_id)) continue
+    if (pickedTeams.has(game.home_team) || pickedTeams.has(game.away_team)) {
+      console.warn(`ESPN no longer lists ${game.away_team}@${game.home_team} (${game.espn_event_id}), but it has picks — keeping it`)
+      continue
+    }
+    staleIds.push(game.id)
+  }
+  if (staleIds.length > 0) {
+    await supabase.from('games').delete().in('id', staleIds)
+  }
+}
+
+export function isEspnSourced(espnEventId: string): boolean {
+  return !espnEventId.startsWith('manual:') && !espnEventId.startsWith('sandbox:')
 }

@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
+import { autoAssignIfDue } from '@/lib/autoAssign'
 import { getSession } from '@/lib/session'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
@@ -20,6 +22,9 @@ import { fetchDayScoreboard } from '@/lib/espn'
 import Link from 'next/link'
 import { getTeamBrandDirectory, type TeamBrandDirectory } from '@/lib/teamBrand'
 import { Footer } from '../components/Sports'
+
+// Room for the auto-assign run this page may kick off after rendering.
+export const maxDuration = 60
 
 // Everything the pick page needs, loaded in one place. Kept separate from the
 // render so no JSX is constructed inside the try/catch — React renders
@@ -59,6 +64,8 @@ async function loadPickData(
     if (!player) return { kind: 'no-session' }
 
     const now = await getEffectiveNow()
+    // Fill in missed picks once first tip has passed — see lib/autoAssign.ts.
+    after(() => autoAssignIfDue(supabase, now))
     const [window, teamBrands] = await Promise.all([
       loadPickWindow(supabase, playerId, pool, now),
       getTeamBrandDirectory(),

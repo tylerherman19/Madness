@@ -79,7 +79,7 @@ export default function TestingPanel({
     setMessage(null)
     setError(null)
     try {
-      const res = await fetch(path)
+      const res = await fetch(path, { method: 'POST' })
       const data = await res.json()
       if (!res.ok) setError(data.error || `${label} failed`)
       else setMessage(`${label}: ${JSON.stringify(data.results ?? data.grading ?? data.message ?? data)}`)

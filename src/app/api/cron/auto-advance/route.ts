@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
-import { requireCronOrAdmin, isCronRequest } from '@/lib/api'
+import { requireAdmin, requireCron } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
@@ -20,10 +20,23 @@ const ADVANCE_HOUR_CENTRAL = 6
 // Advancing means finding the next calendar day that has games and making it
 // active, skipping dark days.
 export async function GET(req: NextRequest) {
-  const unauthorized = await requireCronOrAdmin(req)
+  const unauthorized = requireCron(req)
   if (unauthorized) return unauthorized
+  return run('system')
+}
 
-  if (isCronRequest(req)) {
+// Admin-triggered run (the admin UI). POST rather than GET so a cross-site
+// link can't fire it with the admin's cookie — see requireCron.
+export async function POST() {
+  const unauthorized = await requireAdmin()
+  if (unauthorized) return unauthorized
+  return run('admin')
+}
+
+async function run(actor: 'system' | 'admin') {
+  // Only the scheduled run is held to the 6 AM window; an admin advancing by
+  // hand is a deliberate override.
+  if (actor === 'system') {
     const centralHour = Number(new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Chicago',
       hour: '2-digit',
@@ -83,7 +96,7 @@ export async function GET(req: NextRequest) {
     const label = nextDate
     await logAudit(supabase, {
       event_type: 'slate-advanced',
-      actor: isCronRequest(req) ? 'system' : 'admin',
+      actor,
       message: `Pool advanced from ${slate.slate_date} to ${label} (${result.gamesSynced} games synced)`,
       details: { from_date: slate.slate_date, to_date: nextDate, games_synced: result.gamesSynced },
     })

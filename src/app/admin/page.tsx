@@ -6,6 +6,7 @@ import { getPoolConfig } from '@/lib/pool'
 import { MODE_LABEL, STATUS_LABEL } from '@/lib/competition'
 import { formatCentralTime } from '@/lib/deadline'
 import { seedTotalsByPlayer } from '@/lib/standings'
+import { loadAll } from '@/lib/seasonData'
 import Link from 'next/link'
 import AdvanceWeekButton from './AdvanceWeekButton'
 import SetActiveWeek from './SetActiveWeek'
@@ -28,7 +29,7 @@ export default async function AdminDashboard() {
     supabase.from('slates').select('*').eq('is_active', true).single(),
     supabase.from('players').select('id, full_name, email, status, paid'),
     supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active').order('slate_date'),
-    supabase.from('picks').select('player_id, seed'),
+    loadAll<{ player_id: string; seed: number | null }>(supabase, 'picks', 'player_id, seed').then((data) => ({ data })),
     getSignupCutoff(),
     getEffectiveNow(),
     getPoolConfig(supabase),
@@ -72,12 +73,12 @@ export default async function AdminDashboard() {
   let pickCount = 0
   let pickDistribution: { team: string; count: number; pct: number }[] = []
   let notPickedYet: string[] = []
-  let games: { id: string; home_team: string; away_team: string; result: string; game_day: string }[] = []
+  let games: { id: string; home_team: string; away_team: string; result: string }[] = []
 
   if (slate) {
     const [{ data: picks }, { data: gamesData }] = await Promise.all([
       supabase.from('picks').select('player_id, team').eq('slate_id', slate.id),
-      supabase.from('games').select('id, home_team, away_team, result, game_day').eq('slate_id', slate.id).order('tip_time'),
+      supabase.from('games').select('id, home_team, away_team, result').eq('slate_id', slate.id).order('tip_time'),
     ])
     games = gamesData || []
     const picksData = picks || []

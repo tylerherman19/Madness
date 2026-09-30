@@ -6,9 +6,24 @@ import { buildPickPeriods, sharedRoundPickQuota } from './competition'
 import { didPickWin, isSlateLocked } from './deadline'
 import { fetchDayScoreboard, resultOf } from './espn'
 import { syncSlateFromEspn } from './espnSync'
+import { loadGamesForSlates } from './seasonData'
 import { isTestMode } from './testMode'
 
 type PlayerPick = Pick<StoredPick, 'id' | 'team' | 'slate_id' | 'auto_assigned'>
+
+// This runs on every pick-page view and pick submission, so everything it
+// asks ESPN goes through Next's shared fetch cache: one scoreboard read per
+// date per window for the whole site, not one per player per refresh.
+const RESULT_REFRESH_SECONDS = 30
+const NEXT_DAY_REVALIDATE_SECONDS = 300
+// A next day synced this recently is read straight from the database.
+const NEXT_DAY_FRESH_MS = 10 * 60 * 1000
+
+function recentlySynced(slate: Slate | undefined): boolean {
+  const syncedAt = (slate as (Slate & { synced_at?: string | null }) | undefined)?.synced_at
+  if (!syncedAt) return false
+  return Date.now() - new Date(syncedAt).getTime() < NEXT_DAY_FRESH_MS
+}
 
 // The active day remains active for scoring and grading. Once a player's
 // previous selection is final and won, only that player can see the next day.
@@ -35,7 +50,7 @@ export async function loadPickWindow(
   ])
   let seasonSlates = (slates ?? []) as Slate[]
   const playerPicks = (picks ?? []) as PlayerPick[]
-  let games = await loadSeasonGames(db, seasonSlates)
+  let games = await loadGamesForSlates(db, seasonSlates.map((slate) => slate.id))
   const activeGames = games.filter((game) => game.slate_id === activeSlate.id)
 
   if (!allowEarly || !isSlateLocked(activeSlate, activeGames, now)) {
@@ -67,7 +82,7 @@ export async function loadPickWindow(
       const slate = seasonSlates.find((row) => row.id === slateId)
       if (!slate) continue
       try {
-        const { events } = await fetchDayScoreboard(slate.slate_date.replace(/-/g, ''), 0)
+        const { events } = await fetchDayScoreboard(slate.slate_date.replace(/-/g, ''), RESULT_REFRESH_SECONDS)
         const byEvent = new Map(events.map((event) => [event.id, resultOf(event)]))
         games = games.map((game) => game.slate_id === slateId && byEvent.has(game.espn_event_id)
           ? { ...game, result: byEvent.get(game.espn_event_id)! }
@@ -90,10 +105,12 @@ export async function loadPickWindow(
     let next = seasonSlates.find((slate) => slate.slate_date === date)
     const nextId = next?.id
     let nextGames = nextId ? games.filter((game) => game.slate_id === nextId) : []
-    if (!sandbox) {
+    if (!sandbox && !(nextGames.length > 0 && recentlySynced(next))) {
       let synced: Awaited<ReturnType<typeof syncSlateFromEspn>>
       try {
-        synced = await syncSlateFromEspn(db, date.replace(/-/g, ''), activeSlate.season_year)
+        synced = await syncSlateFromEspn(db, date.replace(/-/g, ''), activeSlate.season_year, {
+          revalidateSeconds: NEXT_DAY_REVALIDATE_SECONDS,
+        })
       } catch (error) {
         console.error('Could not load the next game day', error)
         break
@@ -125,10 +142,4 @@ export async function loadPickWindow(
   }
 
   return { activeSlate, pickSlate: activeSlate, seasonSlates, games, picks: playerPicks }
-}
-
-async function loadSeasonGames(db: SupabaseClient, slates: Slate[]): Promise<Game[]> {
-  if (slates.length === 0) return []
-  const { data } = await db.from('games').select('*').in('slate_id', slates.map((slate) => slate.id))
-  return (data ?? []) as Game[]
 }
