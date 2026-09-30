@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
+import { loadAll } from '@/lib/seasonData'
 
 function csvField(value: unknown): string {
   let s = value === null || value === undefined ? '' : String(value)
@@ -49,12 +50,14 @@ export async function GET(req: NextRequest) {
     }
 
     // type === 'picks'
-    const [{ data: picks, error: picksErr }, { data: players }, { data: slates }] = await Promise.all([
-      supabase.from('picks').select('player_id, slate_id, team, auto_assigned, submitted_by_admin, created_at'),
+    // Paged read; a failure throws into the catch below.
+    const [{ data: picks }, { data: players }, { data: slates }] = await Promise.all([
+      loadAll<{ player_id: string; slate_id: string; team: string; auto_assigned: boolean; submitted_by_admin: boolean; created_at: string }>(
+        supabase, 'picks', 'player_id, slate_id, team, auto_assigned, submitted_by_admin, created_at'
+      ).then((data) => ({ data })),
       supabase.from('players').select('id, full_name'),
       supabase.from('slates').select('id, slate_number, season_year'),
     ])
-    if (picksErr) return NextResponse.json({ error: picksErr.message }, { status: 500 })
 
     const nameById = new Map((players || []).map((p) => [p.id, p.full_name]))
     const weekById = new Map((slates || []).map((w) => [w.id, w]))

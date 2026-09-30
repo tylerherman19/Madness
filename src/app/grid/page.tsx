@@ -3,6 +3,7 @@ import { slateDeadline, isPickRevealed } from '@/lib/deadline'
 import { getPoolConfig } from '@/lib/pool'
 import { buildPickPeriods, capabilitiesFor, type PickPeriod } from '@/lib/competition'
 import type { Game } from '@/types'
+import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from '@/lib/seasonData'
 import SiteHeader from '@/app/components/SiteHeader'
 import { Footer } from '@/app/components/Sports'
 
@@ -21,18 +22,27 @@ export default async function GridPage() {
   let pool = await getPoolConfig()
   try {
     const supabase = await getDb()
-    const [weeksRes, playersRes, picksRes, gamesRes] = await Promise.all([
-      supabase.from('slates').select('id, slate_number, slate_date, season_year, locks_at').order('slate_number'),
+    const [allSlates, playersRes] = await Promise.all([
+      loadAll<typeof slates[number] & { is_active: boolean }>(
+        supabase, 'slates', 'id, slate_number, slate_date, season_year, locks_at, is_active'
+      ),
       supabase.from('players').select('id, full_name, status, elimination_slate').not('email', 'like', '%@nflsurvivor.internal').order('full_name'),
-      supabase.from('picks').select('player_id, slate_id, team'),
+    ])
+    // One season's grid — the one being played — paged past the row cap.
+    const seasonYear = seasonYearOf(allSlates)
+    slates = allSlates
+      .filter((w) => w.season_year === seasonYear)
+      .sort((a, b) => a.slate_number - b.slate_number)
+    const seasonIds = slates.map((w) => w.id)
+    players = playersRes.data ?? []
+    ;[allPicks, allGames] = await Promise.all([
+      loadPicksForSlates<typeof allPicks[number]>(supabase, seasonIds, 'player_id, slate_id, team'),
       // tip_time is what every deadline/reveal calculation below keys
       // off — leaving it out of this select silently pins every pick as hidden.
-      supabase.from('games').select('slate_id, home_team, away_team, result, tip_time, round_label'),
+      loadGamesForSlates<typeof allGames[number]>(
+        supabase, seasonIds, 'slate_id, home_team, away_team, result, tip_time, round_label'
+      ),
     ])
-    slates = weeksRes.data ?? []
-    players = playersRes.data ?? []
-    allPicks = picksRes.data ?? []
-    allGames = gamesRes.data ?? []
     pool = await getPoolConfig(supabase)
   } catch {
     // fall through to empty state

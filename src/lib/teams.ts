@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { selectAll } from './db'
 
 // College basketball has ~360 D1 programs and the set that matters changes
 // with conference realignment, so there is no hard-coded roster to import the
@@ -20,17 +21,21 @@ export function teamLabel(abbr: string, names?: TeamNameMap): string {
 // All known teams, abbr -> display name. Server-side; pass the result down to
 // client components rather than having each one query.
 export async function getTeamNames(db: SupabaseClient): Promise<TeamNameMap> {
-  const { data } = await db.from('teams').select('abbr, display_name')
+  const data = await selectAll<{ abbr: string; display_name: string }>((from, to) =>
+    db.from('teams').select('abbr, display_name').order('abbr').range(from, to)
+  )
   const map: TeamNameMap = {}
-  for (const t of data ?? []) map[t.abbr] = t.display_name
+  for (const t of data) map[t.abbr] = t.display_name
   return map
 }
 
 // Abbreviations of every team seen so far, sorted. Used for admin pickers and
 // for "teams still available" views.
 export async function getTeamAbbrs(db: SupabaseClient): Promise<string[]> {
-  const { data } = await db.from('teams').select('abbr').order('abbr')
-  return (data ?? []).map((t) => t.abbr)
+  const data = await selectAll<{ abbr: string }>((from, to) =>
+    db.from('teams').select('abbr').order('abbr').range(from, to)
+  )
+  return data.map((t) => t.abbr)
 }
 
 // Teams playing on a given slate — the only legal picks for that slate.

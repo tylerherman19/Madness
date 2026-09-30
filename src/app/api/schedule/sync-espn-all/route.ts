@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
 
-// Each day is six ESPN calls (five conferences + the tournament) issued in
+// Each day is seven ESPN calls (six conferences + the tournament) issued in
 // parallel, then a handful of upserts. Thirty-odd days still fits, but the
 // cap below keeps a typo from kicking off a months-long crawl.
 export const maxDuration = 300

@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline, isPickRevealed } from '@/lib/deadline'
 import { isDeliverable } from '@/lib/email'
+import { autoAssignIfDue } from '@/lib/autoAssign'
 import { fetchDayScoreboard, eventCompetitors } from '@/lib/espn'
 import { getPoolConfig } from '@/lib/pool'
 import {
@@ -75,6 +76,9 @@ export interface SweatResponse {
     noPick: number // no pick, deadline passed
   }
 }
+
+// Room for the auto-assign run this route may kick off after responding.
+export const maxDuration = 60
 
 const EMPTY: SweatResponse = {
   slateNumber: null,
@@ -161,6 +165,8 @@ export async function GET() {
     }
 
     const now = await getEffectiveNow()
+    // Fill in missed picks once first tip has passed — see lib/autoAssign.ts.
+    after(() => autoAssignIfDue(supabase, now))
     const deadline = slateDeadline(slate, dbGames)
     const deadlinePassed = deadline ? deadline <= now : false
 

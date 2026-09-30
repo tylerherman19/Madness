@@ -4,6 +4,7 @@ import { getDb } from '@/lib/testMode'
 import { formatCentralTime } from '@/lib/deadline'
 import { getTeamAbbrs } from '@/lib/teams'
 import { getPoolConfig } from '@/lib/pool'
+import { loadAll } from '@/lib/seasonData'
 import { buildPickPeriods, type PickPeriod } from '@/lib/competition'
 
 interface WeekRow {
@@ -33,8 +34,10 @@ export default async function AdminHistoryPage() {
 
   const [{ data: slates }, { data: games }, { data: picks }, { data: players }] = await Promise.all([
     supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active').order('slate_number'),
-    supabase.from('games').select('id, slate_id, home_team, away_team, result, tip_time, round_label').order('tip_time'),
-    supabase.from('picks').select('slate_id, team, auto_assigned'),
+    loadAll<GameRow>(supabase, 'games', 'id, slate_id, home_team, away_team, result, tip_time, round_label')
+      .then((data) => ({ data: data.sort((a, b) => a.tip_time.localeCompare(b.tip_time)) })),
+    loadAll<{ slate_id: string; team: string; auto_assigned: boolean }>(supabase, 'picks', 'slate_id, team, auto_assigned')
+      .then((data) => ({ data })),
     supabase.from('players').select('full_name, email, status, elimination_slate, elimination_reason'),
   ])
 

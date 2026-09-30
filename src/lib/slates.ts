@@ -40,6 +40,26 @@ export async function getOrCreateSlate(
     .select('id')
     .single()
 
+  if (error?.code === '23505') {
+    // Another request created the same day between our read and insert —
+    // (slate_date, season_year) is unique, so use the row that won. If the
+    // clash was on the one-active index instead, retry as an inactive day.
+    const { data: winner } = await db
+      .from('slates')
+      .select('id')
+      .eq('slate_date', slateDate)
+      .eq('season_year', seasonYear)
+      .maybeSingle()
+    if (winner) return { id: winner.id }
+    const { data: inactive, error: retryError } = await db
+      .from('slates')
+      .insert({ slate_number: 0, slate_date: slateDate, season_year: seasonYear, is_active: false })
+      .select('id')
+      .single()
+    if (inactive) return { id: inactive.id }
+    return { error: `Failed to create slate ${slateDate}: ${retryError?.message}` }
+  }
+
   if (error || !created) {
     return { error: `Failed to create slate ${slateDate}: ${error?.message}` }
   }
