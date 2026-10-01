@@ -74,7 +74,8 @@ async function loadPickData(
     if (!slate) return { kind: 'no-slate' }
     const pastPicks = window.picks
     const allSlates = window.seasonSlates
-    const allGames: Game[] = window.games
+    // Full rows for the days the window looked at, including this one.
+    const windowGames: Game[] = window.games
 
     // Teams burned on previous pick periods — this period's pick isn't "used"
     // while it can still be changed. The date a team was spent travels with
@@ -90,7 +91,7 @@ async function loadPickData(
     }
     const usedTeams = Object.keys(usedOn)
 
-    const gamesData = allGames.filter((game) => game.slate_id === slate.id)
+    const gamesData = windowGames.filter((game) => game.slate_id === slate.id)
 
     // Every pick on the slate locks together, at the day's first tip.
     const lockTime = slateDeadline(slate, gamesData)
@@ -153,7 +154,7 @@ async function loadPickData(
         slate_date: String(s.slate_date),
         locks_at: s.locks_at,
       })),
-      allGames.map((g) => ({ slate_id: g.slate_id, round_label: g.round_label }))
+      window.periodGames
     )
     const period = periods.find((p) => p.id === slate.id) ?? null
     const sharedQuota = sharedRoundPickQuota(mode, pickFrequency, period?.round ?? null)

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { autoAssignHighestSeed, didPickWin, isSlateLocked } from './deadline.ts'
+import { autoAssignHighestSeed, didPickWin, isSlateLocked, isSlateSettled, publicSlateIds } from './deadline.ts'
 import type { Game } from '../types/index.ts'
 
 function game(
@@ -92,4 +92,34 @@ test('an early winner can pick until the next day first tips', () => {
   assert.equal(isSlateLocked(next, [tomorrow], new Date('2027-03-18T20:00:00.000Z')), false)
   assert.equal(isSlateLocked(next, [tomorrow], new Date('2027-03-19T15:59:59.000Z')), false)
   assert.equal(isSlateLocked(next, [tomorrow], new Date('2027-03-19T16:00:00.000Z')), true)
+})
+
+test('a day is settled once every game is decided or called off', () => {
+  const decided = { ...game('a', 'DUKE', null, 'UNC', null, null), status_state: 'post' as const, result: 'home_win' as const }
+  const pending = game('b', 'MSU', null, 'Purdue', null, null)
+  const postponed = { ...pending, id: 'c', status_state: 'post' as const }
+  assert.equal(isSlateSettled([decided]), true)
+  assert.equal(isSlateSettled([decided, pending]), false)
+  assert.equal(isSlateSettled([decided, { ...pending, status_state: 'in' }]), false)
+  // ESPN reports a postponed or canceled game over without a winner.
+  assert.equal(isSlateSettled([decided, postponed]), true)
+  // Nothing on the day yet means nothing has been settled.
+  assert.equal(isSlateSettled([]), false)
+})
+
+test('picks go public when their day locks, and stay private on later days', () => {
+  const now = new Date('2027-01-10T18:00:00.000Z')
+  const slates = [
+    { id: 'played', slate_date: '2027-01-09', locks_at: null }, // before the active day, no stored lock
+    { id: 'today-locked', slate_date: '2027-01-10', locks_at: '2027-01-10T17:00:00.000Z' },
+    { id: 'tomorrow', slate_date: '2027-01-11', locks_at: '2027-01-11T17:00:00.000Z' },
+  ]
+  assert.deepEqual([...publicSlateIds(slates, {}, '2027-01-10', now)].sort(), ['played', 'today-locked'])
+
+  // Before today's first tip only the earlier day is public.
+  const morning = new Date('2027-01-10T15:00:00.000Z')
+  assert.deepEqual([...publicSlateIds(slates, {}, '2027-01-10', morning)], ['played'])
+
+  // With nothing active, only locks decide.
+  assert.deepEqual([...publicSlateIds(slates, {}, null, now)], ['today-locked'])
 })

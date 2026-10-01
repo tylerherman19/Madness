@@ -34,6 +34,43 @@ export type TeamReuseRule = 'once-per-pool' | 'once-per-round' | 'unlimited'
 export type AutoPickBehavior = 'latest-game' | 'highest-seed' | 'eliminate' | 'none'
 export type Tiebreaker = 'seed-total' | 'most-survived' | 'none'
 
+// The rules the engine actually enforces. The pools table accepts more than
+// these (017's check constraints were written ahead of the engine), but
+// nothing ever read the others: offering them let an administrator believe
+// the pool's rules had changed when they hadn't. 'tournament-round' only
+// differs from 'every-game-day' inside the bracket.
+export const SUPPORTED_PICK_FREQUENCIES: PickFrequency[] = ['every-game-day', 'tournament-round']
+export const SUPPORTED_DEADLINE_RULES: PickDeadlineRule[] = ['first-tip']
+export const SUPPORTED_REUSE_RULES: TeamReuseRule[] = ['once-per-pool']
+export const AUTO_PICK_BEHAVIORS: AutoPickBehavior[] = ['latest-game', 'highest-seed', 'eliminate', 'none']
+export const TIEBREAKERS: Tiebreaker[] = ['seed-total', 'most-survived', 'none']
+
+type RuleFields = Pick<
+  PoolConfig,
+  'pick_frequency' | 'pick_deadline_rule' | 'team_reuse_rule' | 'auto_pick_behavior' | 'tiebreaker'
+>
+
+// Read a stored configuration back as the rules the engine will apply: an
+// unsupported or unknown value becomes the behaviour the engine really has.
+export function enforceSupportedRules<T extends RuleFields>(config: T): T {
+  return {
+    ...config,
+    pick_frequency: SUPPORTED_PICK_FREQUENCIES.includes(config.pick_frequency)
+      ? config.pick_frequency
+      : 'every-game-day',
+    pick_deadline_rule: SUPPORTED_DEADLINE_RULES.includes(config.pick_deadline_rule)
+      ? config.pick_deadline_rule
+      : 'first-tip',
+    team_reuse_rule: SUPPORTED_REUSE_RULES.includes(config.team_reuse_rule)
+      ? config.team_reuse_rule
+      : 'once-per-pool',
+    auto_pick_behavior: AUTO_PICK_BEHAVIORS.includes(config.auto_pick_behavior)
+      ? config.auto_pick_behavior
+      : 'latest-game',
+    tiebreaker: TIEBREAKERS.includes(config.tiebreaker) ? config.tiebreaker : 'seed-total',
+  }
+}
+
 export interface PoolConfig {
   id: string
   name: string

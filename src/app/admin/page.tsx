@@ -4,9 +4,10 @@ import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getSignupCutoff } from '@/lib/season'
 import { getPoolConfig } from '@/lib/pool'
 import { MODE_LABEL, STATUS_LABEL } from '@/lib/competition'
-import { formatCentralTime } from '@/lib/deadline'
+import { formatCentralTime, formatSlateDate } from '@/lib/deadline'
 import { seedTotalsByPlayer } from '@/lib/standings'
 import { loadAll } from '@/lib/seasonData'
+import { findOpenEarlierSlates } from '@/lib/settle'
 import Link from 'next/link'
 import AdvanceWeekButton from './AdvanceWeekButton'
 import SetActiveWeek from './SetActiveWeek'
@@ -25,6 +26,7 @@ export default async function AdminDashboard() {
     signupAnchor,
     now,
     pool,
+    openEarlier,
   ] = await Promise.all([
     supabase.from('slates').select('*').eq('is_active', true).single(),
     supabase.from('players').select('id, full_name, email, status, paid'),
@@ -33,6 +35,9 @@ export default async function AdminDashboard() {
     getSignupCutoff(),
     getEffectiveNow(),
     getPoolConfig(supabase),
+    // Earlier days a failed results run left ungraded — their losers are
+    // still marked alive. A failure here only hides the warning.
+    findOpenEarlierSlates(supabase).catch(() => ({ tracking: true, slates: [] })),
   ])
 
   // Surfaced so the signup gate is inspectable rather than inferred — this is
@@ -137,6 +142,19 @@ export default async function AdminDashboard() {
           Pool Configuration →
         </Link>
       </div>
+
+      {openEarlier.slates.length > 0 && (
+        <div className="rounded-xl border border-amber-500/40 bg-slate-800 p-4">
+          <p className="text-amber-400 font-medium">
+            {openEarlier.slates.length === 1 ? 'An earlier game day has' : `${openEarlier.slates.length} earlier game days have`} not been fully graded
+          </p>
+          <p className="text-slate-400 text-sm mt-1">
+            {openEarlier.slates.map((s) => formatSlateDate(String(s.slate_date))).join(', ')} — players who lost there are
+            still marked alive. Run <Link href="/admin/results" className="text-blue-400 underline">Sync results &amp; grade now</Link>{' '}
+            or wait for the overnight run.
+          </p>
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
         <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">Signups</p>

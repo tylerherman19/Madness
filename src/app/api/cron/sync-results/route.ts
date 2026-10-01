@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/testMode'
+import { getDb, isTestMode } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
-import { syncSlateFromEspn } from '@/lib/espnSync'
-import { gradeSlatePicks } from '@/lib/grading'
-import type { Game } from '@/types'
+import { settleOutstandingSlates, type SettleOutcome } from '@/lib/settle'
 
-// Vercel Cron — refreshes the active slate from ESPN and grades picks, no
-// admin needed. Re-syncing is how results arrive: syncSlateFromEspn writes
-// scores, status and result for every game on the day, so this route no
-// longer reimplements the ESPN-to-DB mapping.
+// Vercel Cron — refreshes results from ESPN and grades picks, no admin
+// needed. Re-syncing is how results arrive: syncSlateFromEspn writes scores,
+// status and result for every game on the day.
+//
+// It covers the active day and any earlier day that never finished grading
+// (a failed or timed-out run on a previous night) — see lib/settle.ts.
 
-// Grading awaits a paced elimination email per eliminated player.
+// Grading awaits an elimination email per eliminated player (paced when
+// email delivery is on), and a missed night adds a day or two of catch-up.
 export const maxDuration = 300
 
 export async function GET(req: NextRequest) {
@@ -27,46 +28,45 @@ export async function POST() {
   return run()
 }
 
+function summarize(outcome: SettleOutcome) {
+  return {
+    date: outcome.slate_date,
+    slate_number: outcome.slate_number,
+    eliminated: outcome.grading?.eliminated ?? [],
+    failed: outcome.grading?.failed.length ? outcome.grading.failed : undefined,
+    settled: outcome.settled,
+    sync_error: outcome.sync_error,
+    error: outcome.error,
+  }
+}
+
 async function run() {
   try {
     const supabase = await getDb()
-    const { data: slate } = await supabase
-      .from('slates')
-      .select('id, slate_number, slate_date, season_year')
-      .eq('is_active', true)
-      .single()
+    // Sandbox days hold made-up matchups; only the active one is pulled from
+    // ESPN (as before), earlier ones are graded from their stored results.
+    const report = await settleOutstandingSlates(supabase, { syncEarlierDays: !(await isTestMode()) })
+    if (!report.active) return NextResponse.json({ ok: true, message: 'No active slate' })
 
-    if (!slate) return NextResponse.json({ ok: true, message: 'No active slate' })
+    const activeId = report.active.id
+    const active = report.outcomes.find((outcome) => outcome.slate_id === activeId) ?? null
+    const caughtUp = report.outcomes.filter((outcome) => outcome.slate_id !== activeId)
+    const failure = active?.error ?? active?.sync_error ?? caughtUp.find((outcome) => outcome.error)?.error
 
-    const yyyymmdd = String(slate.slate_date).replace(/-/g, '')
-    const sync = await syncSlateFromEspn(supabase, yyyymmdd, slate.season_year)
-    if (!sync.ok) {
-      return NextResponse.json({ error: sync.error }, { status: 502 })
+    const body = {
+      ok: !failure,
+      error: failure,
+      message: active ? undefined : 'The active day is already fully graded',
+      games_synced: active?.games_synced,
+      partial: active?.partial,
+      grading: active?.grading ?? null,
+      catch_up: caughtUp.length > 0 ? caughtUp.map(summarize) : undefined,
+      deferred: report.deferred > 0 ? report.deferred : undefined,
+      tracking: report.tracking,
     }
-
-    const { data: dbGames } = await supabase
-      .from('games')
-      .select('*')
-      .eq('slate_id', slate.id)
-
-    const completedGames = ((dbGames ?? []) as Game[]).filter((g) => g.result !== 'pending')
-    if (completedGames.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        message: 'No completed games to grade',
-        games_synced: sync.gamesSynced,
-      })
-    }
-
-    // Idempotent — re-grading games finished on an earlier run is a no-op.
-    const grading = await gradeSlatePicks(supabase, slate.id, slate.slate_number, completedGames)
-
-    return NextResponse.json({
-      ok: true,
-      games_synced: sync.gamesSynced,
-      partial: sync.partial,
-      grading,
-    })
+    // A failed ESPN sync still grades from stored results, but the run is
+    // reported as failed so the cron log and the admin both see it.
+    return NextResponse.json(body, { status: failure ? 502 : 200 })
   } catch (err) {
     console.error('sync-results error', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })

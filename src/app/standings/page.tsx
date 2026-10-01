@@ -27,13 +27,17 @@ export default async function DashboardPage() {
   const { haveSignupsClosed } = await import('@/lib/season')
   const [data, signupsClosed] = await Promise.all([getDashboardData(), haveSignupsClosed()])
 
-  const aliveRows = data?.standings.filter((r) => r.status === 'alive') ?? []
-  const elimRows = data?.standings.filter((r) => r.status === 'eliminated') ?? []
-  const clientAliveRows = aliveRows.map((row) => ({
+  // Rows go to a client component, so unrevealed picks are stripped here —
+  // for eliminated rows too (an admin can eliminate someone who has already
+  // picked today), or they would sit in the page payload.
+  const hidePick = (row: NonNullable<typeof data>['standings'][number]) => ({
     ...row,
     current_pick: row.pick_revealed ? row.current_pick : null,
     current_picks: row.pick_revealed ? row.current_picks : [],
-  }))
+  })
+  const aliveRows = data?.standings.filter((r) => r.status === 'alive') ?? []
+  const elimRows = (data?.standings.filter((r) => r.status === 'eliminated') ?? []).map(hidePick)
+  const clientAliveRows = aliveRows.map(hidePick)
   const insights = data?.insights
 
   // One read of the pool's format, threaded through the whole page. If the
@@ -95,6 +99,7 @@ export default async function DashboardPage() {
               teamBrands={data.teamBrands}
               signupsClosed={signupsClosed}
               showSeedTotal={capabilitiesFor(mode).showSeedTotal}
+              tiebreaker={data.pool.tiebreaker}
             />
           </Section>
 

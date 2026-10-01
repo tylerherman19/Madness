@@ -2,14 +2,14 @@ import 'server-only'
 import type { StandingRow, TeamStat, Slate, Game } from '@/types'
 import { computeInsights } from '@/lib/insights'
 import { getPoolConfig } from '@/lib/pool'
-import { buildPickPeriods, capabilitiesFor, type CompetitionMode, type PickPeriod } from '@/lib/competition'
+import { buildPickPeriods, type CompetitionMode, type PickPeriod } from '@/lib/competition'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
-import { compareBySeedTotal, seedTotalsByPlayer } from '@/lib/standings'
+import { seedTotalsByPlayer, standingsComparator } from '@/lib/standings'
 import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from '@/lib/seasonData'
 
 export async function getDashboardData() {
   try {
-    const { slateDeadline, isPickRevealed } = await import('@/lib/deadline')
+    const { slateDeadline, isPickRevealed, publicSlateIds } = await import('@/lib/deadline')
 
     /* eslint-disable @typescript-eslint/no-explicit-any */
     let allWeeks: any[] | null = null
@@ -80,6 +80,26 @@ export async function getDashboardData() {
       (p: { slate_id: string; player_id: string }) => seasonWeekIds.has(p.slate_id) && realPlayerIds.has(p.player_id)
     )
 
+    const { getEffectiveNow } = await import('@/lib/testMode')
+    const now = await getEffectiveNow()
+
+    // Only picks on days that have locked are public. Every figure below that
+    // is built from picks — days survived, seed totals, the team ledger, the
+    // insights — reads this subset, so a pick nobody can see yet (today's
+    // before first tip, or an early pick on a later day) can't be worked out
+    // from a count or a seed total that moved.
+    const gamesBySlate: Record<string, Game[]> = {}
+    for (const g of (allGames || []) as Game[]) {
+      ;(gamesBySlate[g.slate_id] ??= []).push(g)
+    }
+    const publicIds = publicSlateIds(
+      seasonWeeks,
+      gamesBySlate,
+      slate ? String(slate.slate_date).slice(0, 10) : null,
+      now
+    )
+    const publicPicks = seasonPicks.filter((p: { slate_id: string }) => publicIds.has(p.slate_id))
+
     const currentPicks: Record<string, string[]> = {}
     // Subset of currentPicks that can be shown publicly — all of them, once
     // the slate locks at its first tip.
@@ -101,8 +121,6 @@ export async function getDashboardData() {
       // Filter games for current slate from allGames
       const gamesData = (allGames || []).filter((g: { slate_id: string }) => g.slate_id === slate.id)
       if (gamesData) {
-        const { getEffectiveNow } = await import('@/lib/testMode')
-        const now = await getEffectiveNow()
         const slateLockTime = slateDeadline(slate, gamesData)
         if (slateLockTime && slateLockTime > now) {
           nextDeadline = slateLockTime.toISOString()
@@ -170,13 +188,14 @@ export async function getDashboardData() {
       getTeamBrandDirectory(),
     ])
 
-    // Count slates survived per player from this season's picks (including current slate)
+    // Days survived per player, from this season's public picks (the current
+    // day's count once it locks)
     const weeksSurvivedByPlayer: Record<string, number> = {}
     // Sum of the seeds each player has taken — the tiebreak when more than
     // one survivor is left. Regular-season picks carry no seed, so this stays
     // at zero until the bracket is set.
-    const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks)
-    for (const pick of seasonPicks) {
+    const seedTotalByPlayer = seedTotalsByPlayer(publicPicks)
+    for (const pick of publicPicks) {
       weeksSurvivedByPlayer[pick.player_id] = (weeksSurvivedByPlayer[pick.player_id] || 0) + 1
     }
 
@@ -196,15 +215,15 @@ export async function getDashboardData() {
       })
     )
 
+    // Survivors first, ranked by the pool's tiebreaker.
+    const rank = standingsComparator(pool.tiebreaker)
     standings.sort((a, b) => {
       if (a.status !== b.status) return a.status === 'alive' ? -1 : 1
-      return capabilitiesFor(mode).showSeedTotal
-        ? compareBySeedTotal(a, b)
-        : b.slates_survived - a.slates_survived || a.full_name.localeCompare(b.full_name)
+      return rank(a, b)
     })
 
-    // Filter picks to exclude current slate for team stats
-    const allPicksWithTeam = seasonPicks.filter((p: { slate_id: string }) => !slate || p.slate_id !== slate.id)
+    // Team stats cover finished days: public picks, minus the day in play
+    const allPicksWithTeam = publicPicks.filter((p: { slate_id: string }) => !slate || p.slate_id !== slate.id)
 
     const teamMap: Record<string, { times_picked: number; wins: number; eliminations: number }> = {}
     if (allPicksWithTeam) {
@@ -235,11 +254,10 @@ export async function getDashboardData() {
     const picksPending = alive.length - picksMade
 
     // Everything the editorial modules need is already in hand — the insight
-    // layer is a pure function over it, and only ever sees revealed picks for
-    // the current slate.
+    // layer is a pure function over it, and only ever sees public picks.
     const insights = computeInsights({
       players,
-      picks: seasonPicks,
+      picks: publicPicks,
       currentSlate: slate,
       revealedCurrentPicks: revealedPicks,
       potSize,

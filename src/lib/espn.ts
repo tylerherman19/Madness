@@ -255,23 +255,14 @@ export function toEspnDate(date: Date): string {
   return parts.replace(/-/g, '')
 }
 
-// The ISO date (YYYY-MM-DD) of a timestamp in Central time. ESPN's `dates`
+// The ISO date (YYYY-MM-DD) of a timestamp in Eastern time. ESPN's `dates`
 // parameter is not a strict calendar filter — asking for 20260326 also
-// returns games that tip after midnight ET on the 27th — so a game's slate is
-// decided by its own tip time, not by which query returned it.
-export function centralDateOf(utcIso: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Chicago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(utcIso))
-}
-
-// The ISO date (YYYY-MM-DD) of a timestamp in Eastern time. Used only for
-// games with a placeholder tip: the placeholder is midnight Eastern on the
-// day the game is actually meant to be played, so its Eastern date is the
-// right slate even though its Central date is the day before.
+// returns games that tip after midnight ET on the 27th — so a game's day is
+// decided by its own tip (lib/gameDay.ts), not by which query returned it.
+// This is used only for games with a placeholder tip: the placeholder is
+// midnight Eastern on the day the game is actually meant to be played, so its
+// Eastern date is the right slate even though its Central date is the day
+// before.
 export function easternDateOf(utcIso: string): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',

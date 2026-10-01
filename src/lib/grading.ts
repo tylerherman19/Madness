@@ -1,13 +1,19 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game } from '@/types'
-import { sendEliminationEmail, sleep, SEND_DELAY_MS } from './email'
+import { emailDeliveryEnabled, sendEliminationEmail, sleep, SEND_DELAY_MS } from './email'
 import { logAudit } from './audit'
+import { selectAll } from './db'
 
 export interface GradeResult {
   eliminated: string[]
   advanced: string[]
+  // Players whose elimination could not be written. They stay alive, so the
+  // next run retries them, and the day is not marked settled until it does.
+  failed: string[]
 }
+
+type GradedPick = { id: string; player_id: string; team: string; players: unknown }
 
 // Teams that have already lost or tied in a decided (non-pending) game —
 // picking one of these means elimination once grading runs. Shared by
@@ -58,16 +64,23 @@ export async function gradeSlatePicks(
   }
   const losers = computeLosers(completedGames)
 
-  const { data: picks } = await db
-    .from('picks')
-    .select('id, player_id, team, players(id, full_name, email, status)')
-    .eq('slate_id', slateId)
+  // Paged, and a failed read throws: an empty result here would look exactly
+  // like a day with nothing left to grade, and the caller would settle it.
+  const picks = await selectAll<GradedPick>((from, to) =>
+    db
+      .from('picks')
+      .select('id, player_id, team, players(id, full_name, email, status)')
+      .eq('slate_id', slateId)
+      .order('id')
+      .range(from, to)
+  )
 
   const eliminated: string[] = []
+  const failed: string[] = []
   const advanced = new Set<string>()
   const eliminatedPlayerIds = new Set<string>()
 
-  for (const pick of picks ?? []) {
+  for (const pick of picks) {
     const player = pick.players as unknown as {
       id: string
       full_name: string
@@ -94,6 +107,7 @@ export async function gradeSlatePicks(
         // Leave player.status as 'alive' — next run (grading is idempotent)
         // will retry the elimination instead of a false "eliminated" report.
         console.error(`Failed to eliminate player ${player.id}:`, eliminateError)
+        failed.push(player.full_name)
         continue
       }
 
@@ -110,14 +124,16 @@ export async function gradeSlatePicks(
       })
       // Awaited: fire-and-forget sends can be dropped when the serverless
       // function is frozen after responding; paced for Resend's rate limit.
+      // With delivery switched off nothing is sent, so there is nothing to
+      // pace — the delay would only eat into the function's time limit.
       if (player.email) {
         await sendEliminationEmail(player.email, player.full_name, pick.team, slateNumber)
-        await sleep(SEND_DELAY_MS)
+        if (emailDeliveryEnabled()) await sleep(SEND_DELAY_MS)
       }
     } else if (winners.has(pick.team)) {
       advanced.add(player.full_name)
     }
   }
 
-  return { eliminated, advanced: [...advanced] }
+  return { eliminated, advanced: [...advanced], failed }
 }

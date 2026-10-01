@@ -1,5 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { chunk } from './db'
 
 // Slate bookkeeping shared by the ESPN sync and the manual schedule form.
 // Both create days on demand and both have to leave the season's numbering
@@ -107,4 +108,50 @@ export async function refreshLockTime(db: SupabaseClient, slateId: string): Prom
     .from('slates')
     .update({ locks_at: data?.[0]?.tip_time ?? null })
     .eq('id', slateId)
+}
+
+// Which day each game is stored under right now (espn_event_id -> slate_id).
+// Best effort: it only feeds refreshLocksAfterMoves, and a sync shouldn't
+// fail because this lookup did.
+export async function storedSlatesOf(db: SupabaseClient, eventIds: string[]): Promise<Map<string, string>> {
+  const stored = new Map<string, string>()
+  for (const batch of chunk([...new Set(eventIds)])) {
+    const { data, error } = await db.from('games').select('espn_event_id, slate_id').in('espn_event_id', batch)
+    if (error) {
+      console.error('Could not look up stored game days:', error.message)
+      continue
+    }
+    for (const row of data ?? []) stored.set(row.espn_event_id, row.slate_id)
+  }
+  return stored
+}
+
+// After games have moved to another day, recompute the cached lock on each
+// day they left — it may still point at a tip that is no longer there.
+// A pick stays filed under the day it was made on, so a pick on a game that
+// moved can no longer be graded automatically: flag it for the administrator.
+export async function refreshLocksAfterMoves(
+  db: SupabaseClient,
+  moves: { eventId: string; fromSlateId: string }[]
+): Promise<void> {
+  if (moves.length === 0) return
+  const fromSlateIds = [...new Set(moves.map((move) => move.fromSlateId))]
+  for (const slateId of fromSlateIds) await refreshLockTime(db, slateId)
+
+  const [{ data: games }, { data: picks }] = await Promise.all([
+    db.from('games').select('espn_event_id, home_team, away_team').in('espn_event_id', moves.map((move) => move.eventId)),
+    db.from('picks').select('slate_id, team').in('slate_id', fromSlateIds),
+  ])
+  for (const move of moves) {
+    const game = (games ?? []).find((row) => row.espn_event_id === move.eventId)
+    if (!game) continue
+    const stranded = (picks ?? []).filter(
+      (pick) => pick.slate_id === move.fromSlateId && (pick.team === game.home_team || pick.team === game.away_team)
+    )
+    if (stranded.length > 0) {
+      console.warn(
+        `${game.away_team}@${game.home_team} (${move.eventId}) moved to another game day, but ${stranded.length} pick(s) on it are still filed under slate ${move.fromSlateId} — grade them by hand`
+      )
+    }
+  }
 }

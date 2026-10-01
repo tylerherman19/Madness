@@ -73,8 +73,8 @@ export async function POST(req: NextRequest) {
 
     const seasonSlates = window.seasonSlates
     const playerPicks = window.picks
-    const allGames: Game[] = window.games
-    const gamesData = allGames.filter((game) => game.slate_id === slate_id)
+    // The window holds full rows for the day it offers (and the active day).
+    const gamesData: Game[] = window.games.filter((game) => game.slate_id === slate_id)
     const teamGame = gamesData.find((g) => g.home_team === team || g.away_team === team)
 
     if (!teamGame) {
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const periods = buildPickPeriods(pool.competition_mode, seasonSlates ?? [], allGames)
+    const periods = buildPickPeriods(pool.competition_mode, seasonSlates ?? [], window.periodGames)
     const activePeriod = periods.find((period) => period.id === slate_id)
     const sharedQuota = sharedRoundPickQuota(
       pool.competition_mode,
