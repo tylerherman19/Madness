@@ -5,18 +5,17 @@ import { requireAdmin, isUuid } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { getPoolConfig, updatePoolConfig, type PoolConfigPatch } from '@/lib/pool'
 import {
+  AUTO_PICK_BEHAVIORS,
   COMPETITION_MODES,
   POOL_STATUSES,
   MODE_LABEL,
+  SUPPORTED_DEADLINE_RULES,
+  SUPPORTED_PICK_FREQUENCIES,
+  SUPPORTED_REUSE_RULES,
+  TIEBREAKERS,
   type CompetitionMode,
   type PoolStatus,
 } from '@/lib/competition'
-
-const PICK_FREQUENCIES = ['every-game-day', 'weekends-only', 'tournament-round']
-const DEADLINE_RULES = ['first-tip', 'per-game']
-const REUSE_RULES = ['once-per-pool', 'once-per-round', 'unlimited']
-const AUTO_PICK = ['latest-game', 'highest-seed', 'eliminate', 'none']
-const TIEBREAKERS = ['seed-total', 'most-survived', 'none']
 
 // Read one enum field off the request body, rejecting anything not in the
 // allowed set rather than trusting the client's string into a checked column.
@@ -69,30 +68,23 @@ export async function POST(req: NextRequest) {
       patch.season_year = year
     }
 
-    if (body.starts_on !== undefined) {
-      const raw = body.starts_on
-      if (raw === null || raw === '') {
-        patch.starts_on = null
-      } else if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-        patch.starts_on = raw
-      } else {
-        return NextResponse.json({ error: 'Start date must be YYYY-MM-DD' }, { status: 400 })
-      }
-    }
-
+    // Only rules the engine enforces are accepted. The table allows more
+    // (see SUPPORTED_* in lib/competition.ts), but storing one the engine
+    // ignores would only make the pool describe rules it doesn't run.
+    // starts_on is no longer offered: nothing reads it.
     const enums: [keyof PoolConfigPatch, string, readonly string[]][] = [
       ['competition_mode', 'competition_mode', COMPETITION_MODES],
       ['status', 'status', POOL_STATUSES],
-      ['pick_frequency', 'pick_frequency', PICK_FREQUENCIES],
-      ['pick_deadline_rule', 'pick_deadline_rule', DEADLINE_RULES],
-      ['team_reuse_rule', 'team_reuse_rule', REUSE_RULES],
-      ['auto_pick_behavior', 'auto_pick_behavior', AUTO_PICK],
+      ['pick_frequency', 'pick_frequency', SUPPORTED_PICK_FREQUENCIES],
+      ['pick_deadline_rule', 'pick_deadline_rule', SUPPORTED_DEADLINE_RULES],
+      ['team_reuse_rule', 'team_reuse_rule', SUPPORTED_REUSE_RULES],
+      ['auto_pick_behavior', 'auto_pick_behavior', AUTO_PICK_BEHAVIORS],
       ['tiebreaker', 'tiebreaker', TIEBREAKERS],
     ]
     for (const [field, key, allowed] of enums) {
       const value = pickEnum(body, key, allowed)
       if (value === null) {
-        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400 })
+        return NextResponse.json({ error: `Invalid or unsupported ${key}` }, { status: 400 })
       }
       if (value !== undefined) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

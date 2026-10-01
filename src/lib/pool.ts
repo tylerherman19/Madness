@@ -4,6 +4,7 @@ import { getDb } from './testMode'
 import {
   COMPETITION_MODES,
   POOL_STATUSES,
+  enforceSupportedRules,
   type CompetitionMode,
   type PoolConfig,
   type PoolStatus,
@@ -37,15 +38,17 @@ export const DEFAULT_POOL_CONFIG: PoolConfig = {
 
 // Coerce a database row into a PoolConfig, refusing values the enums don't
 // cover rather than letting an unexpected string reach the capability lookup.
+// Rules the engine doesn't enforce read back as the ones it does, so every
+// page describes the pool that is actually being run.
 function normalize(row: Record<string, unknown>): PoolConfig {
   const mode = row.competition_mode as CompetitionMode
   const status = row.status as PoolStatus
-  return {
+  return enforceSupportedRules({
     ...DEFAULT_POOL_CONFIG,
     ...row,
     competition_mode: COMPETITION_MODES.includes(mode) ? mode : 'regular-season',
     status: POOL_STATUSES.includes(status) ? status : 'live',
-  } as PoolConfig
+  } as PoolConfig)
 }
 
 // The active pool, or the regular-season default when none is configured.

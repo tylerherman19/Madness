@@ -23,6 +23,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
   const [gradingResult, setGradingResult] = useState<null | {
     eliminated: string[]
     advanced: string[]
+    failed?: string[]
   }>(null)
 
   async function saveResult(gameId: string, result: GameResult) {
@@ -60,7 +61,8 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slate_id: slate.id }),
       })
-      const data = await res.json()
+      // A platform timeout answers with an HTML page, not JSON.
+      const data = await res.json().catch(() => ({ error: `Grading failed (HTTP ${res.status})` }))
       if (res.ok && data.grading) {
         setGradingResult(data.grading)
         setMessage({
@@ -152,6 +154,12 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
             <div>
               <p className="text-red-400 text-sm font-medium">Eliminated ({gradingResult.eliminated.length}):</p>
               <p className="text-slate-300 text-sm">{gradingResult.eliminated.join(', ')}</p>
+            </div>
+          )}
+          {gradingResult.failed && gradingResult.failed.length > 0 && (
+            <div>
+              <p className="text-amber-400 text-sm font-medium">Could not eliminate ({gradingResult.failed.length}) — retried on the next run:</p>
+              <p className="text-slate-300 text-sm">{gradingResult.failed.join(', ')}</p>
             </div>
           )}
           {gradingResult.advanced.length > 0 && (

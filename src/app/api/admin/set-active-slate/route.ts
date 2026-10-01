@@ -24,7 +24,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Slate not found' }, { status: 404 })
     }
 
-    await supabase.from('slates').update({ is_active: false }).gt('slate_number', 0)
+    // Clear whichever day is active rather than filtering on slate_number: a
+    // day still carrying its provisional number 0 would otherwise stay active
+    // and the one-active index would reject the switch below.
+    await supabase.from('slates').update({ is_active: false }).eq('is_active', true)
     const { error } = await supabase.from('slates').update({ is_active: true }).eq('id', slate_id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

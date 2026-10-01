@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- ESPN supplies tiny 20px scoreboard marks; the optimizer adds no value here. */
 
 import { useEffect, useRef, useState } from 'react'
-import type { LiveScoresResponse } from '@/app/api/live-scores/route'
+import { useLiveScores } from './useLiveScores'
 import s from './sports.module.css'
 
 // The ticker is one continuous velocity, never a stop-and-restart. Left alone it
@@ -26,7 +26,8 @@ type Drag = {
 }
 
 export default function LiveTicker({ label }: { slateNumber?: number | null; season?: number | null; label?: string | null }) {
-  const [data, setData] = useState<LiveScoresResponse | null>(null)
+  // Shared with any other live-score view on the page — see useLiveScores.
+  const data = useLiveScores()
   const [paused, setPaused] = useState(false)
   const [reduceMotion, setReduceMotion] = useState(false)
   const [copyCount, setCopyCount] = useState(MIN_COPIES)
@@ -42,24 +43,6 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
   const drag = useRef<Drag>({ active: false, pointerId: -1, lastX: 0, lastAt: 0 })
 
   const hasLive = data?.hasLiveGames ?? false
-
-  useEffect(() => {
-    let dead = false
-    const load = async () => {
-      try {
-        const response = await fetch('/api/live-scores', { cache: 'no-store' })
-        if (response.ok && !dead) setData(await response.json())
-      } catch {
-        // Keep the last successful scoreboard on a transient network failure.
-      }
-    }
-    load()
-    const id = setInterval(load, hasLive ? 30_000 : 300_000)
-    return () => {
-      dead = true
-      clearInterval(id)
-    }
-  }, [hasLive])
 
   useEffect(() => {
     const query = window.matchMedia('(prefers-reduced-motion: reduce)')

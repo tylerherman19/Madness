@@ -22,9 +22,15 @@ function suppressedClient(): Resend {
   } as unknown as Resend
 }
 
+// Whether sends actually leave the app. Loops that pace themselves for
+// Resend's rate limit use this to skip the delay when nothing is sent.
+export function emailDeliveryEnabled(): boolean {
+  return process.env.EMAILS_ENABLED === 'true'
+}
+
 export function getResend(): Resend {
   // Not cached: flipping EMAILS_ENABLED takes effect without a cold start.
-  if (process.env.EMAILS_ENABLED !== 'true') return suppressedClient()
+  if (!emailDeliveryEnabled()) return suppressedClient()
   if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY)
   return _resend
 }

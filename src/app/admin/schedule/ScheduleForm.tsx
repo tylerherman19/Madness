@@ -401,7 +401,8 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
           <h2 className="text-lg font-semibold text-white">Add Games by Hand</h2>
           <p className="text-xs text-slate-400 mt-1">
             Only needed for a game ESPN doesn&rsquo;t list. Each game files itself under its own
-            date — you don&rsquo;t pick a slate.
+            date — you don&rsquo;t pick a slate. A game day runs 6 AM to 6 AM Central, so a tip
+            after midnight counts toward the evening before.
           </p>
         </div>
 

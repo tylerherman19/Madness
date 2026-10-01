@@ -33,7 +33,7 @@ export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slate_id: selected }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
       if (res.ok) {
         setMessage({ tone: 'ok', text: `${slate.slate_date} is now active` })
         setSelected('')

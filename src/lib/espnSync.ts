@@ -7,12 +7,12 @@ import {
   broadcastOf,
   resultOf,
   seedOf,
-  centralDateOf,
   easternDateOf,
   isTimeTbd,
   CONFERENCES,
 } from './espn'
-import { getOrCreateSlate, refreshLockTime, renumberSlates } from './slates'
+import { gameDayOf } from './gameDay'
+import { getOrCreateSlate, refreshLocksAfterMoves, refreshLockTime, renumberSlates, storedSlatesOf } from './slates'
 
 export interface SyncResult {
   ok: boolean
@@ -28,10 +28,11 @@ export interface SyncResult {
 // Sync one day's games from ESPN into `supabase` (the caller passes getDb()'s
 // result so this routes to prod or the test sandbox correctly).
 //
-// `yyyymmdd` is the ESPN query date. Games are filed under the slate matching
-// their own Central tip date, which is not always the queried one: ESPN's
-// `dates` parameter returns late games that tip after midnight ET the
-// following day, and those belong to the day they are actually played.
+// `yyyymmdd` is the ESPN query date. Games are filed under the game day of
+// their own tip (lib/gameDay.ts: 6 AM to 6 AM Central), which is not always
+// the queried one — a tip after midnight still belongs to the evening it is
+// played in, and a game ESPN lists under a neighbouring date goes to its own
+// day.
 //
 // Only activates a slate if nothing else is active — syncing tomorrow must
 // not switch the active slate out from under today.
@@ -55,13 +56,13 @@ export async function syncSlateFromEspn(
     return { ok: false, error: `No games found for ${date} in the tracked conferences.` }
   }
 
-  // Bucket events by the day they are actually played on. Normally that is
-  // the Central date of the tip. For a game whose time ESPN hasn't announced
-  // yet, the "tip" is a midnight-Eastern placeholder — 11pm Central the day
-  // before — so its Eastern date is the real playing date.
+  // Bucket events by the game day they are actually played on: the tip's
+  // game day, which runs 6 AM to 6 AM Central. For a game whose time ESPN
+  // hasn't announced yet, the "tip" is a midnight-Eastern placeholder — 11pm
+  // Central the day before — so its Eastern date is the real playing date.
   const byDate = new Map<string, typeof events>()
   for (const event of events) {
-    const date = isTimeTbd(event) ? easternDateOf(event.date) : centralDateOf(event.date)
+    const date = isTimeTbd(event) ? easternDateOf(event.date) : gameDayOf(event.date)
     const bucket = byDate.get(date)
     if (bucket) bucket.push(event)
     else byDate.set(date, [event])
@@ -72,6 +73,13 @@ export async function syncSlateFromEspn(
     .select('id')
     .eq('is_active', true)
     .maybeSingle()
+
+  // Which day each of these games is stored under now, so a game that moves
+  // to another day (a tip time changed across the 6 AM boundary, or a row
+  // filed under the old calendar-date rule) doesn't leave its old day locked
+  // at a tip that is no longer on it.
+  const previousSlate = await storedSlatesOf(supabase, events.map((event) => event.id))
+  const moves: { eventId: string; fromSlateId: string }[] = []
 
   const teamRows = new Map<string, Record<string, unknown>>()
   let totalGames = 0
@@ -115,6 +123,9 @@ export async function syncSlateFromEspn(
       const state = comp.status?.type?.state
       const homeScore = teams.home.score != null ? Number(teams.home.score) : null
       const awayScore = teams.away.score != null ? Number(teams.away.score) : null
+
+      const storedOn = previousSlate.get(event.id)
+      if (storedOn && storedOn !== slateId) moves.push({ eventId: event.id, fromSlateId: storedOn })
 
       rows.push({
         slate_id: slateId,
@@ -164,6 +175,7 @@ export async function syncSlateFromEspn(
     await refreshLockTime(supabase, slateId)
   }
 
+  await refreshLocksAfterMoves(supabase, moves)
   await renumberSlates(supabase, seasonYear)
 
   if (teamRows.size > 0) {

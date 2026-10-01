@@ -260,7 +260,7 @@ async function testBadInputRejection() {
     },
     {
       label: 'Grade week without cookie',
-      url: '/api/results/grade-week',
+      url: '/api/results/grade-slate',
       body: { week_id: '00000000-0000-0000-0000-000000000001' },
       expectStatus: 401,
     },
@@ -278,7 +278,7 @@ async function testBadInputRejection() {
     },
     {
       label: 'Set active week without cookie',
-      url: '/api/admin/set-active-week',
+      url: '/api/admin/set-active-slate',
       body: { week_id: '00000000-0000-0000-0000-000000000001' },
       expectStatus: 401,
     },

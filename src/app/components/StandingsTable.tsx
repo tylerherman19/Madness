@@ -3,10 +3,14 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import type { StandingRow } from '@/types'
+import type { Tiebreaker } from '@/lib/competition'
+import { standingsComparator } from '@/lib/standings'
 import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
 import TeamChip from './TeamChip'
 
-type SortMode = 'seeds' | 'alphabetical' | 'team'
+// 'standing' ranks survivors by the pool's tiebreaker; it is the default
+// unless the pool splits the pot, where there is no ranking to show.
+type SortMode = 'standing' | 'alphabetical' | 'team'
 
 function byName(a: StandingRow, b: StandingRow): number {
   return a.full_name.localeCompare(b.full_name, undefined, { sensitivity: 'base' })
@@ -20,6 +24,7 @@ export default function StandingsTable({
   teamBrands,
   signupsClosed,
   showSeedTotal,
+  tiebreaker,
 }: {
   aliveRows: StandingRow[]
   elimRows: StandingRow[]
@@ -28,14 +33,15 @@ export default function StandingsTable({
   teamBrands: TeamBrandDirectory
   signupsClosed: boolean
   showSeedTotal: boolean
+  tiebreaker: Tiebreaker
 }) {
-  const [sortMode, setSortMode] = useState<SortMode>(showSeedTotal ? 'seeds' : 'alphabetical')
+  const ranked = tiebreaker !== 'none'
+  const standingLabel = tiebreaker === 'seed-total' && showSeedTotal ? 'Seed total' : 'Days survived'
+  const [sortMode, setSortMode] = useState<SortMode>(ranked ? 'standing' : 'alphabetical')
 
   const sortedAliveRows = useMemo(() => {
     const rows = aliveRows.slice()
-    if (sortMode === 'seeds') {
-      return rows.sort((a, b) => b.seed_total - a.seed_total || byName(a, b))
-    }
+    if (sortMode === 'standing') return rows.sort(standingsComparator(tiebreaker))
     if (sortMode === 'alphabetical') return rows.sort(byName)
     return rows.sort((a, b) => {
       // The server strips unrevealed teams before this component receives the
@@ -53,7 +59,7 @@ export default function StandingsTable({
       }
       return byName(a, b)
     })
-  }, [aliveRows, sortMode, teamBrands])
+  }, [aliveRows, sortMode, teamBrands, tiebreaker])
 
   const sortedElimRows = useMemo(
     () => elimRows.slice().sort(showSeedTotal ? (a, b) => b.seed_total - a.seed_total || byName(a, b) : byName),
@@ -66,7 +72,7 @@ export default function StandingsTable({
       {!isEmpty && (
         <div className="mb-3 flex justify-end" aria-label="Sort standings">
           <div className="inline-flex rounded-full p-1" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}>
-            {([...(showSeedTotal ? ['seeds'] as const : []), 'alphabetical', 'team'] as SortMode[]).map((mode) => {
+            {([...(ranked ? ['standing'] as const : []), 'alphabetical', 'team'] as SortMode[]).map((mode) => {
               const active = sortMode === mode
               return (
                 <button
@@ -77,7 +83,7 @@ export default function StandingsTable({
                   className="rounded-full px-3 py-1.5 text-xs font-bold"
                   style={{ background: active ? 'var(--dark)' : 'transparent', color: active ? 'white' : 'var(--muted)' }}
                 >
-                  {mode === 'seeds' ? 'Seed total' : mode === 'alphabetical' ? 'Alphabetical' : 'Team'}
+                  {mode === 'standing' ? standingLabel : mode === 'alphabetical' ? 'Alphabetical' : 'Team'}
                 </button>
               )
             })}
