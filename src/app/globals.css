@@ -362,3 +362,10 @@ body { background:#f4f7fb; color:#0d1c34; font-family:var(--concept-text),Arial,
   .info-page { padding:28px 18px 36px; }
 }
 @media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
+
+/* Rules flow down each column so wrapped text cannot stretch another rule's gap. */
+.pool-rules { max-width:960px; margin:0; padding:20px; list-style:none; }
+.pool-rule { display:flex; align-items:flex-start; gap:12px; break-inside:avoid; margin:0 0 16px; color:var(--dark); font-size:14px; line-height:1.6; }
+.pool-rule:last-child { margin-bottom:0; }
+.pool-rule-number { display:flex; align-items:center; justify-content:center; flex:0 0 24px; height:24px; border-radius:50%; background:var(--red-tint); color:var(--red); font-size:12px; font-weight:700; }
+@media(min-width:900px) { .pool-rules { columns:2; column-gap:32px; padding:24px; } }

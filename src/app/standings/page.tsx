@@ -1,4 +1,5 @@
 import { pageMetadata } from '@/lib/site'
+import PoolRules from '../components/PoolRules'
 import Link from 'next/link'
 
 import { getPoolConfig } from '@/lib/pool'
@@ -165,11 +166,7 @@ export default async function DashboardPage() {
 
           {/* Rules */}
           <Section id="rules" title="How It Works">
-            <div className="card p-5 sm:p-6 grid sm:grid-cols-2 gap-x-10 gap-y-4">
-              {rules.map((text, i) => (
-                <Rule key={i} n={String(i + 1)} text={text} />
-              ))}
-            </div>
+            <PoolRules rules={rules} />
           </Section>
         </main>
       )}
@@ -187,16 +184,6 @@ function Section({ id, title, children, className }: { id?: string; title: strin
     </section>
   )
 }
-
-function Rule({ n, text }: { n: string; text: string }) {
-  return (
-    <div className="flex gap-3">
-      <span className="flex items-center justify-center shrink-0 rounded-full font-bold text-xs" style={{ background: 'var(--red-tint)', color: 'var(--red)', width: 22, height: 22 }}>{n}</span>
-      <span className="text-sm pt-0.5" style={{ color: 'var(--dark)' }}>{text}</span>
-    </div>
-  )
-}
-
 
 // House rules, phrased for the competition actually being played and for the
 // tiebreak the administrator configured. A regular-season pool never mentions
