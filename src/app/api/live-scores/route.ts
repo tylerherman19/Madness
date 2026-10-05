@@ -105,9 +105,8 @@ export async function GET() {
       return NextResponse.json(EMPTY, { headers: { 'Cache-Control': cacheHeader(60) } })
     }
 
-    const [dbGamesRes, teamsRes, events, now] = await Promise.all([
+    const [dbGamesRes, events, now] = await Promise.all([
       supabase.from('games').select('*').eq('slate_id', slate.id),
-      supabase.from('teams').select('abbr, logo'),
       // Sandbox matchups are fabricated, so there is nothing to look up on the
       // real scoreboard — skip the network call entirely and read the sandbox
       // schedule (with its admin-entered scores) below.
@@ -131,7 +130,6 @@ export async function GET() {
     after(() => autoAssignIfDue(supabase, now))
 
     const dbGames = (dbGamesRes.data ?? []) as Game[]
-    const teamRows = Object.fromEntries((teamsRes.data ?? []).map((team) => [team.abbr, team]))
 
     let games: LiveGame[] = []
     let source: LiveScoresResponse['source'] = 'none'
@@ -167,7 +165,11 @@ export async function GET() {
     } else if (dbGames.length > 0) {
       // No ESPN coverage (sandbox, or a slate it can't serve): show this pool's
       // own slate so the ticker still carries the schedule and any result the
-      // admin has entered, instead of disappearing entirely.
+      // admin has entered, instead of disappearing entirely. Logos come from
+      // the teams table — only this fallback needs it, and only these teams.
+      const abbrs = [...new Set(dbGames.flatMap((g) => [g.home_team, g.away_team]))]
+      const { data: teams } = await supabase.from('teams').select('abbr, logo').in('abbr', abbrs)
+      const teamRows = Object.fromEntries((teams ?? []).map((team) => [team.abbr, team]))
       games = dbGames.map((g) => gameFromSchedule(g, now, teamRows))
       source = 'schedule'
     }
@@ -195,25 +197,18 @@ export async function GET() {
     }
 
     if (revealedTeams.size > 0) {
-      // Fetch pick counts from DB, excluding test accounts
-      const { data: allPlayers } = await supabase
-        .from('players')
-        .select('id, email')
-
-      const realPlayerIds = new Set(
-        (allPlayers || [])
-          .filter((p: { email: string }) => p.email && isDeliverable(p.email))
-          .map((p: { id: string }) => p.id)
-      )
-
+      // Pick counts for the day, excluding test accounts. The player's email
+      // rides along on each pick, so this reads the day's picks and nothing
+      // else — not the whole players table on every poll.
       const { data: picks } = await supabase
         .from('picks')
-        .select('player_id, team')
+        .select('team, players(email)')
         .eq('slate_id', slate.id)
 
       const pickCounts: Record<string, number> = {}
       for (const pick of picks || []) {
-        if (realPlayerIds.has(pick.player_id)) {
+        const email = (pick.players as unknown as { email: string | null } | null)?.email
+        if (email && isDeliverable(email)) {
           pickCounts[pick.team] = (pickCounts[pick.team] || 0) + 1
         }
       }

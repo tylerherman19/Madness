@@ -75,7 +75,7 @@ npm run dev
 
 ## Database
 
-`supabase/migrations/` — apply `001` through `021` in order against a blank project.
+`supabase/migrations/` — apply `001` through `022` in order against a blank project.
 They create the `public` schema plus a mirrored `sandbox` schema used by Test Mode.
 
 - `020` turns row-level security back on for `slates`, `teams`, `games`, `picks`
@@ -84,6 +84,11 @@ They create the `public` schema plus a mirrored `sandbox` schema used by Test Mo
 - `021` adds per-slate sync/auto-assign bookkeeping and the
   `claim_slate_auto_assign()` function. The app runs without it, but first-tip
   auto-assign stays off until it is applied (the daily cron still runs).
+- `022` adds `slates.graded_at`, which marks a game day fully graded. With it,
+  the results job also catches up any earlier day a failed run left ungraded
+  (see Scheduled jobs). The app runs without it; the job then grades the active
+  day only, as before. Applying it marks every day before the active one as
+  already graded, so it never re-grades history.
 
 Large reads (a season's games and picks) are paged through `src/lib/db.ts`:
 PostgREST silently caps every response at 1,000 rows by default.
@@ -93,8 +98,8 @@ PostgREST silently caps every response at 1,000 rows by default.
 | Job | When |
 | --- | --- |
 | Auto-assign missed picks | Minutes after the active day's first tip — triggered by the live ticker, sweat board and pick page (`src/lib/autoAssign.ts`). The 08:00 UTC cron is a backstop for a day nobody visits. |
-| Sync results + grade | 09:00 UTC |
-| Advance to the next game day | 6:00 AM Central (two UTC entries cover DST) |
+| Sync results + grade | 09:00 UTC. Covers the active day and any earlier day of the season that isn't fully graded yet — so a night ESPN was down is caught on the next run (`src/lib/settle.ts`). A day is marked graded once all its games are decided; after that it is never re-graded automatically, so an admin's restore sticks. Admin → Results has a "Sync results & grade now" button for the same job. |
+| Advance to the next game day | 6:00 AM Central (two UTC entries cover DST). Grades the outgoing day first, as a second chance for the 09:00 UTC run. |
 | Reminders | 15:00 UTC (no-op while email is off) |
 
 Cron routes accept `GET` with the `CRON_SECRET` bearer token only. The admin
@@ -103,6 +108,11 @@ can't trigger a job through the admin's cookie.
 
 ESPN is polled for the ACC, Big East, Big Ten, Big 12, SEC, Pac-12 and the NCAA
 tournament.
+
+A game day runs from 6:00 AM to 5:59 AM Central (`src/lib/gameDay.ts`), matching
+the daily advance. A tip after midnight — a 10 PM Pacific start, a Hawaii game —
+belongs to the evening it is played in, so it can never become the next day's
+first tip and lock that whole day overnight.
 
 ## Scripts
 

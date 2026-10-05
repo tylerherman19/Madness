@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
-import { getOrCreateSlate, renumberSlates, refreshLockTime } from '@/lib/slates'
+import { getOrCreateSlate, renumberSlates, refreshLockTime, refreshLocksAfterMoves, storedSlatesOf } from '@/lib/slates'
+import { gameDayOf } from '@/lib/gameDay'
 import { fromZonedTime } from 'date-fns-tz'
 
 const CHICAGO_TZ = 'America/Chicago'
@@ -28,9 +29,11 @@ export async function POST(req: NextRequest) {
 
     const supabase = await getDb()
 
-    // Games are grouped by their own Central date — a slate is a day, so the
-    // form no longer asks which slate a game belongs to.
-    const byDate = new Map<string, ManualGame[]>()
+    // Games are grouped by the game day of their tip — a slate is a day, so
+    // the form doesn't ask which slate a game belongs to. A game day runs
+    // 6 AM to 6 AM Central (lib/gameDay.ts), so a game entered at 12:30 AM
+    // joins the evening before rather than locking the next day at 12:30 AM.
+    const byDate = new Map<string, { game: ManualGame; tip: string }[]>()
     for (const g of games as ManualGame[]) {
       if (!g.date || !g.time || !g.home_team || !g.away_team) {
         return NextResponse.json({ error: 'Every game needs a date, time, and both teams' }, { status: 400 })
@@ -38,12 +41,24 @@ export async function POST(req: NextRequest) {
       if (g.home_team === g.away_team) {
         return NextResponse.json({ error: 'A team cannot play itself' }, { status: 400 })
       }
-      const bucket = byDate.get(g.date)
-      if (bucket) bucket.push(g)
-      else byDate.set(g.date, [g])
+      // The form sends naive wall-clock strings meaning Central time;
+      // converting here avoids depending on the server's own time zone.
+      const time = /^\d{2}:\d{2}$/.test(g.time) ? `${g.time}:00` : g.time
+      const tip = fromZonedTime(`${g.date}T${time}`, CHICAGO_TZ)
+      if (isNaN(tip.getTime())) {
+        return NextResponse.json({ error: `Invalid date or time for ${g.away_team} @ ${g.home_team}` }, { status: 400 })
+      }
+      const day = gameDayOf(tip.toISOString())
+      const bucket = byDate.get(day)
+      if (bucket) bucket.push({ game: g, tip: tip.toISOString() })
+      else byDate.set(day, [{ game: g, tip: tip.toISOString() }])
     }
 
     const touched: string[] = []
+    const eventIdOf = (g: ManualGame) => `manual:${g.date}:${g.away_team}@${g.home_team}`
+    // Re-submitting a game with a new time can move it to another day.
+    const previousSlate = await storedSlatesOf(supabase, (games as ManualGame[]).map(eventIdOf))
+    const moves: { eventId: string; fromSlateId: string }[] = []
 
     for (const [date, dayGames] of byDate) {
       const slate = await getOrCreateSlate(supabase, date, season_year)
@@ -51,20 +66,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: slate.error }, { status: 500 })
       }
 
-      const rows = dayGames.map((g) => ({
-        slate_id: slate.id,
+      const rows = dayGames.map(({ game: g, tip }) => {
         // `espn_event_id` is NOT NULL and unique — it's what makes the
         // per-conference syncs idempotent. Manual rows get a synthetic id in
         // the same namespace so they dedupe on re-submit and stay visibly
         // distinct from anything ESPN supplied.
-        espn_event_id: `manual:${date}:${g.away_team}@${g.home_team}`,
-        home_team: g.home_team,
-        away_team: g.away_team,
-        // The form sends naive wall-clock strings meaning Central time;
-        // converting here avoids depending on the server's own time zone.
-        tip_time: fromZonedTime(`${g.date}T${g.time}:00`, CHICAGO_TZ).toISOString(),
-        status_state: 'pre' as const,
-      }))
+        const eventId = eventIdOf(g)
+        const storedOn = previousSlate.get(eventId)
+        if (storedOn && storedOn !== slate.id) moves.push({ eventId, fromSlateId: storedOn })
+        return {
+          slate_id: slate.id,
+          espn_event_id: eventId,
+          home_team: g.home_team,
+          away_team: g.away_team,
+          tip_time: tip,
+          status_state: 'pre' as const,
+        }
+      })
 
       // `result` is intentionally omitted: it takes the table default on
       // insert and is left untouched on conflict, so re-submitting the form
@@ -80,6 +98,7 @@ export async function POST(req: NextRequest) {
       touched.push(date)
     }
 
+    await refreshLocksAfterMoves(supabase, moves)
     await renumberSlates(supabase, season_year)
 
     return NextResponse.json({ ok: true, dates: touched, games_saved: games.length })

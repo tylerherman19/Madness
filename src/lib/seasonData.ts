@@ -17,6 +17,25 @@ export async function loadGamesForSlates<T = Game>(
   )
 }
 
+// The season's tournament games, reduced to the two columns pick periods are
+// built from (buildPickPeriods). Games outside the bracket carry no round, so
+// they are skipped at the source — a full season is thousands of rows, the
+// bracket a few dozen.
+export async function loadRoundLabels(
+  db: SupabaseClient,
+  slateIds: string[]
+): Promise<{ slate_id: string; round_label: string }[]> {
+  return selectAllIn(slateIds, (batch, from, to) =>
+    db
+      .from('games')
+      .select('slate_id, round_label')
+      .in('slate_id', batch)
+      .not('round_label', 'is', null)
+      .order('id')
+      .range(from, to)
+  )
+}
+
 export async function loadPicksForSlates<T>(
   db: SupabaseClient,
   slateIds: string[],

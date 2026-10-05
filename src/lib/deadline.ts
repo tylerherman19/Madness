@@ -58,6 +58,25 @@ export function isPickRevealed(slate: SlateLock, games: Game[], now: Date): bool
   return isSlateLocked(slate, games, now)
 }
 
+// The days whose picks are public. A day's picks go public when it locks, and
+// any day before the active one has already been played whatever its stored
+// lock says. Picks on a later day — the early picks a player can make once
+// their previous pick has won — stay private until that day locks, so
+// anything counted from public picks can't give them away.
+export function publicSlateIds(
+  slates: { id: string; slate_date: string; locks_at?: string | null }[],
+  gamesBySlate: Record<string, Game[]>,
+  activeDate: string | null,
+  now: Date
+): Set<string> {
+  const ids = new Set<string>()
+  for (const slate of slates) {
+    const played = activeDate !== null && String(slate.slate_date).slice(0, 10) < activeDate
+    if (played || isPickRevealed(slate, gamesBySlate[slate.id] ?? [], now)) ids.add(slate.id)
+  }
+  return ids
+}
+
 // The game a team plays on this slate, if any.
 export function gameForTeam(team: string, games: Game[]): Game | undefined {
   return games.find((g) => g.home_team === team || g.away_team === team)
@@ -71,6 +90,14 @@ export function didPickWin(pick: { slate_id: string; team: string }, games: Game
   )
   if (!game) return false
   return game.result === (game.home_team === pick.team ? 'home_win' : 'away_win')
+}
+
+// Whether grading a day is finished: it has games, and every one of them is
+// either decided or reported over without a result (ESPN marks a postponed or
+// canceled game `post` with no winner — picks on it are the administrator's
+// call, not the grader's). A day with no games has nothing to settle against.
+export function isSlateSettled(games: Pick<Game, 'result' | 'status_state'>[]): boolean {
+  return games.length > 0 && games.every((game) => game.result !== 'pending' || game.status_state === 'post')
 }
 
 // Tournament seed only. Outside the tournament ESPN's curatedRank is the AP

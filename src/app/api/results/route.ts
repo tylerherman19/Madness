@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
 import { gradeSlatePicks } from '@/lib/grading'
+import { recordSettlement, settleIfDecided } from '@/lib/settle'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
 
@@ -45,8 +46,12 @@ export async function POST(req: NextRequest) {
 
     // Marking a game final should grade it immediately, not wait for the
     // nightly cron — mirrors what the sandbox's "Mark Final" already does.
+    // Putting one back to pending reopens the day, so the results job looks
+    // at it again.
     let grading = null
-    if (result !== 'pending') {
+    if (result === 'pending') {
+      await recordSettlement(supabase, game.slate_id, false)
+    } else {
       const { data: slate } = await supabase
         .from('slates')
         .select('slate_number')
@@ -56,9 +61,11 @@ export async function POST(req: NextRequest) {
         .from('games')
         .select('*')
         .eq('slate_id', game.slate_id)
-      const completedGames = ((weekGames || []) as Game[]).filter((g) => g.result !== 'pending')
+      const slateGames = (weekGames || []) as Game[]
+      const completedGames = slateGames.filter((g) => g.result !== 'pending')
       if (slate) {
         grading = await gradeSlatePicks(supabase, game.slate_id, slate.slate_number, completedGames)
+        await settleIfDecided(supabase, game.slate_id, slateGames, grading)
       }
     }
 

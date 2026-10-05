@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
-import { getDb, getEffectiveNow } from '@/lib/testMode'
+import { getDb, getEffectiveNow, isTestMode } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
+import { settleOutstandingSlates, type SettleReport } from '@/lib/settle'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
+
+// Up to ten day-probes against ESPN, plus grading the outgoing day first.
+export const maxDuration = 300
 
 // How far ahead to look for the next day that actually has games. College
 // basketball has plenty of dark days mid-week, so advancing cannot just add
@@ -66,6 +70,18 @@ async function run(actor: 'system' | 'admin') {
       return NextResponse.json({ ok: true, message: `Slate ${slate.slate_number}'s games haven't all tipped off yet — nothing to advance` })
     }
 
+    // Grade before moving on. The 3 AM results run has normally done this
+    // already; this is its second chance — a late final, or a night ESPN was
+    // down — and the catch-up for any earlier day still open. Moving on
+    // without it would let the day's losers pick again tomorrow. A failure
+    // here doesn't block the advance: the next results run retries.
+    let graded: SettleReport | null = null
+    try {
+      graded = await settleOutstandingSlates(supabase, { syncEarlierDays: !(await isTestMode()) })
+    } catch (err) {
+      console.error('pre-advance grading failed', err)
+    }
+
     // Walk forward day by day until one has games. Each probe is a real sync,
     // so the day that wins is already populated when it goes active.
     const from = new Date(`${slate.slate_date}T12:00:00Z`)
@@ -106,6 +122,12 @@ async function run(actor: 'system' | 'admin') {
       ok: true,
       advanced_to: label,
       games_synced: result.gamesSynced,
+      graded: graded?.outcomes.map((outcome) => ({
+        date: outcome.slate_date,
+        eliminated: outcome.grading?.eliminated.length ?? 0,
+        settled: outcome.settled,
+        error: outcome.error ?? outcome.sync_error,
+      })),
     })
   } catch (err) {
     console.error('auto-advance error', err)

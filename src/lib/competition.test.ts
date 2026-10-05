@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   buildPickPeriods,
   capabilitiesFor,
+  enforceSupportedRules,
   isFinalDayOfRound,
   normalizeRound,
   roundDisplay,
@@ -262,4 +263,32 @@ test('opening days follow the bracket calendar for every two-day round', () => {
   ] as const) {
     assert.equal(isFinalDayOfRound({ date, round }, [{ date, round }]), false, round)
   }
+})
+
+test('stored rules the engine does not enforce read back as the ones it does', () => {
+  const stored = {
+    pick_frequency: 'weekends-only',
+    pick_deadline_rule: 'per-game',
+    team_reuse_rule: 'unlimited',
+    auto_pick_behavior: 'something-new',
+    tiebreaker: 'coin-flip',
+  } as unknown as Parameters<typeof enforceSupportedRules>[0]
+  assert.deepEqual(enforceSupportedRules(stored), {
+    pick_frequency: 'every-game-day',
+    pick_deadline_rule: 'first-tip',
+    team_reuse_rule: 'once-per-pool',
+    auto_pick_behavior: 'latest-game',
+    tiebreaker: 'seed-total',
+  })
+})
+
+test('supported rules pass through untouched', () => {
+  const rules = {
+    pick_frequency: 'tournament-round',
+    pick_deadline_rule: 'first-tip',
+    team_reuse_rule: 'once-per-pool',
+    auto_pick_behavior: 'highest-seed',
+    tiebreaker: 'most-survived',
+  } as const
+  assert.deepEqual(enforceSupportedRules({ ...rules }), rules)
 })

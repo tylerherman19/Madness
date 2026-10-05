@@ -6,6 +6,7 @@ import { isTestMode, setTestModeCookie, clearTestModeCookie } from '@/lib/testMo
 import { sandboxSupabase } from '@/lib/supabase'
 import { hashPassword } from '@/lib/password'
 import { gradeSlatePicks } from '@/lib/grading'
+import { settleIfDecided } from '@/lib/settle'
 import type { Game } from '@/types'
 
 const CHICAGO_TZ = 'America/Chicago'
@@ -139,10 +140,12 @@ export async function POST(req: NextRequest) {
       // this and any previously-finalized sandbox games together.
       const { data: slate } = await sandboxSupabase.from('slates').select('slate_number').eq('id', game.slate_id).single()
       const { data: weekGames } = await sandboxSupabase.from('games').select('*').eq('slate_id', game.slate_id)
-      const completedGames = ((weekGames || []) as Game[]).filter((g) => g.result !== 'pending')
+      const slateGames = (weekGames || []) as Game[]
+      const completedGames = slateGames.filter((g) => g.result !== 'pending')
       const grading = slate
         ? await gradeSlatePicks(sandboxSupabase, game.slate_id, slate.slate_number, completedGames)
         : null
+      if (grading) await settleIfDecided(sandboxSupabase, game.slate_id, slateGames, grading)
 
       return NextResponse.json({ ok: true, result, grading })
     }

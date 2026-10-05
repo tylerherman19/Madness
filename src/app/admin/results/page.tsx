@@ -2,7 +2,9 @@ import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import { countPendingEliminations } from '@/lib/grading'
+import { findOpenEarlierSlates } from '@/lib/settle'
 import ResultsForm from './ResultsForm'
+import CatchUpPanel from './CatchUpPanel'
 import type { Game, Slate } from '@/types'
 
 export const metadata = { title: 'Game Results', description: 'Madness pool administration: game results.' }
@@ -20,7 +22,17 @@ export default async function ResultsPage() {
 
   let games: Game[] = []
   let pendingEliminations = 0
+  let openDays: { date: string; number: number }[] = []
+  let tracking = true
   if (activeSlate) {
+    try {
+      const open = await findOpenEarlierSlates(supabase)
+      tracking = open.tracking
+      openDays = open.slates.map((slate) => ({ date: String(slate.slate_date), number: slate.slate_number }))
+    } catch (err) {
+      console.error('could not list open game days', err)
+    }
+
     const { data } = await supabase
       .from('games')
       .select('*')
@@ -45,7 +57,10 @@ export default async function ResultsPage() {
       {!activeSlate ? (
         <p className="text-slate-400">No active slate. Set up the schedule first.</p>
       ) : (
-        <ResultsForm slate={activeSlate as Slate} games={games} pendingEliminations={pendingEliminations} />
+        <>
+          <CatchUpPanel openDays={openDays} tracking={tracking} />
+          <ResultsForm slate={activeSlate as Slate} games={games} pendingEliminations={pendingEliminations} />
+        </>
       )}
     </div>
   )
