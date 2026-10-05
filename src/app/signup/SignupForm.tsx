@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import AuthShell from '@/app/components/AuthShell'
+import { signupValidationError } from '@/lib/signupValidation'
+import { supportEmail } from '@/lib/site'
 
 export default function SignupForm() {
   const [fullName, setFullName] = useState('')
@@ -11,6 +13,7 @@ export default function SignupForm() {
   const [venmo, setVenmo] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -22,12 +25,15 @@ export default function SignupForm() {
       setError('Passwords do not match')
       return
     }
+    const body = { full_name: fullName.trim(), email: email.trim(), phone: phone.trim(), venmo: venmo.trim(), password, terms_accepted: termsAccepted }
+    const validationError = signupValidationError(body)
+    if (validationError) { setError(validationError); return }
     setLoading(true)
     try {
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: fullName.trim(), email: email.trim(), phone: phone.trim() || undefined, venmo: venmo.trim() || undefined, password }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Signup failed'); return }
@@ -57,16 +63,19 @@ export default function SignupForm() {
           ) : (
             <>
               <div>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-4" aria-busy={loading} aria-describedby={error ? "signup-error" : undefined}>
                   {[
-                    { label: 'Full Name', type: 'text', val: fullName, set: setFullName, placeholder: 'e.g. John Smith', required: true, autoComplete: 'name' },
-                    { label: 'Email', type: 'email', val: email, set: setEmail, placeholder: 'you@example.com', required: true, autoComplete: 'email' },
-                    { label: 'Phone', type: 'tel', val: phone, set: setPhone, placeholder: '(608) 555-1234', required: true, autoComplete: 'tel' },
-                    { label: 'Venmo Handle', type: 'text', val: venmo, set: setVenmo, placeholder: '@yourhandle', required: true },
-                  ].map(({ label, type, val, set, placeholder, required, autoComplete }) => (
+                    { id: 'signup-name', maxLength: 80, label: 'Full Name', type: 'text', val: fullName, set: setFullName, placeholder: 'e.g. John Smith', required: true, autoComplete: 'name' },
+                    { id: 'signup-email', maxLength: 254, label: 'Email', type: 'email', val: email, set: setEmail, placeholder: 'you@example.com', required: true, autoComplete: 'email' },
+                    { id: 'signup-phone', maxLength: 20, label: 'Phone', type: 'tel', val: phone, set: setPhone, placeholder: '(608) 555-1234', required: true, autoComplete: 'tel' },
+                    { id: 'signup-venmo', maxLength: 50, label: 'Venmo Handle', type: 'text', val: venmo, set: setVenmo, placeholder: '@yourhandle', required: true },
+                  ].map(({ id, maxLength, label, type, val, set, placeholder, required, autoComplete }) => (
                     <div key={label}>
-                      <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>{label}</label>
+                      <label htmlFor={id} className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>{label}</label>
                       <input
+                        id={id}
+                        name={id}
+                        maxLength={maxLength}
                         type={type}
                         value={val}
                         onChange={(e) => set(e.target.value)}
@@ -80,15 +89,20 @@ export default function SignupForm() {
                   ))}
 
                   <div>
-                    <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Create password</label>
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--dark)' }} />
+                    <label htmlFor="signup-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Create password</label>
+                    <input id="signup-password" name="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--dark)' }} />
                   </div>
                   <div>
-                    <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Confirm password</label>
-                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--dark)' }} />
+                    <label htmlFor="signup-confirm-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Confirm password</label>
+                    <input id="signup-confirm-password" name="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--dark)' }} />
                   </div>
 
-                  {error && <p className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--red)', background: 'var(--red-tint)' }}>{error}</p>}
+                  <div className="flex gap-3 items-start text-sm leading-6">
+                    <input id="signup-terms" type="checkbox" required checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} className="mt-1 h-5 w-5 shrink-0" />
+                    <label htmlFor="signup-terms">I agree to the <Link className="underline" href="/terms">Terms of Use</Link> and acknowledge the <Link className="underline" href="/privacy">Privacy Policy</Link>, including the $25 entry fee and payment arrangements.</label>
+                  </div>
+                  <p className="text-sm leading-6">Questions before joining? <a className="underline" href={`mailto:${supportEmail}`}>{supportEmail}</a>.</p>
+                  {error && <p id="signup-error" role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--red)', background: 'var(--red-tint)' }}>{error}</p>}
 
                   <button
                     type="submit"

@@ -5,6 +5,8 @@ import ScheduleForm from './ScheduleForm'
 import type { Game, Slate } from '@/types'
 import { getTeamAbbrs } from '@/lib/teams'
 
+export const metadata = { title: 'Manage Schedule', description: 'Madness pool administration: manage schedule.' }
+
 export default async function SchedulePage() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')

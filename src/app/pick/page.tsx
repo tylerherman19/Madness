@@ -1,3 +1,4 @@
+import { pageMetadata } from '@/lib/site'
 import { redirect } from 'next/navigation'
 import { after } from 'next/server'
 import { autoAssignIfDue } from '@/lib/autoAssign'
@@ -188,6 +189,8 @@ async function loadPickData(
     return { kind: 'failed' }
   }
 }
+
+export const metadata = pageMetadata('Make Your Pick', 'Sign in to choose your team for the current Madness survivor pick period.', '/pick', false)
 
 export default async function PickPage() {
   const session = await getSession()

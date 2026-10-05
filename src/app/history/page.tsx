@@ -1,3 +1,4 @@
+import { pageMetadata } from '@/lib/site'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { getTeamAbbrs } from '@/lib/teams'
@@ -15,6 +16,8 @@ import { Footer } from '@/app/components/Sports'
 import TeamMark from '../components/TeamMark'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
 import { loadAll } from '@/lib/seasonData'
+
+export const metadata = pageMetadata('Your Pick History', 'Review your Madness survivor picks, results, and account alerts.', '/history', false)
 
 export default async function HistoryPage() {
   const session = await getSession()

@@ -6,6 +6,8 @@ import type { Player } from '@/types'
 import { getTeamAbbrs } from '@/lib/teams'
 import { loadAll } from '@/lib/seasonData'
 
+export const metadata = { title: 'Manage Players', description: 'Madness pool administration: manage players.' }
+
 export default async function PlayersPage() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')

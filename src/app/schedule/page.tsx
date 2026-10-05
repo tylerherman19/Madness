@@ -1,3 +1,4 @@
+import { pageMetadata } from '@/lib/site'
 import SiteHeader from '@/app/components/SiteHeader'
 import { getDb } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
@@ -196,6 +197,8 @@ function byTip(a: ScheduleGame, b: ScheduleGame): number {
   if (a.timeTbd !== b.timeTbd) return a.timeTbd ? 1 : -1
   return new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
 }
+
+export const metadata = pageMetadata('Game Schedule', 'See the current college basketball schedule, game times, and informational odds for the Madness pool.', '/schedule', true)
 
 export default async function SchedulePage(){
  const pool=await getPoolConfig()

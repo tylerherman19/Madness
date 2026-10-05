@@ -68,6 +68,8 @@ async function getSandboxSnapshot(): Promise<SandboxSnapshot> {
   }
 }
 
+export const metadata = { title: 'Test Mode', description: 'Madness pool administration: test mode.' }
+
 export default async function TestingPage() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')

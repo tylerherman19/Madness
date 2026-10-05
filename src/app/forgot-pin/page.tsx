@@ -1,5 +1,8 @@
+import { pageMetadata } from '@/lib/site'
 import Link from 'next/link'
 import AuthShell from '@/app/components/AuthShell'
+
+export const metadata = pageMetadata('Account Recovery', 'Contact the Madness organizer for help recovering access to your account.', '/forgot-pin', false)
 
 export default function ForgotPinPage() {
   return (

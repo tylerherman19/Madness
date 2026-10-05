@@ -1,3 +1,4 @@
+import { pageMetadata } from '@/lib/site'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline, isPickRevealed } from '@/lib/deadline'
 import { getPoolConfig } from '@/lib/pool'
@@ -11,6 +12,8 @@ import { Footer } from '@/app/components/Sports'
 // served from the CDN instead of each triggering the full query set. Current-slate
 // picks stay hidden behind the reveal deadline regardless of cache freshness.
 export const revalidate = 60
+
+export const metadata = pageMetadata('Pick Grid', 'Explore the Madness survivor pick grid and revealed picks by game day.', '/grid', true)
 
 export default async function GridPage() {
   // Guard the fetch so a DB outage (or a build without env) degrades to the

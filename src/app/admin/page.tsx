@@ -12,6 +12,8 @@ import AdvanceWeekButton from './AdvanceWeekButton'
 import SetActiveWeek from './SetActiveWeek'
 import ResetPoolButton from './ResetPoolButton'
 
+export const metadata = { title: 'Dashboard', description: 'Madness pool administration: dashboard.' }
+
 export default async function AdminDashboard() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')

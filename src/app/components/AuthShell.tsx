@@ -1,6 +1,7 @@
 'use client'
 
 import SiteHeader from './SiteHeader'
+import TrustFooter from './TrustFooter'
 
 export default function AuthShell({
   eyebrow,
@@ -46,6 +47,7 @@ export default function AuthShell({
         </aside>
         </div>
       </main>
+      <TrustFooter />
     </div>
   )
 }

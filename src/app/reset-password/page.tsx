@@ -1,6 +1,9 @@
+import { pageMetadata } from '@/lib/site'
 import Link from 'next/link'
 import AuthShell from '@/app/components/AuthShell'
 import ResetPasswordForm from './reset-password-form'
+
+export const metadata = pageMetadata('Reset Your Password', 'Choose a new password using your Madness account recovery link.', '/reset-password', false)
 
 export default async function ResetPasswordPage({
   searchParams,
