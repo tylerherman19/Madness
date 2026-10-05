@@ -7,15 +7,11 @@ let _resend: Resend | null = null
 // kill switch lives here rather than in sendChecked. Sending requires
 // EMAILS_ENABLED to be exactly 'true'; a missing or malformed var means no
 // email goes out, so a forgotten Vercel variable fails safe.
-type SendPayload = { to: string | string[]; subject: string; [key: string]: unknown }
 
 function suppressedClient(): Resend {
   return {
     emails: {
-      async send(payload: SendPayload) {
-        console.log(
-          `[email suppressed] to=${payload.to} subject="${payload.subject}"`
-        )
+      async send() {
         return { data: null, error: null }
       },
     },
@@ -57,7 +53,6 @@ export async function sendPasswordResetEmail(
   token: string
 ): Promise<{ ok: boolean; sent: boolean }> {
   if (process.env.EMAILS_ENABLED !== 'true' || process.env.PASSWORD_RESET_EMAILS_ENABLED !== 'true') {
-    console.log('[password reset email suppressed] delivery disabled')
     return { ok: true, sent: false }
   }
   if (!isDeliverable(email)) return { ok: true, sent: false }

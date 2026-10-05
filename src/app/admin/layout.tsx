@@ -1,3 +1,5 @@
+import type { Metadata } from 'next'
+export const metadata: Metadata = { title: 'Admin', description: 'Madness pool administration.', robots: { index: false, follow: false } }
 import { getAdminSession } from '@/lib/session'
 import { isTestMode } from '@/lib/testMode'
 import AdminNav from './AdminNav'

@@ -1,3 +1,4 @@
+import { pageMetadata } from '@/lib/site'
 import Link from 'next/link'
 import SiteHeader from './components/SiteHeader'
 import LiveTicker from './components/LiveTicker'
@@ -12,6 +13,8 @@ import {fetchNcaabOdds,matchOdds} from '@/lib/odds'
 import {point} from '@/lib/oddsFormat'
 export const revalidate=60
 const CT='America/Chicago'
+export const metadata = pageMetadata('College Basketball Survivor', 'Pick a college basketball winner each game day. Win, advance, and follow the Madness survivor pool.', '/', true)
+
 export default async function Home(){
  const [data,closed,odds]=await Promise.all([getDashboardData(),haveSignupsClosed(),fetchNcaabOdds()])
  const brands=data?.teamBrands??{}

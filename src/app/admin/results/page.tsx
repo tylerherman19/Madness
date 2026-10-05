@@ -5,6 +5,8 @@ import { countPendingEliminations } from '@/lib/grading'
 import ResultsForm from './ResultsForm'
 import type { Game, Slate } from '@/types'
 
+export const metadata = { title: 'Game Results', description: 'Madness pool administration: game results.' }
+
 export default async function ResultsPage() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')

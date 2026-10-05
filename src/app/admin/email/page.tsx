@@ -3,6 +3,8 @@ import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import BroadcastForm from './BroadcastForm'
 
+export const metadata = { title: 'Pool Email', description: 'Madness pool administration: pool email.' }
+
 export default async function AdminEmailPage() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')

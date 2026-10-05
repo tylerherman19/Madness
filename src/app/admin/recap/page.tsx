@@ -5,6 +5,8 @@ import { getPoolConfig } from '@/lib/pool'
 import { buildPickPeriods } from '@/lib/competition'
 import RecapClient from './RecapClient'
 
+export const metadata = { title: 'Pool Recap', description: 'Madness pool administration: pool recap.' }
+
 export default async function RecapPage() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')

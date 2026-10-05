@@ -1,3 +1,4 @@
+import { pageMetadata } from '@/lib/site'
 import Link from 'next/link'
 
 import { getPoolConfig } from '@/lib/pool'
@@ -22,6 +23,8 @@ import {
 
 import { getDashboardData } from '@/lib/dashboard'
 export const revalidate = 60
+
+export const metadata = pageMetadata('Standings & Pool Rules', 'Follow the survivor standings and read the active Madness competition rules, deadlines, and tiebreakers.', '/standings', true)
 
 export default async function DashboardPage() {
   const { haveSignupsClosed } = await import('@/lib/season')

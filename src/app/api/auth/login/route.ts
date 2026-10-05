@@ -16,13 +16,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { full_name, password } = await req.json()
+    const body = await req.json().catch(() => null)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'Invalid login request' }, { status: 400 })
+    const { full_name, password } = body
 
     if (!full_name || !password) {
       return NextResponse.json({ error: 'Name and password are required' }, { status: 400 })
     }
 
-    if (typeof full_name !== 'string' || full_name.length > 80) {
+    if (typeof full_name !== 'string' || !full_name.trim() || full_name.length > 80) {
       return NextResponse.json({ error: 'Invalid name' }, { status: 400 })
     }
     if (typeof password !== 'string' || password.length > MAX_PASSWORD_LENGTH) {

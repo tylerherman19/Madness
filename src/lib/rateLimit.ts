@@ -1,3 +1,4 @@
+import { localRateLimit } from './localRateLimit'
 import { supabase } from './supabase'
 import { headers } from 'next/headers'
 
@@ -24,46 +25,16 @@ export async function checkRateLimit(
   windowSeconds: number
 ): Promise<{ allowed: boolean }> {
   try {
-    // One atomic round trip (migration 006). Falls back to the legacy
-    // read-then-write path if the function hasn't been installed yet.
+    // One atomic round trip (migration 006). A bounded local budget remains
+    // available if the function is missing or the database times out.
     const { data, error } = await supabase.rpc('bump_rate_limit', {
       p_key: key,
       p_max: maxRequests,
       p_window_seconds: windowSeconds,
-    })
+    }).abortSignal(AbortSignal.timeout(3000))
     if (!error) return { allowed: data === true }
-    return legacyCheckRateLimit(key, maxRequests, windowSeconds)
   } catch {
-    return { allowed: true } // fail open — never lock users out over infra errors
+    // The distributed limiter is unavailable. Retain a bounded per-instance budget.
   }
-}
-
-async function legacyCheckRateLimit(
-  key: string,
-  maxRequests: number,
-  windowSeconds: number
-): Promise<{ allowed: boolean }> {
-  try {
-    const windowStart = new Date(Date.now() - windowSeconds * 1000).toISOString()
-
-    const { data } = await supabase
-      .from('rate_limits')
-      .select('count, window_start')
-      .eq('key', key)
-      .single()
-
-    if (!data || data.window_start < windowStart) {
-      await supabase.from('rate_limits').upsert({ key, count: 1, window_start: new Date().toISOString() })
-      return { allowed: true }
-    }
-
-    if (data.count >= maxRequests) {
-      return { allowed: false }
-    }
-
-    await supabase.from('rate_limits').update({ count: data.count + 1 }).eq('key', key)
-    return { allowed: true }
-  } catch {
-    return { allowed: true }
-  }
+  return { allowed: localRateLimit(key, maxRequests, windowSeconds) }
 }

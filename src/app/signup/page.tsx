@@ -1,3 +1,4 @@
+import { pageMetadata } from '@/lib/site'
 import Link from 'next/link'
 import AuthShell from '@/app/components/AuthShell'
 import { haveSignupsClosed } from '@/lib/season'
@@ -8,6 +9,8 @@ import SignupForm from './SignupForm'
 // closed shortly after the Slate 1 deadline, not stay stuck open for the
 // page's lifetime.
 export const revalidate = 60
+
+export const metadata = pageMetadata('Join the Pool', 'Create a Madness survivor pool account. Read the entry fee, terms, and privacy information before joining.', '/signup', false)
 
 export default async function SignupPage() {
   const signupsClosed = await haveSignupsClosed()

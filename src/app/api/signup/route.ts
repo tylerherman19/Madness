@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { hashPassword, passwordValidationError } from '@/lib/password'
+import { hashPassword } from '@/lib/password'
+import { signupValidationError, TERMS_VERSION, type SignupInput } from '@/lib/signupValidation'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
 import { haveSignupsClosed } from '@/lib/season'
@@ -8,6 +9,11 @@ import { logAudit } from '@/lib/audit'
 
 export async function POST(req: NextRequest) {
   try {
+    const body: unknown = await req.json().catch(() => null)
+    const validationError = signupValidationError(body)
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 })
+    const { full_name, email, phone, venmo, password } = body as SignupInput
+
     // Enforced server-side, not just hidden in the UI — the whole point is to
     // stop late signups once Slate 1's picks have locked.
     if (await haveSignupsClosed()) {
@@ -23,31 +29,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { full_name, email, phone, venmo, password } = await req.json()
-
-    if (!full_name?.trim() || !email?.trim() || !phone?.trim() || !venmo?.trim()) {
-      return NextResponse.json({ error: 'Name, email, phone, and Venmo handle are required' }, { status: 400 })
-    }
-    const passwordError = passwordValidationError(password)
-    if (passwordError) {
-      return NextResponse.json({ error: passwordError }, { status: 400 })
-    }
-
     const name = full_name.trim()
     const emailLower = email.trim().toLowerCase()
-
-    if (name.length > 80) {
-      return NextResponse.json({ error: 'Name too long (max 80 characters)' }, { status: 400 })
-    }
-    if (emailLower.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
-      return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
-    }
-    if (phone && phone.length > 20) {
-      return NextResponse.json({ error: 'Phone number too long' }, { status: 400 })
-    }
-    if (venmo && venmo.length > 50) {
-      return NextResponse.json({ error: 'Venmo handle too long' }, { status: 400 })
-    }
 
     const supabase = await getDb()
 
@@ -109,7 +92,7 @@ export async function POST(req: NextRequest) {
       player_id: inserted.id,
       player_name: name,
       message: `${name} signed up`,
-      details: { email: emailLower },
+      details: { email: emailLower, terms_version: TERMS_VERSION, terms_accepted: true },
     })
 
     return NextResponse.json({ ok: true })

@@ -45,7 +45,7 @@ another conditional.
 
 ## Differences from NFL Survivor
 
-- **No email.** `getResend()` in `src/lib/email.ts` returns a stub that logs and
+- **No email.** `getResend()` in `src/lib/email.ts` returns a stub that
   discards every send unless `EMAILS_ENABLED=true`. The `/api/cron/reminders` job
   still runs on schedule; it just has nothing to deliver.
 - Separate Supabase project, separate Vercel project.
@@ -112,3 +112,7 @@ npm run build    # production build
 npm run lint     # eslint
 npm test         # node --test over src/lib/*.test.ts
 ```
+
+## Launch and operations
+
+Legal/contact pages, social metadata, crawler files, and branded fallback screens ship with the app. See [deployment checks](docs/operations.md) for the primary domain, support contact, Vercel analytics enablement, read-only health monitoring, and data export/backup guidance.

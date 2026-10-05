@@ -35,11 +35,11 @@ export default function LoginPage() {
 
   return (
     <AuthShell eyebrow="Player access" title="Log in" description="Enter your name and the password you chose when you joined.">
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading} aria-describedby={error ? "login-error" : undefined}>
               <div>
-                <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Full name</label>
+                <label htmlFor="login-name" className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Full name</label>
                 <input
-                  type="text"
+                  id="login-name" name="full_name" maxLength={80} type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. John Smith"
@@ -50,9 +50,9 @@ export default function LoginPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Password</label>
+                <label htmlFor="login-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Password</label>
                 <input
-                  type="password"
+                  id="login-password" name="password" type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Your password"
@@ -65,7 +65,7 @@ export default function LoginPage() {
               </div>
 
               {error && (
-                <p className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--red)', background: 'var(--red-tint)' }}>{error}</p>
+                <p id="login-error" role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--red)', background: 'var(--red-tint)' }}>{error}</p>
               )}
 
               <button
