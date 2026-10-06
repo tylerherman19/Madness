@@ -6,6 +6,7 @@ import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
 import { haveSignupsClosed } from '@/lib/season'
 import { logAudit } from '@/lib/audit'
+import { serverError } from '@/lib/alerts'
 
 export async function POST(req: NextRequest) {
   try {
@@ -82,8 +83,7 @@ export async function POST(req: NextRequest) {
           { status: 409 }
         )
       }
-      console.error('signup insert error', insertError)
-      return NextResponse.json({ error: 'Failed to create account' }, { status: 500 })
+      return serverError('api/signup', insertError, 'Failed to create account')
     }
 
     await logAudit(supabase, {
@@ -97,7 +97,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('signup error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/signup', err)
   }
 }

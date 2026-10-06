@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSession, deleteAdminSession } from '@/lib/session'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import bcrypt from 'bcryptjs'
+import { serverError } from '@/lib/alerts'
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     const adminHash = process.env.ADMIN_PASSWORD_HASH
     if (!adminHash) {
-      return NextResponse.json({ error: 'Admin not configured' }, { status: 503 })
+      return serverError('api/auth/admin', 'ADMIN_PASSWORD_HASH is not set', 'Admin not configured', 503)
     }
 
     const valid = await bcrypt.compare(password, adminHash)
@@ -31,8 +32,8 @@ export async function POST(req: NextRequest) {
 
     await createAdminSession()
     return NextResponse.json({ ok: true })
-  } catch {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  } catch (err) {
+    return serverError('api/auth/admin', err)
   }
 }
 

@@ -4,6 +4,7 @@ import { requireAdmin, requireCron } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { gradeSlatePicks } from '@/lib/grading'
 import type { Game } from '@/types'
+import { serverError } from '@/lib/alerts'
 
 // Vercel Cron — refreshes the active slate from ESPN and grades picks, no
 // admin needed. Re-syncing is how results arrive: syncSlateFromEspn writes
@@ -41,7 +42,7 @@ async function run() {
     const yyyymmdd = String(slate.slate_date).replace(/-/g, '')
     const sync = await syncSlateFromEspn(supabase, yyyymmdd, slate.season_year)
     if (!sync.ok) {
-      return NextResponse.json({ error: sync.error }, { status: 502 })
+      return serverError('api/cron/sync-results', sync.error, sync.error, 502)
     }
 
     const { data: dbGames } = await supabase
@@ -68,7 +69,6 @@ async function run() {
       grading,
     })
   } catch (err) {
-    console.error('sync-results error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/cron/sync-results', err)
   }
 }

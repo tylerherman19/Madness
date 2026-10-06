@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AUDIT_EVENT_TYPES, type AuditRow } from '@/lib/auditEvents'
+import { AUDIT_EVENT_TYPES, FAILURE_EVENTS, type AuditRow } from '@/lib/auditEvents'
 
 const ACTOR_COLORS: Record<string, string> = {
   admin: 'var(--dark)',
@@ -13,6 +13,8 @@ const ACTOR_COLORS: Record<string, string> = {
 // worth spotting at a glance while scanning the feed.
 const ALERT_EVENTS = new Set(['player-deleted', 'player-eliminated', 'pool-reset'])
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
     timeZone: 'America/Chicago',
@@ -23,8 +25,33 @@ function formatWhen(iso: string): string {
   })
 }
 
-export default function AuditLogClient({ rows }: { rows: AuditRow[] }) {
+export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; loadedAt: number }) {
   const [eventType, setEventType] = useState('')
+  const [failuresOnly, setFailuresOnly] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const recentFailures = useMemo(
+    () => rows.filter((r) => FAILURE_EVENTS.has(r.event_type) && loadedAt - new Date(r.created_at).getTime() < DAY_MS).length,
+    [rows, loadedAt]
+  )
+
+  async function runAction(label: string, url: string) {
+    setBusy(label)
+    setNotice(null)
+    try {
+      const res = await fetch(url, { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
+      const delivery = body.delivery ?? body
+      if (!res.ok) setNotice(body.error || 'Request failed')
+      else if (delivery.sent) setNotice(`Text sent.${body.text ? ` "${body.text}"` : ''}`)
+      else setNotice(`Not sent: ${delivery.reason || 'unknown reason'}.${body.text ? ` Would have said: "${body.text}"` : ''}`)
+    } catch {
+      setNotice('Request failed')
+    } finally {
+      setBusy(null)
+    }
+  }
   const [player, setPlayer] = useState('')
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -45,6 +72,7 @@ export default function AuditLogClient({ rows }: { rows: AuditRow[] }) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return rows.filter((r) => {
+      if (failuresOnly && !FAILURE_EVENTS.has(r.event_type)) return false
       if (eventType && r.event_type !== eventType) return false
       if (player && r.player_name !== player) return false
       if (q) {
@@ -53,7 +81,7 @@ export default function AuditLogClient({ rows }: { rows: AuditRow[] }) {
       }
       return true
     })
-  }, [rows, eventType, player, search])
+  }, [rows, eventType, player, search, failuresOnly])
 
   const selectStyle = {
     borderColor: 'var(--border)',
@@ -71,6 +99,40 @@ export default function AuditLogClient({ rows }: { rows: AuditRow[] }) {
             : `${filtered.length} of ${rows.length}`}
         </p>
       </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => setFailuresOnly((v) => !v)}
+          className="border rounded px-3 py-1.5 text-xs tracking-widest uppercase"
+          style={{
+            borderColor: recentFailures > 0 ? 'var(--red)' : 'var(--border)',
+            color: recentFailures > 0 ? 'var(--red)' : 'var(--muted)',
+            background: failuresOnly ? 'var(--surface-sunken)' : 'transparent',
+          }}
+        >
+          {recentFailures === 0 ? 'No failures in 24h' : `${recentFailures} failure${recentFailures === 1 ? '' : 's'} in 24h`}
+          {failuresOnly ? ' · showing failures' : ''}
+        </button>
+        <button
+          onClick={() => runAction('test', '/api/admin/test-alert')}
+          disabled={busy !== null}
+          className="border rounded px-3 py-1.5 text-xs tracking-widest uppercase disabled:opacity-50"
+          style={{ borderColor: 'var(--border)', color: 'var(--dark)' }}
+        >
+          {busy === 'test' ? 'Sending…' : 'Send test text'}
+        </button>
+        <button
+          onClick={() => runAction('summary', '/api/cron/daily-summary')}
+          disabled={busy !== null}
+          className="border rounded px-3 py-1.5 text-xs tracking-widest uppercase disabled:opacity-50"
+          style={{ borderColor: 'var(--border)', color: 'var(--dark)' }}
+        >
+          {busy === 'summary' ? 'Sending…' : 'Send daily summary now'}
+        </button>
+      </div>
+      {notice && (
+        <p className="mt-2 text-xs" style={{ color: 'var(--muted)' }}>{notice}</p>
+      )}
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <input
@@ -105,9 +167,9 @@ export default function AuditLogClient({ rows }: { rows: AuditRow[] }) {
         </select>
       </div>
 
-      {(eventType || player || search) && (
+      {(eventType || player || search || failuresOnly) && (
         <button
-          onClick={() => { setEventType(''); setPlayer(''); setSearch('') }}
+          onClick={() => { setEventType(''); setPlayer(''); setSearch(''); setFailuresOnly(false) }}
           className="mt-3 text-xs tracking-widest uppercase underline"
           style={{ color: 'var(--muted)' }}
         >
@@ -143,7 +205,7 @@ export default function AuditLogClient({ rows }: { rows: AuditRow[] }) {
                   <div className="min-w-0 flex-1">
                     <p
                       className="text-sm"
-                      style={{ color: ALERT_EVENTS.has(row.event_type) ? 'var(--red)' : 'var(--dark)' }}
+                      style={{ color: ALERT_EVENTS.has(row.event_type) || FAILURE_EVENTS.has(row.event_type) ? 'var(--red)' : 'var(--dark)' }}
                     >
                       {row.message}
                     </p>

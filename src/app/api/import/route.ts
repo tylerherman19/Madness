@@ -3,6 +3,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin, escapeIlike } from '@/lib/api'
 import { hashPassword, passwordValidationError } from '@/lib/password'
 import { logAudit } from '@/lib/audit'
+import { serverError } from '@/lib/alerts'
 
 // bcrypt cost-12 hashing is intentionally serial per row. Allow enough runtime
 // that a full-size batch cannot be killed halfway through credential creation.
@@ -118,7 +119,6 @@ export async function POST(req: NextRequest) {
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (err) {
-    console.error('import error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/import', err)
   }
 }

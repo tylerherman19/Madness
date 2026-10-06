@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid, escapeIlike } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
+import { serverError } from '@/lib/alerts'
 
 export async function PATCH(
   req: NextRequest,
@@ -61,7 +62,7 @@ export async function PATCH(
     .eq('id', id)
     .select('full_name')
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError('api/players/[id]', error, error.message)
 
   const changes = Object.entries(updates).map(([k, v]) => `${k}=${String(v)}`).join(', ')
   await logAudit(supabase, {
@@ -99,7 +100,7 @@ export async function DELETE(
     .single()
 
   const { error } = await supabase.from('players').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError('api/players/[id]', error, error.message)
 
   await logAudit(supabase, {
     event_type: 'player-deleted',

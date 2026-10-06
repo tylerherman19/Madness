@@ -4,6 +4,7 @@ import { getDb } from '@/lib/testMode'
 import { hashPassword, passwordValidationError } from '@/lib/password'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { logAudit } from '@/lib/audit'
+import { serverError } from '@/lib/alerts'
 
 const TOKEN_RE = /^[a-f0-9]{64}$/i
 
@@ -30,8 +31,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (error) {
-    console.error('password reset failed', error)
-    return NextResponse.json({ error: 'Could not reset password' }, { status: 500 })
+    return serverError('api/auth/reset-password', error, 'Could not reset password')
   }
   if (!player) return NextResponse.json({ error: 'This reset link is invalid or expired.' }, { status: 400 })
 

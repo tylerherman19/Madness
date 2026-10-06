@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
 import { loadAll } from '@/lib/seasonData'
+import { serverError } from '@/lib/alerts'
 
 function csvField(value: unknown): string {
   let s = value === null || value === undefined ? '' : String(value)
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
         .from('players')
         .select('full_name, email, phone, venmo_handle, paid, status, elimination_slate')
         .order('full_name')
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      if (error) return serverError('api/admin/export', error, error.message)
 
       const csv = toCsv(
         ['full_name', 'email', 'phone', 'venmo_handle', 'paid', 'status', 'elimination_slate'],
@@ -88,7 +89,6 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (err) {
-    console.error('export error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/admin/export', err)
   }
 }

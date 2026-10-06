@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
 import { runAutoAssignNow } from '@/lib/autoAssign'
+import { serverError } from '@/lib/alerts'
 
 // Per-player DB round trips plus awaited emails — allow a big no-pick cohort.
 export const maxDuration = 300
@@ -30,7 +31,6 @@ async function run() {
     const outcome = await runAutoAssignNow(await getDb(), await getEffectiveNow())
     return NextResponse.json({ ok: outcome.ok, message: outcome.message, results: outcome.results })
   } catch (err) {
-    console.error('auto-assign error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/cron/auto-assign', err)
   }
 }

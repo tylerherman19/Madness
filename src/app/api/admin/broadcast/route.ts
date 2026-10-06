@@ -3,6 +3,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
 import { getResend, esc, isDeliverable, FROM_EMAIL } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
+import { reportFailure, serverError } from '@/lib/alerts'
 
 // Sends are paced at ~1.6/sec for Resend rate limits, so allow up to 4 min of runtime
 export const maxDuration = 300
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
     const { data: allPlayers, error } = await supabase
       .from('players')
       .select('id, full_name, email, status')
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError('api/admin/broadcast', error, error.message)
 
     // Internal test accounts have fake emails that would bounce
     let recipients = (allPlayers || []).filter((p) => p.email && isDeliverable(p.email))
@@ -90,6 +91,16 @@ export async function POST(req: NextRequest) {
       if (recipients.length > 2) await sleep(SEND_DELAY_MS)
     }
 
+    if (failures.length > 0) {
+      await reportFailure(supabase, {
+        kind: 'email-failed',
+        source: 'broadcast',
+        key: `broadcast:${subject.trim()}`,
+        message: `Broadcast "${subject.trim()}" failed for ${failures.length} of ${recipients.length}`,
+        details: { failures },
+      })
+    }
+
     await logAudit(supabase, {
       event_type: 'broadcast-sent',
       actor: 'admin',
@@ -104,7 +115,6 @@ export async function POST(req: NextRequest) {
       failures: failures.length > 0 ? failures : undefined,
     })
   } catch (err) {
-    console.error('broadcast error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/admin/broadcast', err)
   }
 }

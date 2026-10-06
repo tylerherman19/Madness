@@ -4,6 +4,7 @@ import { requireAdmin, requireCron } from '@/lib/api'
 import { formatCentralTime, slateDeadline } from '@/lib/deadline'
 import { sendReminderEmail, sleep, SEND_DELAY_MS } from '@/lib/email'
 import type { Game } from '@/types'
+import { serverError } from '@/lib/alerts'
 
 // Sends are paced for Resend's ~2 req/sec limit — allow enough runtime for a
 // full-group reminder batch.
@@ -100,7 +101,6 @@ async function run() {
       failures: failures.length > 0 ? failures : undefined,
     })
   } catch (err) {
-    console.error('reminders error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/cron/reminders', err)
   }
 }

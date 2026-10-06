@@ -3,6 +3,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
 import { getOrCreateSlate, renumberSlates, refreshLockTime } from '@/lib/slates'
 import { fromZonedTime } from 'date-fns-tz'
+import { serverError } from '@/lib/alerts'
 
 const CHICAGO_TZ = 'America/Chicago'
 
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     for (const [date, dayGames] of byDate) {
       const slate = await getOrCreateSlate(supabase, date, season_year)
       if ('error' in slate) {
-        return NextResponse.json({ error: slate.error }, { status: 500 })
+        return serverError('api/schedule', slate.error, slate.error)
       }
 
       const rows = dayGames.map((g) => ({
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
         .from('games')
         .upsert(rows, { onConflict: 'espn_event_id' })
       if (insertError) {
-        return NextResponse.json({ error: `Failed to save games: ${insertError.message}` }, { status: 500 })
+        return serverError('api/schedule', insertError, `Failed to save games: ${insertError.message}`)
       }
 
       await refreshLockTime(supabase, slate.id)
@@ -84,8 +85,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, dates: touched, games_saved: games.length })
   } catch (err) {
-    console.error('schedule error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/schedule', err)
   }
 }
 
@@ -105,7 +105,7 @@ export async function DELETE(req: NextRequest) {
   const { data: game } = await supabase.from('games').select('slate_id').eq('id', id).maybeSingle()
 
   const { error } = await supabase.from('games').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError('api/schedule', error, error.message)
 
   if (game?.slate_id) await refreshLockTime(supabase, game.slate_id)
 

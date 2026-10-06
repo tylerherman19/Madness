@@ -71,6 +71,7 @@ npm run dev
 | `EMAILS_ENABLED` | Must be exactly `true` to send mail. Anything else = silence |
 | `PASSWORD_RESET_EMAILS_ENABLED` | Also must be exactly `true` to deliver password reset links. Defaults to off. |
 | `CRON_SECRET` | Authenticates Vercel cron requests |
+| `ALERT_SMS_TO` | Where failure texts and the daily summary go, e.g. `5551234567@tmomail.net` (T-Mobile email-to-SMS). Comma-separate for several. Sent as email, so nothing goes out until `EMAILS_ENABLED=true` |
 | `NEXT_PUBLIC_APP_URL` | Base URL used in links |
 
 ## Database
@@ -96,6 +97,21 @@ PostgREST silently caps every response at 1,000 rows by default.
 | Sync results + grade | 09:00 UTC |
 | Advance to the next game day | 6:00 AM Central (two UTC entries cover DST) |
 | Reminders | 15:00 UTC (no-op while email is off) |
+| Daily summary text | 13:00 UTC (~7–8 AM Central): last 24h of picks, eliminations, signups and failures |
+
+## Audit log and failure alerts
+
+**Admin → Audit** shows what players and admins did and what failed. Failures
+(scheduled jobs, ESPN syncs, any API 500, uncaught crashes via
+`src/instrumentation.ts`, failed email sends) are reported through
+`reportFailure()` in `src/lib/alerts.ts`, which writes a `job-failed`,
+`server-error` or `email-failed` row and texts `ALERT_SMS_TO`.
+
+- Repeats of the same failure within 10 minutes collapse into one row.
+- At most one text per failure type per 30 minutes.
+- Test-mode (sandbox) failures go to the sandbox trail and never text.
+- Texts ride the normal email path, so they stay off until email is enabled.
+  The audit page's **Send test text** button reports why a text didn't go out.
 
 Cron routes accept `GET` with the `CRON_SECRET` bearer token only. The admin
 buttons call the same routes with `POST` and the admin session, so a link

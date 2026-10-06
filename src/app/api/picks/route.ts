@@ -10,6 +10,7 @@ import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
 import { sendPickConfirmationEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
+import { serverError } from '@/lib/alerts'
 
 export async function POST(req: NextRequest) {
   try {
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
         if (updateError.code === '23505') {
           return NextResponse.json({ error: `${player.full_name} already used ${team} in a previous slate` }, { status: 400 })
         }
-        return NextResponse.json({ error: 'Failed to update pick' }, { status: 500 })
+        return serverError('api/picks', updateError, 'Failed to update pick')
       }
       savedPick = updated
     } else {
@@ -181,7 +182,7 @@ export async function POST(req: NextRequest) {
         if (insertError.code === '23505') {
           return NextResponse.json({ error: `${player.full_name} already has a pick for this slate or already used ${team}` }, { status: 409 })
         }
-        return NextResponse.json({ error: 'Failed to save pick' }, { status: 500 })
+        return serverError('api/picks', insertError, 'Failed to save pick')
       }
       savedPick = inserted
     }
@@ -212,7 +213,6 @@ export async function POST(req: NextRequest) {
     revalidatePath('/')
     return NextResponse.json({ ok: true, pick: savedPick })
   } catch (err) {
-    console.error('picks error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/picks', err)
   }
 }

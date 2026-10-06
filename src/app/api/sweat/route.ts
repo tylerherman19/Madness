@@ -13,6 +13,7 @@ import {
   type CompetitionMode,
 } from '@/lib/competition'
 import type { Game } from '@/types'
+import { reportFailure } from '@/lib/alerts'
 
 export type SweatStatus =
   | 'won' // final, team won
@@ -325,6 +326,7 @@ export async function GET() {
     )
   } catch (err) {
     console.error('sweat error', err)
+    await reportFailure(await getDb(), { kind: 'server-error', source: 'api/sweat', message: 'api/sweat returned 500', error: err })
     return NextResponse.json(EMPTY, { status: 500 })
   }
 }

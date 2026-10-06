@@ -4,6 +4,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { sendPasswordResetEmail } from '@/lib/email'
+import { serverError } from '@/lib/alerts'
 
 export async function POST(
   _req: NextRequest,
@@ -33,7 +34,7 @@ export async function POST(
     pin_reset_token: tokenHash,
     pin_reset_expires: expires,
   }).eq('id', id)
-  if (error) return NextResponse.json({ error: 'Failed to create reset request' }, { status: 500 })
+  if (error) return serverError('api/players/regen-pin', error, 'Failed to create reset request')
 
   const delivery = await sendPasswordResetEmail(player.email, player.full_name, token)
 

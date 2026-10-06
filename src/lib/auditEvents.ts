@@ -25,7 +25,16 @@ export const AUDIT_EVENT_TYPES: Record<string, string> = {
   'pool-config-updated': 'Pool configuration updated',
   'welcome-email-failed': 'Welcome email failed',
   'player-signed-up': 'Player signed up',
+  'job-failed': 'Job failed',
+  'server-error': 'Server error',
+  'email-failed': 'Email failed',
+  'daily-summary': 'Daily summary',
 }
+
+// Failure events: reported through lib/alerts.ts, highlighted on the audit
+// page and counted by the daily summary.
+export const FAILURE_EVENTS = new Set(['job-failed', 'server-error', 'email-failed', 'welcome-email-failed'])
+export type FailureEventType = 'job-failed' | 'server-error' | 'email-failed'
 
 export type AuditEventType = keyof typeof AUDIT_EVENT_TYPES
 

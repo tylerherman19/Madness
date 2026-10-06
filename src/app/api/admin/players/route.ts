@@ -4,6 +4,7 @@ import { requireAdmin, escapeIlike } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { hashPassword, passwordValidationError } from '@/lib/password'
 import { getDb } from '@/lib/testMode'
+import { serverError } from '@/lib/alerts'
 
 export async function POST(req: NextRequest) {
   const unauthorized = await requireAdmin()
@@ -31,8 +32,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (lookupError) {
-      console.error('admin player lookup error', lookupError)
-      return NextResponse.json({ error: 'Failed to check email address' }, { status: 500 })
+      return serverError('api/admin/players', lookupError, 'Failed to check email address')
     }
     if (existing) return NextResponse.json({ error: 'An account with that email already exists' }, { status: 409 })
 
@@ -54,8 +54,7 @@ export async function POST(req: NextRequest) {
       if (insertError.code === '23505') {
         return NextResponse.json({ error: 'An account with that email already exists' }, { status: 409 })
       }
-      console.error('admin player insert error', insertError)
-      return NextResponse.json({ error: 'Failed to add player' }, { status: 500 })
+      return serverError('api/admin/players', insertError, 'Failed to add player')
     }
 
     await logAudit(supabase, {
@@ -72,7 +71,6 @@ export async function POST(req: NextRequest) {
     revalidatePath('/admin/players')
     return NextResponse.json({ ok: true, playerId: player.id })
   } catch (err) {
-    console.error('admin add player error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/admin/players', err)
   }
 }

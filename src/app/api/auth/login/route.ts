@@ -4,6 +4,7 @@ import { MAX_PASSWORD_LENGTH, verifyPassword } from '@/lib/password'
 import { createSession } from '@/lib/session'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
+import { serverError } from '@/lib/alerts'
 
 export async function POST(req: NextRequest) {
   try {
@@ -69,7 +70,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, full_name: player.full_name })
   } catch (err) {
-    console.error('login error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/auth/login', err)
   }
 }

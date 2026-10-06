@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
+import { serverError } from '@/lib/alerts'
 
 export async function POST(req: NextRequest) {
   const unauthorized = await requireAdmin()
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     await supabase.from('slates').update({ is_active: false }).gt('slate_number', 0)
     const { error } = await supabase.from('slates').update({ is_active: true }).eq('id', slate_id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError('api/admin/set-active-week', error, error.message)
 
     await logAudit(supabase, {
       event_type: 'slate-activated',
@@ -38,7 +39,6 @@ export async function POST(req: NextRequest) {
     revalidatePath('/')
     return NextResponse.json({ ok: true, slate_number: slate.slate_number, season_year: slate.season_year })
   } catch (err) {
-    console.error('set-active-slate error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/admin/set-active-week', err)
   }
 }

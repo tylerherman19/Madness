@@ -5,6 +5,7 @@ import { getPoolConfig } from '@/lib/pool'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { loadAll } from '@/lib/seasonData'
 import type { Game } from '@/types'
+import { serverError } from '@/lib/alerts'
 
 export const dynamic = 'force-dynamic'
 
@@ -184,7 +185,6 @@ export async function GET() {
       },
     })
   } catch (error) {
-    console.error('Pick grid Excel export failed:', error)
-    return Response.json({ error: 'Unable to export the pick grid.' }, { status: 500 })
+    return serverError('api/grid/export', error, 'Unable to export the pick grid.')
   }
 }
