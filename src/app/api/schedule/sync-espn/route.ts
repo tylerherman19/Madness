@@ -3,6 +3,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
+import { serverError } from '@/lib/alerts'
 
 // Accepts either YYYY-MM-DD or the bare YYYYMMDD that ESPN itself uses.
 function normalizeDate(input: unknown): string | null {
@@ -52,7 +53,6 @@ export async function POST(req: NextRequest) {
       partial: result.partial,
     })
   } catch (err) {
-    console.error('sync-espn error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/schedule/sync-espn', err)
   }
 }

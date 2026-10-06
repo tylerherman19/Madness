@@ -4,6 +4,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { getPoolConfig, updatePoolConfig, type PoolConfigPatch } from '@/lib/pool'
+import { serverError } from '@/lib/alerts'
 import {
   COMPETITION_MODES,
   POOL_STATUSES,
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
 
     const result = await updatePoolConfig(supabase, poolId, patch)
     if ('error' in result) {
-      return NextResponse.json({ error: result.error }, { status: 500 })
+      return serverError('api/admin/pool-config', result.error, result.error)
     }
 
     // A mode change is the one edit worth calling out in the trail: it
@@ -129,8 +130,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, pool: result.pool, mode_changed: modeChanged })
   } catch (err) {
-    console.error('pool-config error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/admin/pool-config', err)
   }
 }
 

@@ -36,5 +36,6 @@ export default async function AdminAuditPage() {
     )
   }
 
-  return <AuditLogClient rows={(data || []) as AuditRow[]} />
+  // eslint-disable-next-line react-hooks/purity -- server render; one timestamp per request
+  return <AuditLogClient rows={(data || []) as AuditRow[]} loadedAt={Date.now()} />
 }

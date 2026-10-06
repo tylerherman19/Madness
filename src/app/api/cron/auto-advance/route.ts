@@ -5,6 +5,7 @@ import { requireAdmin, requireCron } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
+import { serverError } from '@/lib/alerts'
 
 // How far ahead to look for the next day that actually has games. College
 // basketball has plenty of dark days mid-week, so advancing cannot just add
@@ -91,7 +92,7 @@ async function run(actor: 'system' | 'admin') {
 
     await supabase.from('slates').update({ is_active: false }).eq('is_active', true)
     const { error: activateErr } = await supabase.from('slates').update({ is_active: true }).eq('id', result.slateId)
-    if (activateErr) return NextResponse.json({ ok: false, error: activateErr.message }, { status: 500 })
+    if (activateErr) return serverError('api/cron/auto-advance', activateErr, activateErr.message)
 
     const label = nextDate
     await logAudit(supabase, {
@@ -108,7 +109,6 @@ async function run(actor: 'system' | 'admin') {
       games_synced: result.gamesSynced,
     })
   } catch (err) {
-    console.error('auto-advance error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/cron/auto-advance', err)
   }
 }

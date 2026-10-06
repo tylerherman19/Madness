@@ -7,6 +7,7 @@ import { buildPickPeriods, isFinalDayOfRound, sharedRoundPickQuota } from './com
 import { fetchApRankings } from './espn'
 import { sendEliminationEmail, sendPickConfirmationEmail } from './email'
 import { logAudit } from './audit'
+import { reportFailure } from './alerts'
 import { selectAllIn } from './db'
 import { loadGamesForSlates, loadPicksForSlates } from './seasonData'
 
@@ -108,6 +109,7 @@ export async function autoAssignIfDue(db: SupabaseClient, now: Date): Promise<vo
     await finishClaim(db, slate.id, await runAutoAssign(db, now))
   } catch (err) {
     console.error('lazy auto-assign failed', err)
+    await reportFailure(db, { kind: 'job-failed', source: 'auto-assign', message: 'Auto-assign failed after first tip', error: err })
   }
 }
 
@@ -349,6 +351,15 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
   }
 
   // Anything skipped over a write error is retried by the next trigger.
-  const done = !results.some((result) => result.action.startsWith('skipped:'))
+  const skipped = results.filter((result) => result.action.startsWith('skipped:'))
+  const done = skipped.length === 0
+  if (!done) {
+    await reportFailure(supabase, {
+      kind: 'job-failed',
+      source: 'auto-assign',
+      message: `Auto-assign skipped ${skipped.length} player${skipped.length === 1 ? '' : 's'} on Slate ${slate.slate_number} (will retry)`,
+      details: { skipped },
+    })
+  }
   return { ok: true, results, done }
 }

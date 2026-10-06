@@ -5,6 +5,7 @@ import { fetchDayScoreboard, eventCompetitors, seedOf } from '@/lib/espn'
 import { isSlateLocked } from '@/lib/deadline'
 import { autoAssignIfDue } from '@/lib/autoAssign'
 import type { Game } from '@/types'
+import { reportFailure } from '@/lib/alerts'
 
 export interface LiveGame {
   id: string
@@ -239,6 +240,7 @@ export async function GET() {
     })
   } catch (err) {
     console.error('live-scores error', err)
+    await reportFailure(await getDb(), { kind: 'server-error', source: 'api/live-scores', message: 'api/live-scores returned 500', error: err })
     return NextResponse.json(EMPTY, { status: 500 })
   }
 }

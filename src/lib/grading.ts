@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game } from '@/types'
 import { sendEliminationEmail, sleep, SEND_DELAY_MS } from './email'
 import { logAudit } from './audit'
+import { reportFailure } from './alerts'
 
 export interface GradeResult {
   eliminated: string[]
@@ -94,6 +95,13 @@ export async function gradeSlatePicks(
         // Leave player.status as 'alive' — next run (grading is idempotent)
         // will retry the elimination instead of a false "eliminated" report.
         console.error(`Failed to eliminate player ${player.id}:`, eliminateError)
+        await reportFailure(db, {
+          kind: 'job-failed',
+          source: 'grading',
+          key: `grading:${player.id}`,
+          message: `Couldn't eliminate ${player.full_name} on Slate ${slateNumber} (will retry next grade)`,
+          error: eliminateError,
+        })
         continue
       }
 

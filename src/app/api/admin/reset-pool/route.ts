@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { logAudit } from '@/lib/audit'
+import { serverError } from '@/lib/alerts'
 
 const CONFIRM_PHRASE = 'RESET POOL'
 
@@ -31,16 +32,16 @@ export async function POST(req: NextRequest) {
     // Children first, though FKs cascade anyway — explicit is safer than
     // relying on cascade order for a destructive, irreversible operation.
     const { error: picksError } = await supabase.from('picks').delete().not('id', 'is', null)
-    if (picksError) return NextResponse.json({ error: `Failed to clear picks: ${picksError.message}` }, { status: 500 })
+    if (picksError) return serverError('api/admin/reset-pool', picksError, `Failed to clear picks: ${picksError.message}`)
 
     const { error: gamesError } = await supabase.from('games').delete().not('id', 'is', null)
-    if (gamesError) return NextResponse.json({ error: `Failed to clear games: ${gamesError.message}` }, { status: 500 })
+    if (gamesError) return serverError('api/admin/reset-pool', gamesError, `Failed to clear games: ${gamesError.message}`)
 
     const { error: weeksError } = await supabase.from('slates').delete().not('id', 'is', null)
-    if (weeksError) return NextResponse.json({ error: `Failed to clear slates: ${weeksError.message}` }, { status: 500 })
+    if (weeksError) return serverError('api/admin/reset-pool', weeksError, `Failed to clear slates: ${weeksError.message}`)
 
     const { error: playersError } = await supabase.from('players').delete().not('id', 'is', null)
-    if (playersError) return NextResponse.json({ error: `Failed to clear players: ${playersError.message}` }, { status: 500 })
+    if (playersError) return serverError('api/admin/reset-pool', playersError, `Failed to clear players: ${playersError.message}`)
 
     await logAudit(supabase, {
       event_type: 'pool-reset',
@@ -53,7 +54,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('reset-pool error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/admin/reset-pool', err)
   }
 }

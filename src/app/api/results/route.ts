@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/api'
 import { gradeSlatePicks } from '@/lib/grading'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
+import { serverError } from '@/lib/alerts'
 
 // Grading awaits a paced elimination email per eliminated player.
 export const maxDuration = 300
@@ -64,7 +65,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, game, grading })
   } catch (err) {
-    console.error('results error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/results', err)
   }
 }

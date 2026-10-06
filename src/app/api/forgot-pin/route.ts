@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
+import { serverError } from '@/lib/alerts'
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +19,6 @@ export async function POST(req: NextRequest) {
       { status: 410 }
     )
   } catch (err) {
-    console.error('forgot-pin error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/forgot-pin', err)
   }
 }

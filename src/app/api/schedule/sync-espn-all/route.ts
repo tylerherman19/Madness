@@ -3,6 +3,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
+import { serverError } from '@/lib/alerts'
 
 // Each day is seven ESPN calls (six conferences + the tournament) issued in
 // parallel, then a handful of upserts. Thirty-odd days still fits, but the
@@ -80,7 +81,6 @@ export async function POST(req: NextRequest) {
       failures: failures.length > 0 ? failures : undefined,
     })
   } catch (err) {
-    console.error('sync-espn-all error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/schedule/sync-espn-all', err)
   }
 }

@@ -3,6 +3,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { gradeSlatePicks } from '@/lib/grading'
 import type { Game } from '@/types'
+import { serverError } from '@/lib/alerts'
 
 // Grading awaits a paced elimination email per eliminated player.
 export const maxDuration = 300
@@ -38,7 +39,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, grading })
   } catch (err) {
-    console.error('grade-slate error', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return serverError('api/results/grade-week', err)
   }
 }

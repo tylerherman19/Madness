@@ -1,4 +1,6 @@
 import { Resend } from 'resend'
+import { reportFailure } from './alerts'
+import { supabase } from './supabase'
 
 let _resend: Resend | null = null
 
@@ -102,6 +104,15 @@ async function sendChecked(payload: {
   const { error } = await getResend().emails.send({ from: FROM_EMAIL, ...payload })
   if (error) {
     console.error(`Email to ${payload.to} failed ("${payload.subject}"):`, error)
+    // Senders have no request-scoped client; sandbox test users carry
+    // undeliverable addresses and never get this far, so this is production.
+    await reportFailure(supabase, {
+      kind: 'email-failed',
+      source: 'email',
+      key: `email:${payload.to}:${payload.subject}`,
+      message: `Email to ${payload.to} failed: "${payload.subject}"`,
+      error,
+    })
     return { ok: false, error: error.message }
   }
   return { ok: true }
