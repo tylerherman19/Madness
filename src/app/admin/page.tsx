@@ -106,7 +106,7 @@ export default async function AdminDashboard() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-8">
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--dark)' }}>Admin Dashboard</h1>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>Admin Dashboard</h1>
         {slate && (
           <p className="mt-1" style={{ color: 'var(--muted)' }}>
             Active: Slate {slate.slate_number} · Season {slate.season_year}
@@ -119,44 +119,37 @@ export default async function AdminDashboard() {
           the dashboard should never leave an admin guessing which mode the
           pool is in. Format and status are separate facts and are shown as
           such. */}
-      <div className="rounded-xl border border-slate-700 bg-slate-800 p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+      <div className="rounded-xl border border-line bg-surface p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
         <div>
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">Competition Format</p>
-          <p className="mt-0.5 font-semibold text-white">{MODE_LABEL[pool.competition_mode]}</p>
+          <p className="text-muted text-xs font-medium uppercase tracking-wide">Competition Format</p>
+          <p className="mt-0.5 font-semibold text-ink">{MODE_LABEL[pool.competition_mode]}</p>
         </div>
         <div>
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">Pool Status</p>
-          <p className="mt-0.5 font-semibold text-white">{STATUS_LABEL[pool.status]}</p>
+          <p className="text-muted text-xs font-medium uppercase tracking-wide">Pool Status</p>
+          <p className="mt-0.5 font-semibold text-ink">{STATUS_LABEL[pool.status]}</p>
         </div>
         <div>
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">Pool</p>
-          <p className="mt-0.5 font-semibold text-white">{pool.name} · {pool.season_year}</p>
+          <p className="text-muted text-xs font-medium uppercase tracking-wide">Pool</p>
+          <p className="mt-0.5 font-semibold text-ink">{pool.name} · {pool.season_year}</p>
         </div>
         <Link
           href="/admin/config"
-          className="ml-auto rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+          className="ml-auto rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-line"
         >
           Pool Configuration →
         </Link>
       </div>
 
-      <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-        <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">Signups</p>
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <p className="text-muted text-xs font-medium uppercase tracking-wide mb-2">Signups</p>
         {!signupAnchor ? (
           <>
-            <p className="text-green-400 font-medium">Open — no cutoff yet</p>
-            <p className="text-slate-400 text-sm mt-1">
-              Nothing to anchor to until an active slate exists with games synced. Signups stay open until then.
-            </p>
+            <p className="text-success font-medium">Open — no cutoff yet</p>
           </>
         ) : (
           <>
-            <p className={`font-medium ${signupsClosed ? 'text-red-400' : 'text-green-400'}`}>
+            <p className={`font-medium ${signupsClosed ? 'text-danger' : 'text-success'}`}>
               {signupsClosed ? 'Closed' : 'Open'} — {signupsClosed ? 'closed' : 'closes'} {formatCentralTime(signupAnchor.cutoff)}
-            </p>
-            <p className="text-slate-400 text-sm mt-1">
-              Anchored to Slate {signupAnchor.slateNumber} · Season {signupAnchor.seasonYear}
-              {' '}— that slate&apos;s Sunday 12:00 PM CT pick deadline. Advancing slates does not move it.
             </p>
           </>
         )}
@@ -165,45 +158,42 @@ export default async function AdminDashboard() {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Total Players" value={players?.length || 0} />
         <StatCard label="Paid" value={`${paid.length}/${players?.length || 0}`} />
-        <StatCard label="Still Alive" value={alive.length} color="text-green-400" />
+        <StatCard label="Still Alive" value={alive.length} color="text-success" />
         <StatCard label="Picks This Slate" value={`${pickCount}/${alive.length}`} />
       </div>
 
-      <section className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
-        <div className="border-b border-slate-700 px-4 py-4 sm:px-5">
+      <section className="rounded-xl border border-line bg-surface overflow-hidden">
+        <div className="border-b border-line px-4 py-4 sm:px-5">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
-              <h2 className="text-base font-semibold text-white">Seed totals</h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Running sum of every tournament seed picked. Highest total ranks first.
-              </p>
+              <h2 className="text-base font-semibold text-ink">Seed totals</h2>
             </div>
             {pool.competition_mode !== 'march-madness' && (
-              <span className="text-xs text-slate-500">Starts with March Madness picks</span>
+              <span className="text-xs text-muted">Starts with March Madness picks</span>
             )}
           </div>
         </div>
 
         {seedLeaderboard.length === 0 ? (
-          <p className="px-4 py-5 text-sm text-slate-500 sm:px-5">No players have joined yet.</p>
+          <p className="px-4 py-5 text-sm text-muted sm:px-5">No players have joined yet.</p>
         ) : (
           <>
-            <div className="divide-y divide-slate-700 sm:hidden">
+            <div className="divide-y divide-line sm:hidden">
               {seedLeaderboard.map((player, index) => (
                 <div key={player.id} className="flex items-center gap-3 px-4 py-3">
-                  <span className="w-6 shrink-0 text-center text-xs font-semibold text-slate-500">
+                  <span className="w-6 shrink-0 text-center text-xs font-semibold text-muted">
                     {index + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-white">{player.full_name}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="truncate text-sm font-medium text-ink">{player.full_name}</p>
+                    <p className="mt-0.5 text-xs text-muted">
                       {player.seededPicks} seeded pick{player.seededPicks === 1 ? '' : 's'} ·{' '}
                       {player.status === 'alive' ? 'Alive' : 'Out'}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-bold tabular-nums text-white">{player.seedTotal}</p>
-                    <p className="text-[11px] text-slate-500">seed total</p>
+                    <p className="text-xl font-bold tabular-nums text-ink">{player.seedTotal}</p>
+                    <p className="text-[11px] text-muted">seed total</p>
                   </div>
                 </div>
               ))}
@@ -212,7 +202,7 @@ export default async function AdminDashboard() {
             <div className="hidden overflow-x-auto sm:block">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-700 text-left text-xs text-slate-500">
+                  <tr className="border-b border-line text-left text-xs text-muted">
                     <th className="w-14 px-5 py-2.5 font-medium">Rank</th>
                     <th className="px-4 py-2.5 font-medium">Player</th>
                     <th className="px-4 py-2.5 font-medium">Status</th>
@@ -220,20 +210,20 @@ export default async function AdminDashboard() {
                     <th className="px-5 py-2.5 text-right font-medium">Seed total</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-700/70">
+                <tbody className="divide-y divide-line">
                   {seedLeaderboard.map((player, index) => (
                     <tr key={player.id}>
-                      <td className="px-5 py-3 text-slate-500 tabular-nums">{index + 1}</td>
-                      <td className="px-4 py-3 font-medium text-white">{player.full_name}</td>
+                      <td className="px-5 py-3 text-muted tabular-nums">{index + 1}</td>
+                      <td className="px-4 py-3 font-medium text-ink">{player.full_name}</td>
                       <td className="px-4 py-3">
-                        <span className={player.status === 'alive' ? 'text-green-400' : 'text-red-400'}>
+                        <span className={player.status === 'alive' ? 'text-success' : 'text-danger'}>
                           {player.status === 'alive' ? 'Alive' : 'Out'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-400 tabular-nums">
+                      <td className="px-4 py-3 text-right text-muted tabular-nums">
                         {player.seededPicks}
                       </td>
-                      <td className="px-5 py-3 text-right text-base font-bold text-white tabular-nums">
+                      <td className="px-5 py-3 text-right text-base font-bold text-ink tabular-nums">
                         {player.seedTotal}
                       </td>
                     </tr>
@@ -246,10 +236,10 @@ export default async function AdminDashboard() {
       </section>
 
       {!slate && (
-        <div className="rounded-xl border border-amber-500/40 bg-slate-800 p-4">
-          <p className="text-amber-400 font-medium">No active slate set.</p>
-          <p className="text-slate-400 text-sm mt-1">
-            Go to <Link href="/admin/schedule" className="text-blue-400 underline">Schedule</Link> to load days from ESPN.
+        <div className="rounded-xl border border-warning/40 bg-surface p-4">
+          <p className="text-warning font-medium">No active slate set.</p>
+          <p className="text-muted text-sm mt-1">
+            Go to <Link href="/admin/schedule" className="text-accent-strong underline">Schedule</Link> to load days from ESPN.
           </p>
         </div>
       )}
@@ -260,22 +250,22 @@ export default async function AdminDashboard() {
       {slate && (
         <div className="grid gap-4 sm:grid-cols-2">
           {/* Pick distribution */}
-          <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-            <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-3">
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <p className="text-muted text-xs font-medium uppercase tracking-wide mb-3">
               Slate {slate.slate_number} Pick Distribution
             </p>
             {pickDistribution.length === 0 ? (
-              <p className="text-slate-500 text-sm">No picks yet.</p>
+              <p className="text-muted text-sm">No picks yet.</p>
             ) : (
               <table className="w-full text-sm">
                 <tbody>
                   {pickDistribution.map(({ team, count, pct }) => (
-                    <tr key={team} className="border-b border-slate-700/60 last:border-0">
+                    <tr key={team} className="border-b border-line last:border-0">
                       <td className="py-1.5">
-                        <span className="font-mono font-bold text-white">{team}</span>
+                        <span className="font-mono font-bold text-ink">{team}</span>
                       </td>
-                      <td className="py-1.5 text-right text-white">{count}</td>
-                      <td className="py-1.5 text-right text-slate-400 w-16">{pct.toFixed(0)}%</td>
+                      <td className="py-1.5 text-right text-ink">{count}</td>
+                      <td className="py-1.5 text-right text-muted w-16">{pct.toFixed(0)}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -284,16 +274,16 @@ export default async function AdminDashboard() {
           </div>
 
           {/* Missing picks */}
-          <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-            <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-3">
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <p className="text-muted text-xs font-medium uppercase tracking-wide mb-3">
               Haven&apos;t Picked Yet ({notPickedYet.length})
             </p>
             {notPickedYet.length === 0 ? (
-              <p className="text-green-400 text-sm">Everyone alive has picked.</p>
+              <p className="text-success text-sm">Everyone alive has picked.</p>
             ) : (
               <>
-                <p className="text-sm text-slate-300 leading-relaxed">{notPickedYet.join(', ')}</p>
-                <Link href="/admin/email" className="inline-block mt-3 text-xs text-blue-400 underline">
+                <p className="text-sm text-ink leading-relaxed">{notPickedYet.join(', ')}</p>
+                <Link href="/admin/email" className="inline-block mt-3 text-xs text-accent-strong underline">
                   Email these players
                 </Link>
               </>
@@ -301,17 +291,17 @@ export default async function AdminDashboard() {
           </div>
 
           {/* Games / results status */}
-          <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-            <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-3">
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <p className="text-muted text-xs font-medium uppercase tracking-wide mb-3">
               Slate {slate.slate_number} Games ({gradedCount}/{games.length} graded)
             </p>
             {games.length === 0 ? (
-              <p className="text-slate-500 text-sm">No games entered.</p>
+              <p className="text-muted text-sm">No games entered.</p>
             ) : (
               <ul className="space-y-1.5 text-sm">
                 {games.map((g) => (
                   <li key={g.id} className="flex items-center justify-between">
-                    <span className="font-mono text-white">
+                    <span className="font-mono text-ink">
                       {g.away_team} @ {g.home_team}
                     </span>
                     <ResultBadge result={g.result} home={g.home_team} away={g.away_team} />
@@ -322,14 +312,14 @@ export default async function AdminDashboard() {
           </div>
 
           {/* Unpaid */}
-          <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-            <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-3">
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <p className="text-muted text-xs font-medium uppercase tracking-wide mb-3">
               Unpaid Players ({unpaidPlayers.length})
             </p>
             {unpaidPlayers.length === 0 ? (
-              <p className="text-green-400 text-sm">Everyone has paid.</p>
+              <p className="text-success text-sm">Everyone has paid.</p>
             ) : (
-              <p className="text-sm text-slate-300 leading-relaxed">
+              <p className="text-sm text-ink leading-relaxed">
                 {unpaidPlayers.map((p: { full_name: string }) => p.full_name).sort().join(', ')}
               </p>
             )}
@@ -337,62 +327,19 @@ export default async function AdminDashboard() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <AdminCard
-          href="/admin/config"
-          title="Pool Configuration"
-          desc="Competition format, season, pick frequency, deadlines, reuse and tiebreak rules"
-        />
-        <AdminCard
-          href="/admin/schedule"
-          title="Enter Schedule"
-          desc="Load days from ESPN, or add a game by hand"
-        />
-        <AdminCard
-          href="/admin/results"
-          title="Enter Results"
-          desc="Enter game outcomes — the app auto-grades picks and eliminates players"
-        />
-        <AdminCard
-          href="/admin/players"
-          title="Manage Players"
-          desc="Import CSV, toggle paid status, request password reset emails, correct eliminations, submit picks"
-        />
-        <AdminCard
-          href="/admin/recap"
-          title="Weekly Recap"
-          desc="Generate copy-pasteable recap text for GroupMe"
-        />
-        <AdminCard
-          href="/admin/history"
-          title="Season History"
-          desc="Every slate's games, results, pick counts, and eliminations in one view"
-        />
-        <AdminCard
-          href="/admin/email"
-          title="Email Players"
-          desc="Broadcast a message to everyone, alive players, or those missing a pick"
-        />
-        <AdminCard
-          href="/admin/testing"
-          title="Testing Mode"
-          desc="Black-box sandbox with its own test users and schedule — rehearse the full game flow without touching real data"
-        />
-      </div>
-
       {/* Data export */}
-      <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-        <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-3">Data Export</p>
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <p className="text-muted text-xs font-medium uppercase tracking-wide mb-3">Data Export</p>
         <div className="flex flex-wrap gap-3">
           <a
             href="/api/admin/export?type=players"
-            className="rounded-lg border border-slate-600 bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600 transition-colors"
+            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-line transition-colors"
           >
             Export Players CSV
           </a>
           <a
             href="/api/admin/export?type=picks"
-            className="rounded-lg border border-slate-600 bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600 transition-colors"
+            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-line transition-colors"
           >
             Export Picks CSV
           </a>
@@ -407,45 +354,25 @@ export default async function AdminDashboard() {
 }
 
 function ResultBadge({ result, home, away }: { result: string; home: string; away: string }) {
-  if (result === 'pending') return <span className="text-xs text-amber-400">pending</span>
-  if (result === 'home_win') return <span className="text-xs font-semibold text-green-400">{home} won</span>
-  if (result === 'away_win') return <span className="text-xs font-semibold text-green-400">{away} won</span>
-  return <span className="text-xs font-semibold text-red-400">tie</span>
+  if (result === 'pending') return <span className="text-xs text-warning">pending</span>
+  if (result === 'home_win') return <span className="text-xs font-semibold text-success">{home} won</span>
+  if (result === 'away_win') return <span className="text-xs font-semibold text-success">{away} won</span>
+  return <span className="text-xs font-semibold text-danger">tie</span>
 }
 
 function StatCard({
   label,
   value,
-  color = 'text-white',
+  color = 'text-ink',
 }: {
   label: string
   value: string | number
   color?: string
 }) {
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-800 p-4 text-center">
-      <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">{label}</p>
+    <div className="rounded-xl border border-line bg-surface p-4 text-center">
+      <p className="text-muted text-xs font-medium uppercase tracking-wide">{label}</p>
       <p className={`mt-1 text-2xl font-bold ${color}`}>{value}</p>
     </div>
-  )
-}
-
-function AdminCard({
-  href,
-  title,
-  desc,
-}: {
-  href: string
-  title: string
-  desc: string
-}) {
-  return (
-    <Link
-      href={href}
-      className="block rounded-xl border border-slate-700 bg-slate-800 p-5 hover:border-slate-500 hover:bg-slate-700/50 transition-all"
-    >
-      <p className="font-semibold text-white">{title}</p>
-      <p className="text-slate-400 text-sm mt-1">{desc}</p>
-    </Link>
   )
 }

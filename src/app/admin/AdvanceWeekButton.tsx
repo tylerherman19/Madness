@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
+import { TONE_ROLE, TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
 
 interface Props {
   currentSlateDate: string | null
@@ -46,22 +46,22 @@ export default function AdvanceSlateButton({ currentSlateDate }: Props) {
   }
 
   return (
-    <div className="rounded-xl border border-blue-700 bg-slate-800 p-4 space-y-3">
-      <p className="text-sm font-semibold text-blue-300">Advance to Next Day</p>
-      <p className="text-xs text-slate-400">
+    <div className="rounded-xl border border-accent bg-surface p-4 space-y-3">
+      <p className="text-sm font-semibold text-accent-strong">Advance to Next Day</p>
+      <p className="text-xs text-muted">
         {currentSlateDate
-          ? `Currently on ${currentSlateDate}. Skips days with no games.`
+          ? `Currently on ${currentSlateDate}`
           : 'No active day yet — load a schedule first.'}
       </p>
       <button
         onClick={handleAdvance}
         disabled={loading}
-        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
+        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-strong disabled:opacity-50 transition-colors"
       >
         {loading ? 'Advancing…' : 'Advance to next day'}
       </button>
       {message && (
-        <p className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
+        <p role={TONE_ROLE[message.tone]} className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
     </div>
   )

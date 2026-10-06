@@ -65,7 +65,7 @@ export default function StandingsTable({
     <>
       {!isEmpty && (
         <div className="mb-3 flex justify-end" aria-label="Sort standings">
-          <div className="inline-flex rounded-full p-1" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}>
+          <div role="group" aria-label="Sort standings" className="inline-flex rounded-full p-1" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--line)' }}>
             {([...(showSeedTotal ? ['seeds'] as const : []), 'alphabetical', 'team'] as SortMode[]).map((mode) => {
               const active = sortMode === mode
               return (
@@ -75,7 +75,7 @@ export default function StandingsTable({
                   aria-pressed={active}
                   onClick={() => setSortMode(mode)}
                   className="rounded-full px-3 py-1.5 text-xs font-bold"
-                  style={{ background: active ? 'var(--dark)' : 'transparent', color: active ? 'white' : 'var(--muted)' }}
+                  style={{ background: active ? 'var(--ink)' : 'transparent', color: active ? 'var(--on-inverse)' : 'var(--muted)' }}
                 >
                   {mode === 'seeds' ? 'Seed total' : mode === 'alphabetical' ? 'Alphabetical' : 'Team'}
                 </button>
@@ -114,19 +114,19 @@ export default function StandingsTable({
               </tr>
             )}
             {sortedAliveRows.map((row) => (
-              <tr key={row.player_id} className="row-hover border-t" style={{ borderColor: 'var(--border)' }}>
-                <td className="py-3 pl-4 font-bold" style={{ color: 'var(--dark)' }}>{row.full_name}</td>
+              <tr key={row.player_id} className="row-hover border-t" style={{ borderColor: 'var(--line)' }}>
+                <td className="py-3 pl-4 font-bold" style={{ color: 'var(--ink)' }}>{row.full_name}</td>
                 <td className="py-3 px-4 hidden sm:table-cell">
                   <span className="pill pill-alive"><span className="pill-dot" />Alive</span>
                 </td>
-                {showSeedTotal && <td className="py-3 px-3 text-right font-bold tnum" style={{ color: 'var(--dark)' }}>{row.seed_total}</td>}
+                {showSeedTotal && <td className="py-3 px-3 text-right font-bold tnum" style={{ color: 'var(--ink)' }}>{row.seed_total}</td>}
                 <td className="py-3 pl-4 pr-4">
                   {row.current_picks.length > 0 ? (
                     <span className="flex flex-wrap gap-1.5">{row.current_picks.map((team) => <TeamChip key={team} team={team} size={28} directory={teamBrands} />)}</span>
                   ) : row.pick_locked ? (
                     <span className="pill pill-alive"><span className="pill-dot" />Pick In</span>
                   ) : (
-                    <span className="text-xs italic" style={{ color: 'var(--red)' }}>no pick yet</span>
+                    <span className="text-xs italic" style={{ color: 'var(--warning)' }}>no pick yet</span>
                   )}
                 </td>
               </tr>
@@ -142,7 +142,7 @@ export default function StandingsTable({
             {sortedElimRows.map((row) => {
               const eliminatedIn = row.elimination_slate
               return (
-                <tr key={row.player_id} className="border-t" style={{ borderColor: 'var(--border)', opacity: 0.65 }}>
+                <tr key={row.player_id} className="border-t" style={{ borderColor: 'var(--line)', background: 'var(--surface-sunken)' }}>
                   <td className="py-2.5 pl-4 text-sm" style={{ color: 'var(--muted)', textDecoration: 'line-through' }}>{row.full_name}</td>
                   <td className="py-2.5 px-4 hidden sm:table-cell">
                     <span className="pill pill-out">Out{eliminatedIn ? ` · ${periodByNumber[eliminatedIn]?.shortLabel ?? `#${eliminatedIn}`}` : ''}</span>

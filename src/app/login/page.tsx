@@ -37,7 +37,7 @@ export default function LoginPage() {
     <AuthShell eyebrow="Player access" title="Log in" description="Enter your name and the password you chose when you joined.">
             <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading} aria-describedby={error ? "login-error" : undefined}>
               <div>
-                <label htmlFor="login-name" className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Full name</label>
+                <label htmlFor="login-name" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Full name</label>
                 <input
                   id="login-name" name="full_name" maxLength={80} type="text"
                   value={fullName}
@@ -46,11 +46,11 @@ export default function LoginPage() {
                   required
                   autoComplete="name"
                   className="field w-full px-3.5 py-2.5 text-sm"
-                  style={{ color: 'var(--dark)' }}
+                  style={{ color: 'var(--ink)' }}
                 />
               </div>
               <div>
-                <label htmlFor="login-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Password</label>
+                <label htmlFor="login-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Password</label>
                 <input
                   id="login-password" name="password" type="password"
                   value={password}
@@ -60,12 +60,12 @@ export default function LoginPage() {
                   maxLength={72}
                   autoComplete="current-password"
                   className="field w-full px-3.5 py-2.5 text-sm"
-                  style={{ color: 'var(--dark)' }}
+                  style={{ color: 'var(--ink)' }}
                 />
               </div>
 
               {error && (
-                <p id="login-error" role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--red)', background: 'var(--red-tint)' }}>{error}</p>
+                <p id="login-error" role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--danger)', background: 'var(--danger-tint)' }}>{error}</p>
               )}
 
               <button
@@ -82,7 +82,7 @@ export default function LoginPage() {
             </Link>
             <p className="text-xs" style={{ color: 'var(--muted)' }}>
               New to the pool?{' '}
-              <Link href="/signup" className="underline" style={{ color: 'var(--dark)' }}>Sign up here</Link>
+              <Link href="/signup" className="underline" style={{ color: 'var(--ink)' }}>Sign up here</Link>
             </p>
             <Link href="/" className="block text-sm font-bold" style={{ color: 'var(--muted)' }}>Back to the pool</Link>
           </div>

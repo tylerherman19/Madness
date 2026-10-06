@@ -136,35 +136,34 @@ export default async function HistoryPage() {
     <div className="site-shell min-h-screen flex flex-col">
       <SiteHeader mode={mode} account={session.full_name} />
 
-      <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-10">
-        <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>Your season</p>
-        <h1 className="font-display text-5xl mb-8" style={{ color: 'var(--dark)' }}>Pick history</h1>
+      <main id="main" className="flex-1 mx-auto w-full max-w-4xl px-4 py-10">
+        <h1 className="font-display text-5xl mb-8" style={{ color: 'var(--ink)' }}>Pick history</h1>
 
         {/* Season summary */}
-        <div className={`grid ${caps.showSeedTotal ? 'grid-cols-4' : 'grid-cols-3'} border mb-8`} style={{ borderColor: 'var(--border)', background: 'white' }}>
+        <div className={`grid ${caps.showSeedTotal ? 'grid-cols-4' : 'grid-cols-3'} border mb-8`} style={{ borderColor: 'var(--line)', background: 'var(--surface)' }}>
           <div className="py-4 px-4 text-center">
             <p
               className="font-display text-3xl leading-none"
-              style={{ color: myStatus === 'alive' ? 'var(--green)' : 'var(--red)' }}
+              style={{ color: myStatus === 'alive' ? 'var(--success)' : 'var(--danger)' }}
             >
             {myStatus === 'alive' ? 'Alive' : 'Out'}
             </p>
             <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Status</p>
           </div>
-          <div className="py-4 px-4 text-center" style={{ borderLeft: '1px solid var(--border)' }}>
-            <p className="font-display text-3xl leading-none" style={{ color: 'var(--dark)' }}>
+          <div className="py-4 px-4 text-center" style={{ borderLeft: '1px solid var(--line)' }}>
+            <p className="font-display text-3xl leading-none" style={{ color: 'var(--ink)' }}>
               {wins}–{losses}
             </p>
             <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Record</p>
           </div>
           {caps.showSeedTotal && (
-            <div className="py-4 px-2 text-center" style={{ borderLeft: '1px solid var(--border)' }}>
-              <p className="font-display text-3xl leading-none" style={{ color: 'var(--dark)' }}>{seedTotal}</p>
+            <div className="py-4 px-2 text-center" style={{ borderLeft: '1px solid var(--line)' }}>
+              <p className="font-display text-3xl leading-none" style={{ color: 'var(--ink)' }}>{seedTotal}</p>
               <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Seed total</p>
             </div>
           )}
-          <div className="py-4 px-4 text-center" style={{ borderLeft: '1px solid var(--border)' }}>
-            <p className="font-display text-3xl leading-none" style={{ color: 'var(--dark)' }}>
+          <div className="py-4 px-4 text-center" style={{ borderLeft: '1px solid var(--line)' }}>
+            <p className="font-display text-3xl leading-none" style={{ color: 'var(--ink)' }}>
               {outlasted}/{others.length}
             </p>
             <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Outlasted</p>
@@ -179,7 +178,7 @@ export default async function HistoryPage() {
               <div
                 key={pick.id}
                 className="flex items-center justify-between gap-4 py-3 border-b"
-                style={{ borderColor: 'var(--border)' }}
+                style={{ borderColor: 'var(--line)' }}
               >
                 <div style={{ minWidth: 92, maxWidth: 170 }}>
                   <p className="text-xs font-bold tracking-widest uppercase leading-tight" style={{ color: 'var(--muted)' }}>
@@ -190,11 +189,11 @@ export default async function HistoryPage() {
                   <TeamMark team={pick.team} directory={teamBrands} size={40} showName />
                 </div>
                 <div className="text-right">
-                  {caps.showSeedTotal && pick.seed && <span className="block text-xs font-bold mb-1" style={{ color: 'var(--orange-dark)' }}>+{pick.seed} seed</span>}
+                  {caps.showSeedTotal && pick.seed && <span className="block text-xs font-bold mb-1" style={{ color: 'var(--accent-strong)' }}>+{pick.seed} seed</span>}
                   <span
                     className="text-xs font-bold tracking-wider"
                     style={{
-                      color: pick.outcome === 'won' ? 'var(--green)' : pick.outcome === 'lost' ? 'var(--red)' : 'var(--muted)',
+                      color: pick.outcome === 'won' ? 'var(--success)' : pick.outcome === 'lost' ? 'var(--danger)' : 'var(--muted)',
                     }}
                   >
                     {pick.outcome === 'won' ? 'SURVIVED' : pick.outcome === 'lost' ? 'ELIMINATED' : 'PENDING'}
@@ -219,7 +218,7 @@ export default async function HistoryPage() {
                 <span
                   key={t}
                   className="border px-2 py-1 font-mono text-xs font-bold"
-                  style={{ borderColor: 'var(--border)', color: 'var(--dark)', background: 'white' }}
+                  style={{ borderColor: 'var(--line)', color: 'var(--ink)', background: 'var(--surface)' }}
                   title={t}
                 >
                   <TeamMark team={t} directory={teamBrands} size={24} />

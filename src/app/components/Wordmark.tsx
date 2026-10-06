@@ -26,11 +26,11 @@ export default function Wordmark({
     <span className="flex items-center gap-2.5">
       <LogoMark size={size} />
       <span className="flex flex-col leading-none">
-        <span className="font-display text-[19px] tracking-[-0.035em]" style={{ color: tone === 'dark' ? 'var(--ink)' : '#fff' }}>MADNESS</span>
+        <span className="font-display text-[19px] tracking-[-0.035em]" style={{ color: tone === 'dark' ? 'var(--ink)' : 'var(--on-inverse)' }}>MADNESS</span>
         {showTagline && (
           <span
             className="brand-tagline mt-1 text-[10px] font-semibold tracking-[0.02em]"
-            style={{ color: tone === 'dark' ? 'var(--muted)' : '#aeb8b2' }}
+            style={{ color: tone === 'dark' ? 'var(--muted)' : 'var(--on-inverse-muted)' }}
           >
             {copyFor(mode).tagline}
           </span>

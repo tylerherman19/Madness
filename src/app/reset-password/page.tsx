@@ -12,11 +12,11 @@ export default async function ResetPasswordPage({
 }) {
   const { token } = await searchParams
   return (
-    <AuthShell eyebrow="Account recovery" title="Choose a new password" description="Use the link sent to your email to set a new password.">
+    <AuthShell eyebrow="Account recovery" title="Choose a new password">
       {typeof token === 'string' && token ? (
         <ResetPasswordForm token={token} />
       ) : (
-        <p className="text-sm" style={{ color: 'var(--red)' }}>This reset link is invalid.</p>
+        <p className="text-sm" style={{ color: 'var(--danger)' }}>This reset link is invalid.</p>
       )}
       <Link href="/login" className="mt-6 block text-center text-sm font-bold underline" style={{ color: 'var(--muted)' }}>Back to log in</Link>
     </AuthShell>

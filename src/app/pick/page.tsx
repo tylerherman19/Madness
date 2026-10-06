@@ -215,7 +215,7 @@ export default async function PickPage() {
     return (
       <Shell session={session} mode={mode}>
         <div className="text-center py-20">
-          <p className="font-display text-4xl" style={{ color: 'var(--dark)' }}>
+          <p className="font-display text-4xl" style={{ color: 'var(--ink)' }}>
             {caps.showTournamentRounds ? 'NO ACTIVE ROUND' : 'NO ACTIVE GAME DAY'}
           </p>
           <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>The pool hasn&apos;t started yet — check back soon.</p>
@@ -227,11 +227,11 @@ export default async function PickPage() {
   if (data.playerStatus === 'eliminated') {
     return (
       <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
-        <div className="border p-8 text-center" style={{ borderColor: 'var(--border)' }}>
-          <p className="font-display text-4xl" style={{ color: 'var(--red)' }}>ELIMINATED</p>
+        <div className="border p-8 text-center" style={{ borderColor: 'var(--line)' }}>
+          <p className="font-display text-4xl" style={{ color: 'var(--danger)' }}>ELIMINATED</p>
           <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>
             You can still follow along on the{' '}
-            <Link href="/standings" className="underline" style={{ color: 'var(--dark)' }}>standings page</Link>.
+            <Link href="/standings" className="underline" style={{ color: 'var(--ink)' }}>standings page</Link>.
           </p>
         </div>
       </Shell>
@@ -269,7 +269,7 @@ function Shell({
   return (
     <div className="site-shell flex min-h-screen flex-col">
       <SiteHeader mode={mode} account={session.full_name} />
-      <main className="content-width flex-1 py-8 sm:py-10">
+      <main id="main" className="content-width flex-1 py-8 sm:py-10">
         {children}
       </main>
       <Footer />

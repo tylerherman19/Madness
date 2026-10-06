@@ -166,13 +166,12 @@ export default async function GridPage() {
     <div className="site-shell">
       <SiteHeader mode={mode} />
 
-      <main className="content-width py-9 sm:py-12">
+      <main id="main" className="content-width py-9 sm:py-12">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-bold" style={{ color: 'var(--orange-dark)' }}>The full pool at a glance</p>
-            <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--dark)' }}>Pick grid</h1>
+            <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--ink)' }}>Pick grid</h1>
             <p className="mt-2 text-sm" style={{ color: 'var(--muted)' }}>
-              {caps.showTournamentRounds ? 'Every round' : 'Every game day'} · green won · red lost · ? hidden until it locks
+              {caps.showTournamentRounds ? 'Every round' : 'Every game day'} · ✓ won · ✗ lost · ? hidden until it locks
             </p>
           </div>
           <a href="/api/grid/export" className="btn-primary shrink-0 px-4 py-2 text-center text-sm font-bold">
@@ -192,7 +191,7 @@ export default async function GridPage() {
             <div className="card overflow-x-auto p-1" role="region" aria-label="Pool pick history" aria-describedby="grid-scroll-hint" tabIndex={0}>
               <table className="text-sm" style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                <tr style={{ borderBottom: '2px solid var(--line)' }}>
                   <th
                     className="text-left py-2 pr-4"
                     style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', minWidth: 140, position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 1 }}
@@ -224,7 +223,7 @@ export default async function GridPage() {
                   </tr>
                 )}
                 {withStats.map((player) => (
-                  <tr key={player.id} style={{ borderBottom: '1px solid var(--border)', opacity: player.status === 'eliminated' ? 0.7 : 1 }}>
+                  <tr key={player.id} style={{ borderBottom: '1px solid var(--line)', background: player.status === 'eliminated' ? 'var(--surface-sunken)' : undefined }}>
                     <td
                       className="py-2 pr-4"
                       style={{ position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 1 }}
@@ -232,9 +231,9 @@ export default async function GridPage() {
                       <div className="flex items-center gap-1.5">
                         <span
                           className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                          style={{ background: player.status === 'alive' ? 'var(--green)' : 'var(--red)' }}
+                          style={{ background: player.status === 'alive' ? 'var(--success)' : 'var(--danger)' }}
                         />
-                        <span className="font-medium" style={{ color: 'var(--dark)', whiteSpace: 'nowrap' }}>{player.full_name}</span>
+                        <span className="font-medium" style={{ color: 'var(--ink)', whiteSpace: 'nowrap' }}>{player.full_name}</span>
                       </div>
                     </td>
                     {slates.map((w) => {
@@ -265,10 +264,10 @@ export default async function GridPage() {
                           : 'pending'
                       const cellStyle =
                         outcome === 'won'
-                          ? { background: 'rgba(30,82,24,0.15)', color: 'var(--green)' }
+                          ? { background: 'var(--success-tint)', color: 'var(--success)' }
                           : outcome === 'lost'
-                          ? { background: 'rgba(180,30,30,0.15)', color: 'var(--red)' }
-                          : { background: 'rgba(100,100,100,0.1)', color: 'var(--muted)' }
+                          ? { background: 'var(--danger-tint)', color: 'var(--danger)' }
+                          : { background: 'var(--surface-sunken)', color: 'var(--muted)' }
 
                       return (
                         <td
@@ -276,7 +275,9 @@ export default async function GridPage() {
                           className="py-2 px-1 text-center font-mono font-bold"
                           style={{ fontSize: 11, borderRadius: 2, ...cellStyle }}
                         >
+                          {outcome !== 'pending' && <span aria-hidden="true">{outcome === 'won' ? '✓ ' : '✗ '}</span>}
                           {teams.join(' / ')}
+                          {outcome !== 'pending' && <span className="sr-only">, {outcome}</span>}
                         </td>
                       )
                     })}

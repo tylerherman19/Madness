@@ -12,7 +12,7 @@ export function Story({ kicker, lede, deck, method, children, id }: {
 }) {
   return (
     <section id={id} className="pt-10">
-      <p className="kicker">{kicker}</p>
+      <h2 className="kicker">{kicker}</h2>
       {lede && <h2 className="lede mt-2">{lede}</h2>}
       {deck && <p className="deck mt-2.5">{deck}</p>}
       {children && <div className="mt-5">{children}</div>}
@@ -41,7 +41,7 @@ export function ExposureFigure({ data }: { data: ExposureModule }) {
           <div className="grid items-center" style={{ gridTemplateColumns: '58px 1fr 48px', columnGap: 12 }}>
             <span className="eyebrow" style={{ fontSize: 9 }}>Hidden</span>
             <div className="bar-track" style={{ height: 15 }}>
-              <div className="bar-fill" style={{ width: widthOf(hiddenCount), background: 'repeating-linear-gradient(135deg, var(--border) 0 5px, var(--surface-sunken) 5px 10px)' }} />
+              <div className="bar-fill" style={{ width: widthOf(hiddenCount), background: 'repeating-linear-gradient(135deg, var(--line) 0 5px, var(--surface-sunken) 5px 10px)' }} />
             </div>
             <div className="text-right leading-tight">
               <span className="text-sm font-bold tnum" style={{ color: 'var(--muted)' }}>{hiddenCount}</span>
@@ -63,7 +63,7 @@ export function LeverageTable({ data, limit = 12 }: { data: LeverageModule; limi
         <thead><tr><th className="text-left p-3">Player</th><th className="text-left p-3">Pick</th><th className="text-right p-3">Best case</th></tr></thead>
         <tbody>
           {data.rows.slice(0, limit).map((row) => (
-            <tr key={row.player_id} style={{ borderTop: '1px solid var(--border)' }}>
+            <tr key={row.player_id} style={{ borderTop: '1px solid var(--line)' }}>
               <td className="p-3 font-semibold">{row.full_name}</td>
               <td className="p-3"><TeamChip team={row.team} size={18} /></td>
               <td className="p-3 text-right tnum">{row.bestCaseField} left</td>
@@ -99,8 +99,8 @@ export function BurnMap({ data }: { data: ScarcityModule }) {
             const onDark = step >= 4
             return (
               <div key={row.team} className="burn-cell hint" style={{ background: BURN_STEPS[step] }}>
-                <span className="block text-[11px] font-extrabold leading-none" style={{ color: onDark ? 'var(--cream)' : 'var(--ink)' }}>{row.team}</span>
-                <span className="block tnum leading-none mt-1 font-bold" style={{ fontSize: 9.5, color: onDark ? 'var(--cream)' : 'var(--ink-2)' }}>{row.availableTo}</span>
+                <span className="block text-[11px] font-extrabold leading-none" style={{ color: onDark ? 'var(--paper)' : 'var(--ink)' }}>{row.team}</span>
+                <span className="block tnum leading-none mt-1 font-bold" style={{ fontSize: 9.5, color: onDark ? 'var(--paper)' : 'var(--ink-2)' }}>{row.availableTo}</span>
                 <span className="hint-body">{row.team} · {row.burnedBy} of {aliveCount} survivors have spent it</span>
               </div>
             )

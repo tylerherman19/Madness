@@ -10,7 +10,7 @@ export default function LogoutButton() {
     router.refresh()
   }
   return (
-    <button onClick={handleLogout} className="text-xs tracking-widest uppercase transition-colors" style={{ color: '#888' }}>
+    <button onClick={handleLogout} className="text-xs tracking-widest uppercase transition-colors" style={{ color: 'var(--muted)' }}>
       Log Out
     </button>
   )

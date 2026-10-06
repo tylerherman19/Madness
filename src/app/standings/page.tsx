@@ -66,23 +66,23 @@ export default async function DashboardPage() {
       />
 
       {data && data.aliveCount === 1 && aliveRows.length === 1 && (
-        <div style={{ background: 'var(--dark)', borderBottom: '4px solid var(--green)' }}>
+        <div style={{ background: 'var(--ink)', borderBottom: '4px solid var(--success)' }}>
           <div className="content-width py-10 text-center">
-            <p className="eyebrow mb-2" style={{ color: 'var(--green)' }}>Survivor Champion</p>
-            <p className="font-display text-7xl sm:text-8xl" style={{ color: 'var(--cream)' }}>{aliveRows[0].full_name.toUpperCase()}</p>
-            <p className="mt-3 eyebrow" style={{ color: 'var(--green)' }}>Winner Takes ${data.potSize}</p>
+            <p className="eyebrow mb-2" style={{ color: 'var(--success)' }}>Survivor Champion</p>
+            <p className="font-display text-7xl sm:text-8xl" style={{ color: 'var(--paper)' }}>{aliveRows[0].full_name.toUpperCase()}</p>
+            <p className="mt-3 eyebrow" style={{ color: 'var(--success)' }}>Winner Takes ${data.potSize}</p>
           </div>
         </div>
       )}
 
       {!data ? (
-        <main className="content-width py-24 text-center">
-          <p className="font-display text-6xl" style={{ color: 'var(--dark)' }}>The court is being set</p>
+        <main id="main" className="content-width py-24 text-center">
+          <p className="font-display text-6xl" style={{ color: 'var(--ink)' }}>The court is being set</p>
           <p className="mt-4 text-sm" style={{ color: 'var(--muted)' }}>The pool will appear here when the first game day is ready.</p>
         </main>
       ) : (
-        <main className="content-width dashboard-content pb-4">
-          <div className="workspace-heading"><div><h1>Standings</h1><p>The field, every pick, and your season in numbers.</p></div><Link href="/grid" className="btn-secondary px-4">Full pick grid</Link></div>
+        <main id="main" className="content-width dashboard-content pb-4">
+          <div className="workspace-heading"><h1>Standings</h1><Link href="/grid" className="btn-secondary px-4">Full pick grid</Link></div>
           {insights?.exposure && (
             <section className="pt-10">
               <ExposureFigure data={insights.exposure} />
@@ -90,7 +90,7 @@ export default async function DashboardPage() {
           )}
 
           {/* ---- Standings ---- */}
-          <Section id="standings" title="Standings" className="pt-10">
+          <Section id="standings" className="pt-10">
             <StandingsTable
               aliveRows={clientAliveRows}
               elimRows={elimRows}
@@ -102,19 +102,8 @@ export default async function DashboardPage() {
             />
           </Section>
 
-          {/* ---- The season so far ---- */}
           {insights?.scarcity && (
-            <div className="pt-12">
-              <hr className="story-rule" />
-              <p className="eyebrow mt-4">The season so far</p>
-            </div>
-          )}
-
-          {insights?.scarcity && (
-            <Story
-              kicker="What's left on the board"
-              method="Counts cover surviving entries only. A team is spent for a player the moment their pick on it locks — you can't pick the same team twice all season."
-            >
+            <Story kicker="What's left on the board">
               <BurnMap data={insights.scarcity} />
             </Story>
           )}
@@ -141,26 +130,25 @@ export default async function DashboardPage() {
                   </thead>
                   <tbody>
                     {data.teamStats.map((stat) => (
-                      <tr key={stat.team} className="row-hover border-t" style={{ borderColor: 'var(--border)' }}>
+                      <tr key={stat.team} className="row-hover border-t" style={{ borderColor: 'var(--line)' }}>
                         <td className="py-2.5 pl-4 pr-3"><TeamChip team={stat.team} showName size={30} directory={data.teamBrands} /></td>
-                        <td className="py-2.5 px-3 text-right tnum" style={{ color: 'var(--dark)' }}>{stat.times_picked}</td>
+                        <td className="py-2.5 px-3 text-right tnum" style={{ color: 'var(--ink)' }}>{stat.times_picked}</td>
                         <td className="py-2.5 px-3">
                           <div className="flex items-center justify-end gap-2">
                             <div className="w-16 rounded-full overflow-hidden hidden sm:block" style={{ background: 'var(--surface-sunken)', height: 6 }}>
-                              <div className="h-full rounded-full" style={{ width: `${stat.win_rate * 100}%`, background: stat.win_rate >= 0.6 ? 'var(--green)' : stat.win_rate >= 0.4 ? 'var(--dark)' : 'var(--red)' }} />
+                              <div className="h-full rounded-full" style={{ width: `${stat.win_rate * 100}%`, background: stat.win_rate >= 0.6 ? 'var(--success)' : stat.win_rate >= 0.4 ? 'var(--ink)' : 'var(--danger)' }} />
                             </div>
-                            <span className="font-semibold tnum" style={{ color: stat.win_rate >= 0.6 ? 'var(--green)' : stat.win_rate >= 0.4 ? 'var(--dark)' : 'var(--red)' }}>
+                            <span className="font-semibold tnum" style={{ color: stat.win_rate >= 0.6 ? 'var(--success)' : stat.win_rate >= 0.4 ? 'var(--ink)' : 'var(--danger)' }}>
                               {(stat.win_rate * 100).toFixed(0)}%
                             </span>
                           </div>
                         </td>
-                        <td className="py-2.5 pl-3 pr-4 text-right tnum" style={{ color: 'var(--dark)' }}>{stat.eliminations_caused}</td>
+                        <td className="py-2.5 pl-3 pr-4 text-right tnum" style={{ color: 'var(--ink)' }}>{stat.eliminations_caused}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <p className="method">Completed slates only. Win rate is how often a team delivered for the people who picked it; Outs is how many entries it ended.</p>
             </Section>
           )}
 
@@ -176,10 +164,10 @@ export default async function DashboardPage() {
   )
 }
 
-function Section({ id, title, children, className }: { id?: string; title: string; children: React.ReactNode; className?: string }) {
+function Section({ id, title, children, className }: { id?: string; title?: string; children: React.ReactNode; className?: string }) {
   return (
     <section id={id} className={`pt-10 ${className ?? ''}`}>
-      <div className="section-heading mb-3"><h2>{title}</h2></div>
+      {title && <div className="section-heading mb-3"><h2>{title}</h2></div>}
       {children}
     </section>
   )

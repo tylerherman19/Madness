@@ -81,11 +81,9 @@ export default async function TestingPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Testing Mode</h1>
-        <p className="text-slate-400 mt-1">
-          A black-box sandbox: separate players, schedule, picks, and results living in their own
-          database schema. While enabled, this browser sees the entire site — picks, standings,
-          grading, auto-assign, everything — running against sandbox data. Other visitors are unaffected.
+        <h1 className="text-2xl font-bold text-ink">Testing Mode</h1>
+        <p className="text-muted mt-1">
+          Only this browser sees sandbox data. Other visitors are unaffected.
         </p>
       </div>
       <TestingPanel testMode={testMode} snapshot={snapshot} inviteToken={inviteToken} />

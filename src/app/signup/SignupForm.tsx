@@ -46,14 +46,14 @@ export default function SignupForm() {
   }
 
   return (
-    <AuthShell eyebrow="Open registration" title="Join the pool" description="$25 entry. Pick winners, stay alive, and never use the same team twice.">
+    <AuthShell eyebrow="Open registration" title="Join the pool" description="$25 entry.">
           {done ? (
             <div className="card p-6 sm:p-8 text-center space-y-4">
-              <p className="font-display text-5xl" style={{ color: 'var(--green)' }}>You&apos;re in</p>
-              <p className="text-sm" style={{ color: 'var(--dark)' }}>
+              <p className="font-display text-5xl" style={{ color: 'var(--success)' }}>You&apos;re in</p>
+              <p className="text-sm" style={{ color: 'var(--ink)' }}>
                 Your account is ready. Use the password you just chose to log in and submit picks.
               </p>
-              <p className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--dark)', background: 'var(--green-tint)' }}>
+              <p className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--ink)', background: 'var(--success-tint)' }}>
                 Venmo <strong>@griffinsell</strong> $25 to lock in your spot.
               </p>
               <Link href="/login" className="btn-primary inline-flex px-6 py-3 mt-1">
@@ -71,7 +71,7 @@ export default function SignupForm() {
                     { id: 'signup-venmo', maxLength: 50, label: 'Venmo Handle', type: 'text', val: venmo, set: setVenmo, placeholder: '@yourhandle', required: true },
                   ].map(({ id, maxLength, label, type, val, set, placeholder, required, autoComplete }) => (
                     <div key={label}>
-                      <label htmlFor={id} className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>{label}</label>
+                      <label htmlFor={id} className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>{label}</label>
                       <input
                         id={id}
                         name={id}
@@ -83,18 +83,18 @@ export default function SignupForm() {
                         required={required}
                         autoComplete={autoComplete}
                         className="field w-full px-3.5 py-2.5 text-sm"
-                        style={{ color: 'var(--dark)' }}
+                        style={{ color: 'var(--ink)' }}
                       />
                     </div>
                   ))}
 
                   <div>
-                    <label htmlFor="signup-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Create password</label>
-                    <input id="signup-password" name="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--dark)' }} />
+                    <label htmlFor="signup-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Create password</label>
+                    <input id="signup-password" name="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--ink)' }} />
                   </div>
                   <div>
-                    <label htmlFor="signup-confirm-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--dark)' }}>Confirm password</label>
-                    <input id="signup-confirm-password" name="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--dark)' }} />
+                    <label htmlFor="signup-confirm-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Confirm password</label>
+                    <input id="signup-confirm-password" name="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--ink)' }} />
                   </div>
 
                   <div className="flex gap-3 items-start text-sm leading-6">
@@ -102,7 +102,7 @@ export default function SignupForm() {
                     <label htmlFor="signup-terms">I agree to the <Link className="underline" href="/terms">Terms of Use</Link> and acknowledge the <Link className="underline" href="/privacy">Privacy Policy</Link>, including the $25 entry fee and payment arrangements.</label>
                   </div>
                   <p className="text-sm leading-6">Questions before joining? <a className="underline" href={`mailto:${supportEmail}`}>{supportEmail}</a>.</p>
-                  {error && <p id="signup-error" role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--red)', background: 'var(--red-tint)' }}>{error}</p>}
+                  {error && <p id="signup-error" role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--danger)', background: 'var(--danger-tint)' }}>{error}</p>}
 
                   <button
                     type="submit"
@@ -117,7 +117,7 @@ export default function SignupForm() {
               <div className="mt-6 text-center space-y-2.5">
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>
                   Already have an account?{' '}
-                  <Link href="/login" className="underline" style={{ color: 'var(--dark)' }}>Log in</Link>
+                  <Link href="/login" className="underline" style={{ color: 'var(--ink)' }}>Log in</Link>
                 </p>
                 <Link href="/" className="block text-sm font-bold" style={{ color: 'var(--muted)' }}>Back to the pool</Link>
               </div>

@@ -7,8 +7,8 @@ export const metadata = pageMetadata('Account Recovery', 'Contact the Madness or
 export default function ForgotPinPage() {
   return (
     <AuthShell eyebrow="Account recovery" title="Forgot your password?" description="Ask the pool organizer to request a reset link for your account.">
-          <div className="border p-6 text-center" style={{ borderColor: 'var(--border)' }}>
-            <p className="font-bold" style={{ color: 'var(--dark)' }}>Ask the pool organizer</p>
+          <div className="border p-6 text-center" style={{ borderColor: 'var(--line)' }}>
+            <p className="font-bold" style={{ color: 'var(--ink)' }}>Ask the pool organizer</p>
             <p className="text-sm mt-2" style={{ color: 'var(--muted)' }}>
               The organizer can request a reset link for your account. Email delivery is being set up, so reset links are not being sent yet.
             </p>
