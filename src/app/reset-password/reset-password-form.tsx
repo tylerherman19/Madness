@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
+import { apiRequest } from '@/lib/clientApi'
 
 export default function ResetPasswordForm({ token }: { token: string }) {
   const [password, setPassword] = useState('')
@@ -18,19 +19,12 @@ export default function ResetPasswordForm({ token }: { token: string }) {
     setError('')
     setSaving(true)
     try {
-      const res = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password }),
-      })
+      const res = await apiRequest('/api/auth/reset-password', { method: 'POST', body: { token, password } })
       if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        setError(data?.error || 'Could not reset password.')
+        setError(res.error)
         return
       }
       setDone(true)
-    } catch {
-      setError('Could not reset password. Try again.')
     } finally {
       setSaving(false)
     }
@@ -48,7 +42,7 @@ export default function ResetPasswordForm({ token }: { token: string }) {
         <label htmlFor="confirm-password" className="text-sm font-bold block mb-2">Confirm new password</label>
         <input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" />
       </div>
-      {error && <p className="text-sm" style={{ color: 'var(--red)' }}>{error}</p>}
+      {error && <p role="alert" className="text-sm" style={{ color: 'var(--red)' }}>{error}</p>}
       <button type="submit" disabled={saving} className="btn-primary w-full py-3">{saving ? 'Saving…' : 'Set new password'}</button>
     </form>
   )

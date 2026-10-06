@@ -14,7 +14,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { password } = await req.json()
+    const body = await req.json().catch(() => null)
+    const password = body && typeof body === 'object' ? (body as { password?: unknown }).password : undefined
     if (!password || typeof password !== 'string' || password.length > 200) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
     }
@@ -31,7 +32,8 @@ export async function POST(req: NextRequest) {
 
     await createAdminSession()
     return NextResponse.json({ ok: true })
-  } catch {
+  } catch (err) {
+    console.error('admin login error', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

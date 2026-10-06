@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { requireAdmin } from '@/lib/api'
+import { requireAdmin, isUuid, readJsonObject, badRequest } from '@/lib/api'
 import { gradeSlatePicks } from '@/lib/grading'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
@@ -13,8 +13,10 @@ export async function POST(req: NextRequest) {
   if (unauthorized) return unauthorized
 
   try {
-    const { game_id, result } = await req.json()
-    if (!game_id || !result) {
+    const body = await readJsonObject(req)
+    if (!body) return badRequest()
+    const { game_id, result } = body
+    if (!isUuid(game_id) || typeof result !== 'string') {
       return NextResponse.json({ error: 'Missing game_id or result' }, { status: 400 })
     }
 
@@ -30,9 +32,13 @@ export async function POST(req: NextRequest) {
       .update({ result })
       .eq('id', game_id)
       .select('*')
-      .single()
+      .maybeSingle()
 
-    if (error || !game) {
+    if (error) {
+      console.error('result update error', error)
+      return NextResponse.json({ error: 'Failed to save result' }, { status: 500 })
+    }
+    if (!game) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     }
 

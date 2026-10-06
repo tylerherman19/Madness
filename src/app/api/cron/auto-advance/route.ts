@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
-import { logAudit } from '@/lib/audit'
+import { logAudit, reportJobFailure } from '@/lib/audit'
 import type { Game } from '@/types'
 
 // How far ahead to look for the next day that actually has games. College
@@ -89,9 +89,16 @@ async function run(actor: 'system' | 'admin') {
       })
     }
 
-    await supabase.from('slates').update({ is_active: false }).eq('is_active', true)
+    const { error: clearErr } = await supabase.from('slates').update({ is_active: false }).eq('is_active', true).neq('id', result.slateId)
+    if (clearErr) {
+      await reportJobFailure('Advance to next game day', clearErr, { actor }, supabase)
+      return NextResponse.json({ ok: false, error: 'Could not deactivate the current slate' }, { status: 500 })
+    }
     const { error: activateErr } = await supabase.from('slates').update({ is_active: true }).eq('id', result.slateId)
-    if (activateErr) return NextResponse.json({ ok: false, error: activateErr.message }, { status: 500 })
+    if (activateErr) {
+      await reportJobFailure('Advance to next game day', activateErr, { actor, next_date: nextDate }, supabase)
+      return NextResponse.json({ ok: false, error: 'Could not activate the next slate — no slate is active. Set one manually.' }, { status: 500 })
+    }
 
     const label = nextDate
     await logAudit(supabase, {
@@ -108,7 +115,7 @@ async function run(actor: 'system' | 'admin') {
       games_synced: result.gamesSynced,
     })
   } catch (err) {
-    console.error('auto-advance error', err)
+    await reportJobFailure('Advance to next game day', err, { actor })
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

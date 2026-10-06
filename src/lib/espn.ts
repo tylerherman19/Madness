@@ -73,6 +73,27 @@ export interface EspnEvent {
 // means anything by looking at `roundLabel`.
 export const UNRANKED = 99
 
+// ESPN is unofficial and occasionally slow; never let one call hang a request.
+const ESPN_TIMEOUT_MS = 8_000
+
+// GET with a timeout and one retry on a network error or 5xx — ESPN's edge
+// throws the odd transient 502. Callers treat a null as "feed unavailable".
+async function espnFetch(url: string, revalidateSeconds: number): Promise<Response | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        ...(revalidateSeconds > 0 ? { next: { revalidate: revalidateSeconds } } : { cache: 'no-store' as const }),
+        signal: AbortSignal.timeout(ESPN_TIMEOUT_MS),
+      })
+      if (res.ok || res.status < 500) return res
+    } catch {
+      // timeout or network error — retry once below
+    }
+    if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 400))
+  }
+  return null
+}
+
 interface EspnRankingEntry {
   current?: number
   team?: { abbreviation?: string }
@@ -89,11 +110,8 @@ interface EspnRankingPoll {
 // rankings endpoint instead of being inferred from a game row.
 export async function fetchApRankings(revalidateSeconds = 3600): Promise<Record<string, number>> {
   try {
-    const res = await fetch(
-      RANKINGS_URL,
-      revalidateSeconds > 0 ? { next: { revalidate: revalidateSeconds } } : { cache: 'no-store' }
-    )
-    if (!res.ok) return {}
+    const res = await espnFetch(RANKINGS_URL, revalidateSeconds)
+    if (!res?.ok) return {}
     const data = (await res.json()) as { rankings?: EspnRankingPoll[] }
     const poll = (data.rankings ?? []).find(
       (ranking) => ranking.type?.toLowerCase() === 'ap' || ranking.name?.toLowerCase().includes('ap top 25')
@@ -123,11 +141,8 @@ async function fetchGroup(
 ): Promise<EspnEvent[] | null> {
   const url = `${SCOREBOARD_URL}?groups=${group}&dates=${yyyymmdd}&limit=200`
   try {
-    const res = await fetch(
-      url,
-      revalidateSeconds > 0 ? { next: { revalidate: revalidateSeconds } } : { cache: 'no-store' }
-    )
-    if (!res.ok) return null
+    const res = await espnFetch(url, revalidateSeconds)
+    if (!res?.ok) return null
     const data = await res.json()
     return (data.events ?? []) as EspnEvent[]
   } catch {

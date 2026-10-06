@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
+import { apiRequest } from '@/lib/clientApi'
 
 type Audience = 'all' | 'alive' | 'unpicked'
 
@@ -30,13 +31,13 @@ export default function BroadcastForm({ counts, slateNumber }: Props) {
     setSending(true)
     setStatus({ tone: 'info', text: 'Sending… this can take a minute for large audiences.' })
     try {
-      const res = await fetch('/api/admin/broadcast', {
+      const res = await apiRequest<{ sent: number; total: number; failures?: string[] }>('/api/admin/broadcast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: subject.trim(), message: message.trim(), audience }),
+        body: { subject: subject.trim(), message: message.trim(), audience },
+        timeoutMs: 320_000,
       })
-      const data = await res.json()
       if (res.ok) {
+        const data = res.data
         setStatus({
           tone: 'ok',
           text: `Sent to ${data.sent}/${data.total} players${data.failures ? ` — failed: ${data.failures.join(', ')}` : ''}`,
@@ -44,10 +45,8 @@ export default function BroadcastForm({ counts, slateNumber }: Props) {
         setSubject('')
         setMessage('')
       } else {
-        setStatus({ tone: 'error', text: `Error: ${data.error}` })
+        setStatus({ tone: 'error', text: `Error: ${res.error}` })
       }
-    } catch {
-      setStatus({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setSending(false)
     }

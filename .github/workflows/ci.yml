@@ -25,12 +25,13 @@ jobs:
       - name: Test
         run: npm test
 
-      # Lint is currently informational: some pre-existing frontend files still
-      # trip eslint. Once those are cleaned up, drop continue-on-error to make
-      # lint a required gate.
       - name: Lint
         run: npx eslint
-        continue-on-error: true
+
+      # Fails the build on known high/critical advisories in shipped
+      # (non-dev) dependencies. Run `npm audit fix` or bump the package.
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Build
         run: npx next build

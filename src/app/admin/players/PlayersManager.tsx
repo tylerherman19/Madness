@@ -4,6 +4,8 @@ import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Player } from '@/types'
 import { teamColor } from '@/lib/teamColors'
+import { apiRequest } from '@/lib/clientApi'
+import Dialog from '@/app/components/Dialog'
 
 interface Props {
   players: Player[]
@@ -41,6 +43,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   const [addError, setAddError] = useState('')
   const [addingPlayer, setAddingPlayer] = useState(false)
   const [resettingPlayerId, setResettingPlayerId] = useState<string | null>(null)
+  const [busyPlayerId, setBusyPlayerId] = useState<string | null>(null)
 
   const query = search.trim().toLowerCase()
   const filtered = query
@@ -65,125 +68,146 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   }
 
   async function bulkSetPaid(paid: boolean) {
-    if (!someSelected) return
+    if (!someSelected || bulkWorking) return
     setBulkWorking(true)
     setMessage('')
     const ids = [...selected]
-    await Promise.all(
-      ids.map((id) =>
-        fetch(`/api/players/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paid }),
-        })
+    try {
+      const results = await Promise.all(
+        ids.map((id) => apiRequest(`/api/players/${id}`, { method: 'PATCH', body: { paid } }))
       )
-    )
-    setMessage(`Marked ${ids.length} player${ids.length !== 1 ? 's' : ''} as ${paid ? 'paid' : 'unpaid'}`)
-    setSelected(new Set())
-    setBulkWorking(false)
-    router.refresh()
+      const failed = results.filter((r) => !r.ok).length
+      setMessage(
+        failed
+          ? `Marked ${ids.length - failed} of ${ids.length} as ${paid ? 'paid' : 'unpaid'}; ${failed} failed. Refresh and retry the rest.`
+          : `Marked ${ids.length} player${ids.length !== 1 ? 's' : ''} as ${paid ? 'paid' : 'unpaid'}`
+      )
+      setSelected(new Set())
+      router.refresh()
+    } finally {
+      setBulkWorking(false)
+    }
   }
 
   async function togglePaid(playerId: string, current: boolean) {
-    const res = await fetch(`/api/players/${playerId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paid: !current }),
-    })
-    if (res.ok) router.refresh()
-    else setMessage('Failed to update')
+    if (busyPlayerId) return
+    setBusyPlayerId(playerId)
+    try {
+      const res = await apiRequest(`/api/players/${playerId}`, { method: 'PATCH', body: { paid: !current } })
+      if (res.ok) router.refresh()
+      else setMessage(`Failed to update payment: ${res.error}`)
+    } finally {
+      setBusyPlayerId(null)
+    }
   }
 
   async function requestPasswordReset(playerId: string, fullName: string) {
+    if (resettingPlayerId) return
     setResettingPlayerId(playerId)
     setMessage('')
     try {
-      const res = await fetch(`/api/players/${playerId}/regen-pin`, { method: 'POST' })
-      const data = await res.json().catch(() => null)
+      const res = await apiRequest<{ emailSent?: boolean }>(`/api/players/${playerId}/regen-pin`, { method: 'POST' })
       if (res.ok) {
-        setMessage(data?.emailSent
+        setMessage(res.data.emailSent
           ? `Password reset email sent to ${fullName}`
           : `Reset request created for ${fullName}. Email delivery is off, so no email was sent.`)
       } else {
-        setMessage(data?.error || 'Failed to create reset request')
+        setMessage(res.error || 'Failed to create reset request')
       }
-    } catch {
-      setMessage('Failed to create reset request')
     } finally {
       setResettingPlayerId(null)
     }
   }
 
   async function bulkDelete() {
-    if (!someSelected) return
+    if (!someSelected || bulkWorking) return
     const ids = [...selected]
-    if (!confirm(`Permanently delete ${ids.length} player${ids.length !== 1 ? 's' : ''}? This cannot be undone and removes all their picks.`)) return
+    if (!confirm(`Permanently delete ${ids.length} player${ids.length !== 1 ? 's' : ''}? This removes all their picks. A snapshot of each entry is kept in the audit log.`)) return
     setBulkWorking(true)
     setMessage('')
-    const results = await Promise.all(
-      ids.map((id) => fetch(`/api/players/${id}`, { method: 'DELETE' }))
-    )
-    const failed = results.filter((r) => !r.ok).length
-    setMessage(
-      failed
-        ? `Deleted ${ids.length - failed} player${ids.length - failed !== 1 ? 's' : ''}, ${failed} failed`
-        : `Deleted ${ids.length} player${ids.length !== 1 ? 's' : ''}`
-    )
-    setSelected(new Set())
-    setBulkWorking(false)
-    router.refresh()
+    try {
+      const results = await Promise.all(
+        ids.map((id) => apiRequest(`/api/players/${id}`, { method: 'DELETE' }))
+      )
+      const failed = results.filter((r) => !r.ok).length
+      setMessage(
+        failed
+          ? `Deleted ${ids.length - failed} player${ids.length - failed !== 1 ? 's' : ''}, ${failed} failed`
+          : `Deleted ${ids.length} player${ids.length !== 1 ? 's' : ''}`
+      )
+      setSelected(new Set())
+      router.refresh()
+    } finally {
+      setBulkWorking(false)
+    }
   }
 
   async function deletePlayer(player: Player) {
-    if (!confirm(`Permanently delete ${player.full_name}? This cannot be undone and removes all their picks.`)) return
-    const res = await fetch(`/api/players/${player.id}`, { method: 'DELETE' })
-    if (res.ok) {
-      setMessage(`${player.full_name} deleted`)
-      setSelected((prev) => { const next = new Set(prev); next.delete(player.id); return next })
-      router.refresh()
-    } else {
-      setMessage('Failed to delete player')
+    if (busyPlayerId) return
+    if (!confirm(`Permanently delete ${player.full_name}? This removes all their picks. A snapshot of the entry is kept in the audit log.`)) return
+    setBusyPlayerId(player.id)
+    try {
+      const res = await apiRequest(`/api/players/${player.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setMessage(`${player.full_name} deleted`)
+        setSelected((prev) => { const next = new Set(prev); next.delete(player.id); return next })
+        router.refresh()
+      } else {
+        setMessage(`Failed to delete player: ${res.error}`)
+      }
+    } finally {
+      setBusyPlayerId(null)
     }
   }
 
   async function toggleElimination(player: Player) {
-    const reason =
-      player.status === 'alive'
-        ? prompt('Reason for elimination (shown in recap):') || 'Admin correction'
-        : null
+    if (busyPlayerId) return
+    let reason: string | null = null
+    if (player.status === 'alive') {
+      // prompt() returns null on Cancel — that must abort, not eliminate.
+      const entered = prompt(`Eliminate ${player.full_name}? Enter a reason (shown in recap):`, 'Admin correction')
+      if (entered === null) return
+      reason = entered.trim().slice(0, 200) || 'Admin correction'
+    } else if (!confirm(`Restore ${player.full_name} to alive?`)) {
+      return
+    }
 
-    const res = await fetch(`/api/players/${player.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        status: player.status === 'eliminated' ? 'alive' : 'eliminated',
-        elimination_reason: reason,
-        elimination_slate: activeWeekNumber,
-      }),
-    })
-    if (res.ok) {
-      setMessage(`${player.full_name} ${player.status === 'alive' ? 'eliminated' : 'restored'}`)
-      router.refresh()
+    setBusyPlayerId(player.id)
+    try {
+      const res = await apiRequest(`/api/players/${player.id}`, {
+        method: 'PATCH',
+        body: {
+          status: player.status === 'eliminated' ? 'alive' : 'eliminated',
+          elimination_reason: reason,
+          elimination_slate: player.status === 'eliminated' ? null : activeWeekNumber,
+        },
+      })
+      if (res.ok) {
+        setMessage(`${player.full_name} ${player.status === 'alive' ? 'eliminated' : 'restored'}`)
+        router.refresh()
+      } else {
+        setMessage(`Failed to update ${player.full_name}: ${res.error}`)
+      }
+    } finally {
+      setBusyPlayerId(null)
     }
   }
 
   async function saveEdit() {
-    if (!editModal) return
+    if (!editModal || savingEdit) return
     setSavingEdit(true)
     setEditError('')
     try {
-      const res = await fetch(`/api/players/${editModal.id}`, {
+      const res = await apiRequest(`/api/players/${editModal.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: editModal.full_name.trim(), email: editModal.email.trim() }),
+        body: { full_name: editModal.full_name.trim(), email: editModal.email.trim() },
       })
-      const data = await res.json()
       if (res.ok) {
         setMessage('Player updated')
         setEditModal(null)
         router.refresh()
       } else {
-        setEditError(data.error || 'Failed to update player')
+        setEditError(res.error || 'Failed to update player')
       }
     } finally {
       setSavingEdit(false)
@@ -191,26 +215,24 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   }
 
   async function submitAdminPick() {
-    if (!pickModal || !activeWeekId) return
+    if (!pickModal || !activeWeekId || submittingPick) return
     setSubmittingPick(true)
     try {
-      const res = await fetch('/api/picks', {
+      const res = await apiRequest('/api/picks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           slate_id: activeWeekId,
           team: pickModal.team,
           player_id_override: pickModal.player.id,
           submitted_by_admin: true,
-        }),
+        },
       })
-      const data = await res.json()
       if (res.ok) {
         setMessage(`Pick submitted for ${pickModal.player.full_name}: ${pickModal.team}`)
         setPickModal(null)
         router.refresh()
       } else {
-        setMessage(`Error: ${data.error}`)
+        setMessage(`Error: ${res.error}`)
       }
     } finally {
       setSubmittingPick(false)
@@ -218,23 +240,30 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   }
 
   async function handleImport() {
-    if (!csvText.trim()) return
+    if (!csvText.trim() || importing) return
     setImporting(true)
     setMessage('')
     try {
-      const res = await fetch('/api/import', {
+      const res = await apiRequest<{ count: number; skipped?: number; errors?: string[] }>('/api/import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csv: csvText }),
+        body: { csv: csvText },
+        timeoutMs: 300_000,
       })
-      const data = await res.json()
       if (res.ok) {
-        setMessage(`Imported ${data.count} players with their CSV passwords.`)
-        setCsvText('')
-        setShowImport(false)
+        const { count, skipped = 0, errors = [] } = res.data
+        const parts = [`Imported ${count} player${count === 1 ? '' : 's'}`]
+        if (skipped) parts.push(`${skipped} already existed`)
+        if (errors.length) parts.push(`${errors.length} failed: ${errors.join('; ')}`)
+        setMessage(parts.join(' · '))
+        // Keep the CSV in the box when rows failed so they can be fixed and re-run;
+        // rows that were created are skipped on the next import.
+        if (errors.length === 0) {
+          setCsvText('')
+          setShowImport(false)
+        }
         router.refresh()
       } else {
-        setMessage(`Error: ${data.error}`)
+        setMessage(`Error: ${res.error}`)
       }
     } finally {
       setImporting(false)
@@ -243,28 +272,19 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
 
   async function addPlayer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (addingPlayer) return
     setAddingPlayer(true)
     setAddError('')
     setMessage('')
     try {
-      const res = await fetch('/api/admin/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newPlayer),
-      })
-      const data = await res.json().catch(() => null)
+      const res = await apiRequest('/api/admin/players', { method: 'POST', body: newPlayer })
       if (res.ok) {
         setMessage(`Added ${newPlayer.full_name.trim()}`)
         setNewPlayer({ full_name: '', email: '', password: '' })
         setShowAdd(false)
         router.refresh()
-      } else if (data?.playerAdded) {
-        setMessage(data.error)
-        setNewPlayer({ full_name: '', email: '', password: '' })
-        setShowAdd(false)
-        router.refresh()
       } else {
-        setAddError(data?.error || 'Failed to add player')
+        setAddError(res.error || 'Failed to add player')
       }
     } finally {
       setAddingPlayer(false)
@@ -298,6 +318,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               <code style={{ color: 'var(--dark)' }}>Full Name, Phone, Email, Venmo, Paid, Password</code>
             </p>
             <textarea
+              aria-label="Players CSV"
               value={csvText}
               onChange={(e) => setCsvText(e.target.value)}
               placeholder="Full Name,Phone,Email,Venmo,Paid,Password&#10;John Smith,555-1234,john@example.com,@johnsmith,yes,full-court-press"
@@ -327,7 +348,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       </div>
 
       {message && (
-        <p className="text-sm font-medium" style={{ color: message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') ? 'var(--red)' : 'var(--green)' }}>
+        <p role="status" className="text-sm font-medium" style={{ color: message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') ? 'var(--red)' : 'var(--green)' }}>
           {message}
         </p>
       )}
@@ -373,7 +394,8 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       {/* Search */}
       <div className="flex items-center gap-3">
         <input
-          type="text"
+          type="search"
+          aria-label="Search players"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search players by name or email…"
@@ -389,8 +411,10 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
 
       {/* Mobile cards */}
       <div className="sm:hidden space-y-3">
-        {filtered.length === 0 && query ? (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>No players match &ldquo;{search}&rdquo;.</p>
+        {filtered.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            {query ? <>No players match &ldquo;{search}&rdquo;.</> : 'No players yet. Add one above or share the signup page.'}
+          </p>
         ) : null}
         {filtered.map((p) => {
           const pick = currentPicks[p.id]
@@ -405,6 +429,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
+                  aria-label={`Select ${p.full_name}`}
                   checked={selected.has(p.id)}
                   onChange={() => toggleSelect(p.id)}
                   className="shrink-0"
@@ -419,6 +444,8 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => togglePaid(p.id, p.paid)}
+                  disabled={busyPlayerId === p.id}
+                  aria-label={`${p.full_name}: ${p.paid ? 'paid' : 'unpaid'}. Toggle payment status`}
                   className="pill"
                   style={{ background: p.paid ? 'var(--green-tint)' : 'var(--red-tint)', color: p.paid ? 'var(--green)' : 'var(--red)' }}
                 >
@@ -453,6 +480,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 </button>
                 <button
                   onClick={() => toggleElimination(p)}
+                  disabled={busyPlayerId === p.id}
                   className="rounded border px-2 py-1 text-xs"
                   style={actionBtn(p.status === 'alive' ? 'red' : 'green')}
                 >
@@ -469,6 +497,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 )}
                 <button
                   onClick={() => deletePlayer(p)}
+                  disabled={busyPlayerId === p.id}
                   className="rounded border px-2 py-1 text-xs"
                   style={actionBtn('red')}
                 >
@@ -486,7 +515,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           <thead>
             <tr style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--border)' }} className="text-left">
               <th className="px-4 py-3">
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+                <input type="checkbox" aria-label="Select all players" checked={allSelected} onChange={toggleSelectAll} />
               </th>
               <th className="px-4 py-3 eyebrow">Name</th>
               <th className="px-4 py-3 eyebrow">Status</th>
@@ -498,10 +527,10 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && query && (
+            {filtered.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-sm" style={{ color: 'var(--muted)' }}>
-                  No players match &ldquo;{search}&rdquo;.
+                  {query ? <>No players match &ldquo;{search}&rdquo;.</> : 'No players yet. Add one above or share the signup page.'}
                 </td>
               </tr>
             )}
@@ -519,7 +548,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                   }}
                 >
                   <td className="px-4 py-3">
-                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />
+                    <input type="checkbox" aria-label={`Select ${p.full_name}`} checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />
                   </td>
                   <td className="px-4 py-3 font-medium" style={{ color: 'var(--dark)' }}>{p.full_name}</td>
                   <td className="px-4 py-3">
@@ -540,6 +569,8 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                   <td className="px-4 py-3">
                     <button
                       onClick={() => togglePaid(p.id, p.paid)}
+                  disabled={busyPlayerId === p.id}
+                  aria-label={`${p.full_name}: ${p.paid ? 'paid' : 'unpaid'}. Toggle payment status`}
                       className="pill"
                       style={{ background: p.paid ? 'var(--green-tint)' : 'var(--red-tint)', color: p.paid ? 'var(--green)' : 'var(--red)' }}
                     >
@@ -566,6 +597,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                       </button>
                       <button
                         onClick={() => toggleElimination(p)}
+                  disabled={busyPlayerId === p.id}
                         className="rounded border px-2 py-0.5 text-xs"
                         style={actionBtn(p.status === 'alive' ? 'red' : 'green')}
                       >
@@ -582,6 +614,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                       )}
                       <button
                         onClick={() => deletePlayer(p)}
+                  disabled={busyPlayerId === p.id}
                         className="rounded border px-2 py-0.5 text-xs"
                         style={actionBtn('red')}
                       >
@@ -598,11 +631,10 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
 
       {/* Late player signup modal */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
-          <form onSubmit={addPlayer} className="card p-6 w-full max-w-sm space-y-4" style={{ background: 'var(--surface)' }}>
+        <Dialog title="Add Player" onClose={() => { if (!addingPlayer) setShowAdd(false) }}>
+          <form onSubmit={addPlayer} className="space-y-4">
             <div>
-              <h3 className="font-display text-2xl" style={{ color: 'var(--dark)' }}>Add Player</h3>
-              <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
                 This bypasses the public signup deadline. Give the player the password you set below.
               </p>
             </div>
@@ -648,7 +680,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 maxLength={254}
               />
             </div>
-            {addError && <p className="text-sm" style={{ color: 'var(--red)' }}>{addError}</p>}
+            {addError && <p role="alert" className="text-sm" style={{ color: 'var(--red)' }}>{addError}</p>}
             <div className="flex gap-3">
               <button
                 type="submit"
@@ -660,6 +692,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               <button
                 type="button"
                 onClick={() => setShowAdd(false)}
+                disabled={addingPlayer}
                 className="flex-1 rounded-lg border py-2"
                 style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
               >
@@ -667,24 +700,24 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               </button>
             </div>
           </form>
-        </div>
+        </Dialog>
       )}
 
       {/* Admin pick modal */}
       {pickModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
-          <div className="card p-6 w-full max-w-sm space-y-4" style={{ background: 'var(--surface)' }}>
-            <h3 className="font-display text-2xl" style={{ color: 'var(--dark)' }}>
-              {currentPicks[pickModal.player.id] ? 'Change Pick' : 'Submit Pick'} — {pickModal.player.full_name}
-            </h3>
+        <Dialog
+          title={<>{currentPicks[pickModal.player.id] ? 'Change Pick' : 'Submit Pick'} — {pickModal.player.full_name}</>}
+          onClose={() => { if (!submittingPick) setPickModal(null) }}
+        >
             {currentPicks[pickModal.player.id] && (
               <p className="text-xs" style={{ color: 'var(--muted)' }}>
                 Current pick: <span className="font-mono font-bold" style={{ color: 'var(--dark)' }}>{currentPicks[pickModal.player.id]}</span>
               </p>
             )}
             <div>
-              <label className="eyebrow block mb-1">Team</label>
+              <label className="eyebrow block mb-1" htmlFor="admin-pick-team">Team</label>
               <select
+                id="admin-pick-team"
                 value={pickModal.team}
                 onChange={(e) => setPickModal({ ...pickModal, team: e.target.value })}
                 className="field w-full px-3 py-2"
@@ -708,28 +741,28 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               </button>
               <button
                 onClick={() => setPickModal(null)}
+                disabled={submittingPick}
                 className="flex-1 rounded-lg border py-2"
                 style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
               >
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Edit player modal */}
       {editModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
-          <div className="card p-6 w-full max-w-sm space-y-4" style={{ background: 'var(--surface)' }}>
-            <h3 className="font-display text-2xl" style={{ color: 'var(--dark)' }}>Edit Player</h3>
+        <Dialog title="Edit Player" onClose={() => { if (!savingEdit) setEditModal(null) }}>
             <p className="text-xs" style={{ color: 'var(--muted)' }}>
               Name is the login key — changing it changes what they type in to log in.
             </p>
             <div>
-              <label className="eyebrow block mb-1">Full Name</label>
+              <label className="eyebrow block mb-1" htmlFor="edit-player-name">Full Name</label>
               <input
+                id="edit-player-name"
                 type="text"
+                maxLength={80}
                 value={editModal.full_name}
                 onChange={(e) => setEditModal({ ...editModal, full_name: e.target.value })}
                 className="field w-full px-3 py-2 text-sm"
@@ -737,16 +770,18 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               />
             </div>
             <div>
-              <label className="eyebrow block mb-1">Email</label>
+              <label className="eyebrow block mb-1" htmlFor="edit-player-email">Email</label>
               <input
+                id="edit-player-email"
                 type="email"
+                maxLength={254}
                 value={editModal.email}
                 onChange={(e) => setEditModal({ ...editModal, email: e.target.value })}
                 className="field w-full px-3 py-2 text-sm"
                 style={{ color: 'var(--dark)' }}
               />
             </div>
-            {editError && <p className="text-sm" style={{ color: 'var(--red)' }}>{editError}</p>}
+            {editError && <p role="alert" className="text-sm" style={{ color: 'var(--red)' }}>{editError}</p>}
             <div className="flex gap-3">
               <button
                 onClick={saveEdit}
@@ -757,14 +792,14 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               </button>
               <button
                 onClick={() => setEditModal(null)}
+                disabled={savingEdit}
                 className="flex-1 rounded-lg border py-2"
                 style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
               >
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )

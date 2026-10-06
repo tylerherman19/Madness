@@ -75,7 +75,7 @@ npm run dev
 
 ## Database
 
-`supabase/migrations/` — apply `001` through `021` in order against a blank project.
+`supabase/migrations/` — apply `001` through `022` in order against a blank project. Apply new migrations to a Supabase branch or local stack first, then production — never hand-edit the production schema.
 They create the `public` schema plus a mirrored `sandbox` schema used by Test Mode.
 
 - `020` turns row-level security back on for `slates`, `teams`, `games`, `picks`
@@ -84,6 +84,11 @@ They create the `public` schema plus a mirrored `sandbox` schema used by Test Mo
 - `021` adds per-slate sync/auto-assign bookkeeping and the
   `claim_slate_auto_assign()` function. The app runs without it, but first-tip
   auto-assign stays off until it is applied (the daily cron still runs).
+
+- `022` adds `updated_at` triggers, case-insensitive unique emails, length/score
+  check constraints, and restricts `bump_rate_limit()` to the service role. If it
+  fails on the email index, two players share an email that differs only by case;
+  merge them and re-run.
 
 Large reads (a season's games and picks) are paged through `src/lib/db.ts`:
 PostgREST silently caps every response at 1,000 rows by default.

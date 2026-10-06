@@ -1,5 +1,15 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
+// Every database call gets a deadline. Without one a stalled connection holds
+// the serverless function (and the user's spinner) until the platform kills it.
+const DB_TIMEOUT_MS = 15_000
+
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const timeout = AbortSignal.timeout(DB_TIMEOUT_MS)
+  const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+  return fetch(input, { ...init, signal })
+}
+
 // Lazy singleton per schema — only creates the client when first called, so
 // build-time evaluation of this module doesn't fail without env vars set.
 function lazySupabase(schema: string): SupabaseClient {
@@ -14,6 +24,7 @@ function lazySupabase(schema: string): SupabaseClient {
         client = createClient(url, key, {
           auth: { persistSession: false },
           db: { schema },
+          global: { fetch: fetchWithTimeout },
         }) as unknown as SupabaseClient
       }
       const value = (client as unknown as Record<string, unknown>)[prop as string]

@@ -77,8 +77,10 @@ export default async function DashboardPage() {
 
       {!data ? (
         <main className="content-width py-24 text-center">
-          <p className="font-display text-6xl" style={{ color: 'var(--dark)' }}>The court is being set</p>
-          <p className="mt-4 text-sm" style={{ color: 'var(--muted)' }}>The pool will appear here when the first game day is ready.</p>
+          <h1 className="font-display text-6xl" style={{ color: 'var(--dark)' }}>The court is being set</h1>
+          {/* getDashboardData returns null both before the season and when the
+              database can't be reached, so the copy covers both honestly. */}
+          <p className="mt-4 text-sm" style={{ color: 'var(--muted)' }}>Standings appear here once the first game day is ready. If the pool is already underway, refresh in a minute.</p>
         </main>
       ) : (
         <main className="content-width dashboard-content pb-4">

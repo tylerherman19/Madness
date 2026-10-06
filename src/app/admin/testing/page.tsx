@@ -32,7 +32,7 @@ async function getSandboxSnapshot(): Promise<SandboxSnapshot> {
     const { data: players, error } = await sandboxSupabase
       .from('players')
       .select('id, full_name, email, status')
-      .order('full_name')
+      .order('full_name').order('id')
     // Surface schema-setup problems (missing migration / unexposed schema)
     // right in the panel instead of failing silently everywhere.
     if (error) return { ok: false, error: error.message, effectiveNow: new Date().toISOString(), ...empty }

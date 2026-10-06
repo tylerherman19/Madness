@@ -2,10 +2,32 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSession } from './session'
 
+export { isIsoDate, isClockTime } from './validation'
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value)
+}
+
+// Parse a JSON object body without throwing. Malformed JSON, arrays and
+// primitives all come back as null so routes can answer 400 rather than
+// falling into their generic 500 handler.
+export async function readJsonObject(req: Request): Promise<Record<string, unknown> | null> {
+  const body: unknown = await req.json().catch(() => null)
+  return body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : null
+}
+
+export function badRequest(message = 'Invalid request body'): NextResponse {
+  return NextResponse.json({ error: message }, { status: 400 })
+}
+
+// Log the real database/driver error server-side and return a generic message.
+// Raw PostgREST messages name tables, columns and constraints; they are for
+// the logs, not the browser.
+export function serverError(context: string, err: unknown, message = 'Something went wrong. Try again.'): NextResponse {
+  console.error(context, err)
+  return NextResponse.json({ error: message }, { status: 500 })
 }
 
 // Escape LIKE/ILIKE wildcards so user input used in .ilike() matches

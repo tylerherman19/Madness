@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { draftMode } from 'next/headers'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
-import { requireAdmin } from '@/lib/api'
+import { requireAdmin, isUuid } from '@/lib/api'
 import { isTestMode, setTestModeCookie, clearTestModeCookie } from '@/lib/testMode'
 import { sandboxSupabase } from '@/lib/supabase'
 import { hashPassword } from '@/lib/password'
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   if (unauthorized) return unauthorized
 
   try {
-    const body = await req.json()
+    const body = await req.json().catch(() => null)
     const action = body?.action
 
     if (action === 'enable') {
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
       const gameId = body?.game_id
       const homeScore = Number(body?.home_score)
       const awayScore = Number(body?.away_score)
-      if (!gameId || !Number.isFinite(homeScore) || !Number.isFinite(awayScore) || homeScore < 0 || awayScore < 0) {
+      if (!isUuid(gameId) || !Number.isFinite(homeScore) || !Number.isFinite(awayScore) || homeScore < 0 || awayScore < 0) {
         return NextResponse.json({ error: 'Invalid score' }, { status: 400 })
       }
       const { error } = await sandboxSupabase
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'finalize_game') {
       const gameId = body?.game_id
-      if (!gameId) return NextResponse.json({ error: 'Missing game_id' }, { status: 400 })
+      if (!isUuid(gameId)) return NextResponse.json({ error: 'Missing game_id' }, { status: 400 })
 
       const { data: game } = await sandboxSupabase.from('games').select('*').eq('id', gameId).single()
       if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })

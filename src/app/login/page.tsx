@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AuthShell from '@/app/components/AuthShell'
+import { apiRequest } from '@/lib/clientApi'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -17,17 +18,10 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: fullName.trim(), password }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Login failed'); return }
+      const res = await apiRequest('/api/auth/login', { method: 'POST', body: { full_name: fullName.trim(), password } })
+      if (!res.ok) { setError(res.error); return }
       router.push('/pick')
       router.refresh()
-    } catch {
-      setError('Something went wrong. Try again.')
     } finally {
       setLoading(false)
     }

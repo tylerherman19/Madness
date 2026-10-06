@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { requireAdmin, isUuid } from '@/lib/api'
+import { requireAdmin, isUuid, readJsonObject } from '@/lib/api'
 import { gradeSlatePicks } from '@/lib/grading'
 import type { Game } from '@/types'
 
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   if (unauthorized) return unauthorized
 
   try {
-    const { slate_id } = await req.json()
+    const slate_id = (await readJsonObject(req))?.slate_id
     if (!isUuid(slate_id)) return NextResponse.json({ error: 'Invalid slate_id' }, { status: 400 })
 
     const supabase = await getDb()

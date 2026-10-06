@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { apiRequest } from '@/lib/clientApi'
 import {
   COMPETITION_COPY,
   MODE_LABEL,
@@ -224,23 +225,18 @@ export default function PoolConfigForm({ pool }: { pool: PoolConfig }) {
     setSaving(true)
     setError('')
     try {
-      const res = await fetch('/api/admin/pool-config', {
+      const res = await apiRequest<{ pool: PoolConfig }>('/api/admin/pool-config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pool_id: pool.id, ...patch }),
+        body: { pool_id: pool.id, ...patch },
       })
-      const data = await res.json()
       if (!res.ok) {
-        setError(data.error || 'Failed to save')
+        setError(res.error)
         return false
       }
-      setDraft(data.pool)
+      setDraft(res.data.pool)
       setSaved(note)
       router.refresh()
       return true
-    } catch {
-      setError('Something went wrong. Try again.')
-      return false
     } finally {
       setSaving(false)
     }

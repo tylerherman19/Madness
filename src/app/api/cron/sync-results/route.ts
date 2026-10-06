@@ -3,6 +3,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { gradeSlatePicks } from '@/lib/grading'
+import { reportJobFailure } from '@/lib/audit'
 import type { Game } from '@/types'
 
 // Vercel Cron — refreshes the active slate from ESPN and grades picks, no
@@ -41,6 +42,7 @@ async function run() {
     const yyyymmdd = String(slate.slate_date).replace(/-/g, '')
     const sync = await syncSlateFromEspn(supabase, yyyymmdd, slate.season_year)
     if (!sync.ok) {
+      await reportJobFailure('Sync results from ESPN', sync.error ?? 'ESPN sync failed', { slate_date: slate.slate_date }, supabase)
       return NextResponse.json({ error: sync.error }, { status: 502 })
     }
 
@@ -68,7 +70,7 @@ async function run() {
       grading,
     })
   } catch (err) {
-    console.error('sync-results error', err)
+    await reportJobFailure('Sync results from ESPN', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

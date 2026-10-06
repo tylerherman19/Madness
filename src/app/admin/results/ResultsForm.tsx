@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Game, Slate } from '@/types'
 import { TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
+import { apiRequest } from '@/lib/clientApi'
 
 interface Props {
   slate: Slate
@@ -19,6 +20,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
     Object.fromEntries(games.map((g) => [g.id, g.result as GameResult]))
   )
   const [submitting, setSubmitting] = useState(false)
+  const [savingGameId, setSavingGameId] = useState<string | null>(null)
   const [message, setMessage] = useState<StatusMessage | null>(null)
   const [gradingResult, setGradingResult] = useState<null | {
     eliminated: string[]
@@ -26,53 +28,51 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
   }>(null)
 
   async function saveResult(gameId: string, result: GameResult) {
+    if (savingGameId || submitting) return
+    const previous = results[gameId]
     setResults((prev) => ({ ...prev, [gameId]: result }))
     setMessage(null)
-
+    setSavingGameId(gameId)
     try {
-      const res = await fetch('/api/results', {
+      const res = await apiRequest<{ grading?: { eliminated: string[]; advanced: string[] } }>('/api/results', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ game_id: gameId, result }),
+        body: { game_id: gameId, result },
+        timeoutMs: 120_000,
       })
-      const data = await res.json()
-
       if (!res.ok) {
-        setMessage({ tone: 'error', text: `Error: ${data.error}` })
+        // Roll the optimistic selection back so the buttons match the database.
+        setResults((prev) => ({ ...prev, [gameId]: previous }))
+        setMessage({ tone: 'error', text: `Error: ${res.error}` })
         return
       }
-
-      if (data.grading) {
-        setGradingResult(data.grading)
-        router.refresh()
-      }
-    } catch {
-      setMessage({ tone: 'error', text: 'Server error. Try again.' })
+      setMessage({ tone: 'ok', text: 'Result saved.' })
+      if (res.data.grading) setGradingResult(res.data.grading)
+      router.refresh()
+    } finally {
+      setSavingGameId(null)
     }
   }
 
   async function gradeAllPending() {
+    if (submitting || savingGameId) return
     setSubmitting(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/results/grade-slate', {
+      const res = await apiRequest<{ grading?: { eliminated: string[]; advanced: string[] } }>('/api/results/grade-week', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slate_id: slate.id }),
+        body: { slate_id: slate.id },
+        timeoutMs: 300_000,
       })
-      const data = await res.json()
-      if (res.ok && data.grading) {
-        setGradingResult(data.grading)
+      if (res.ok && res.data.grading) {
+        setGradingResult(res.data.grading)
         setMessage({
           tone: 'ok',
-          text: `Graded ${slate.slate_number}. ${data.grading.eliminated.length} eliminated.`,
+          text: `Graded Slate ${slate.slate_number}. ${res.data.grading.eliminated.length} eliminated.`,
         })
         router.refresh()
       } else {
-        setMessage({ tone: 'error', text: data.error || 'Grading failed' })
+        setMessage({ tone: 'error', text: res.ok ? 'Grading failed' : res.error })
       }
-    } catch {
-      setMessage({ tone: 'error', text: 'Server error' })
     } finally {
       setSubmitting(false)
     }
@@ -108,7 +108,9 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
                 <button
                   key={opt.value}
                   onClick={() => saveResult(g.id, opt.value)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  disabled={savingGameId !== null || submitting}
+                  aria-pressed={results[g.id] === opt.value}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-60 ${
                     results[g.id] === opt.value
                       ? opt.value === 'pending'
                         ? 'bg-slate-600 text-white'
@@ -129,7 +131,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
       <div className="flex items-center gap-4">
         <button
           onClick={gradeAllPending}
-          disabled={submitting}
+          disabled={submitting || savingGameId !== null}
           className="rounded-lg bg-green-600 px-6 py-2.5 font-semibold text-white hover:bg-green-500 disabled:opacity-50 transition-colors"
         >
           {submitting ? 'Grading…' : 'Grade All Picks & Eliminate Losers'}
@@ -142,7 +144,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
       </p>
 
       {message && (
-        <p className={`text-sm ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
+        <p role="status" className={`text-sm ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
 
       {gradingResult && (

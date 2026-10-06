@@ -15,7 +15,7 @@ export default function SweatBoard({teamBrands,autoPickBehavior}:{teamBrands:Tea
  const live=data?.hasLiveGames??false
  useEffect(()=>{
   let cancelled=false
-  async function load(){try{const res=await fetch('/api/sweat',{cache:'no-store'});if(!res.ok)throw new Error();const body=await res.json();if(!cancelled){setData(body);setUpdated(new Date());setError(false)}}catch{if(!cancelled)setError(true)}}
+  async function load(){try{const res=await fetch('/api/sweat',{cache:'no-store',signal:AbortSignal.timeout(15000)});if(!res.ok)throw new Error();const body=await res.json();if(!cancelled){setData(body);setUpdated(new Date());setError(false)}}catch{if(!cancelled)setError(true)}}
   load();const timer=setInterval(load,live?30000:300000)
   return()=>{cancelled=true;clearInterval(timer)}
  },[live,retry])

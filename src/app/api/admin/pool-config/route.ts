@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { getDb } from '@/lib/testMode'
-import { requireAdmin, isUuid } from '@/lib/api'
+import { requireAdmin, isUuid, readJsonObject, badRequest, serverError } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { getPoolConfig, updatePoolConfig, type PoolConfigPatch } from '@/lib/pool'
 import {
@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
   if (unauthorized) return unauthorized
 
   try {
-    const body = (await req.json()) as Record<string, unknown>
+    const body = await readJsonObject(req)
+    if (!body) return badRequest()
     const supabase = await getDb()
 
     const current = await getPoolConfig(supabase)
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
 
     const result = await updatePoolConfig(supabase, poolId, patch)
     if ('error' in result) {
-      return NextResponse.json({ error: result.error }, { status: 500 })
+      return serverError('pool-config update error', result.error, 'Failed to save pool configuration')
     }
 
     // A mode change is the one edit worth calling out in the trail: it

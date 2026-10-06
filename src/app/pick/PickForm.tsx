@@ -6,6 +6,7 @@ import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
 import { roundDisplay } from '@/lib/competition'
 import { Logo, Arrow, Ball } from '@/app/components/Sports'
 import s from '@/app/components/sports.module.css'
+import { apiRequest } from '@/lib/clientApi'
 
 export interface GameSide {
   team: string
@@ -165,17 +166,18 @@ export default function PickForm({
     setSubmitting(true)
     setError('')
     try {
-      const response = await fetch('/api/picks', {
+      const response = await apiRequest<{ pick: { id: string; team: string; slate_id: string } }>('/api/picks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slate_id: slateId, team: selected, pick_id: editingId }),
+        body: { slate_id: slateId, team: selected, pick_id: editingId },
       })
-      const result = await response.json()
       if (!response.ok) {
-        setError(result.error || 'Could not save your pick. Try again.')
+        setError(response.error)
+        // The server may have saved it before the connection dropped; reload
+        // the authoritative picks so the screen doesn't show stale data.
+        if (response.status === 0 || response.status >= 500) router.refresh()
         return
       }
-      const saved = result.pick as { id: string; team: string; slate_id: string }
+      const saved = response.data.pick
       setPicks((current) => {
         const next: SavedPick = {
           id: saved.id,
@@ -192,8 +194,6 @@ export default function PickForm({
       setEditingId(null)
       setConfirmed(false)
       router.refresh()
-    } catch {
-      setError('Could not save your pick. Check your connection and try again.')
     } finally {
       setSubmitting(false)
     }

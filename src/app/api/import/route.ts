@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { requireAdmin, escapeIlike } from '@/lib/api'
+import { requireAdmin, escapeIlike, readJsonObject, badRequest } from '@/lib/api'
+import { normalizeEmail, parseCsv } from '@/lib/validation'
 import { hashPassword, passwordValidationError } from '@/lib/password'
 import { logAudit } from '@/lib/audit'
 
@@ -18,22 +19,22 @@ interface CSVRow {
   password: string
 }
 
-function parseCSV(csv: string): CSVRow[] {
-  const lines = csv.trim().split('\n').map((l) => l.trim()).filter(Boolean)
-  if (lines.length < 2) return []
+type ParsedRow = { row: CSVRow } | { error: string }
 
-  // Skip header row
-  const rows = lines.slice(1)
-  return rows.map((line) => {
-    // Simple CSV parse (handles unquoted fields)
-    const cols = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
-    const [full_name = '', phone = '', email = '', venmo_handle = '', paidStr = '', password = ''] = cols
-    const paid =
-      paidStr.toLowerCase() === 'yes' ||
-      paidStr.toLowerCase() === 'true' ||
-      paidStr === '1'
-    return { full_name, phone, email: email.toLowerCase(), venmo_handle, paid, password }
-  }).filter((r) => r.full_name && r.email && r.password)
+// Header row first; quoted fields may contain commas (e.g. "Smith, Jr.").
+function parseRows(csv: string): ParsedRow[] {
+  return parseCsv(csv).slice(1).map((cols, index) => {
+    const [rawName = '', phone = '', rawEmail = '', venmo_handle = '', paidStr = '', password = ''] = cols.map((c) => c.trim())
+    const full_name = rawName.replace(/\s+/g, ' ')
+    const line = `Row ${index + 2}`
+    if (!full_name) return { error: `${line}: missing name` }
+    if (full_name.length > 80) return { error: `${line}: name is longer than 80 characters` }
+    const email = normalizeEmail(rawEmail)
+    if (!email) return { error: `${line} (${full_name}): invalid email` }
+    if (!password) return { error: `${line} (${full_name}): missing password` }
+    const paid = ['yes', 'true', '1', 'y'].includes(paidStr.toLowerCase())
+    return { row: { full_name, phone: phone.slice(0, 20), email, venmo_handle: venmo_handle.slice(0, 50), paid, password } }
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -41,11 +42,16 @@ export async function POST(req: NextRequest) {
   if (unauthorized) return unauthorized
 
   try {
-    const { csv } = await req.json()
-    if (!csv) return NextResponse.json({ error: 'No CSV provided' }, { status: 400 })
+    const body = await readJsonObject(req)
+    const csv = body?.csv
+    if (typeof csv !== 'string' || !csv.trim()) return badRequest('No CSV provided')
+    if (csv.length > 200_000) return badRequest('CSV is too large. Split it into smaller batches.')
 
-    const rows = parseCSV(csv)
+    const parsed = parseRows(csv)
+    const rows = parsed.flatMap((p) => ('row' in p ? [p.row] : []))
+    const errors: string[] = parsed.flatMap((p) => ('error' in p ? [p.error] : []))
     if (rows.length === 0) {
+      if (errors.length > 0) return NextResponse.json({ error: `No valid rows. ${errors.slice(0, 5).join('; ')}` }, { status: 400 })
       return NextResponse.json({ error: 'No valid rows found. Check CSV format.' }, { status: 400 })
     }
     if (rows.length > MAX_ROWS) {
@@ -59,7 +65,9 @@ export async function POST(req: NextRequest) {
 
     let count = 0
     let skipped = 0
-    const errors: string[] = []
+    // Emails seen earlier in this same file — a pasted CSV with the same
+    // person twice must not create two entries.
+    const seen = new Set<string>()
 
     for (const row of rows) {
       try {
@@ -69,12 +77,26 @@ export async function POST(req: NextRequest) {
           continue
         }
 
+        if (seen.has(row.email)) {
+          skipped++
+          continue
+        }
+        seen.add(row.email)
+
         // Check if player already exists — never overwrite their password.
-        const { data: existing } = await supabase
+        // limit(1).maybeSingle(): .single() errors on 0 or 2+ matches, and an
+        // error here would read as "not found" and attempt a duplicate insert.
+        const { data: existing, error: lookupError } = await supabase
           .from('players')
           .select('id')
           .ilike('email', escapeIlike(row.email))
-          .single()
+          .limit(1)
+          .maybeSingle()
+        if (lookupError) {
+          console.error('import lookup error', lookupError)
+          errors.push(`${row.full_name}: could not check for an existing account`)
+          continue
+        }
 
         if (existing) {
           skipped++
@@ -94,7 +116,12 @@ export async function POST(req: NextRequest) {
         })
 
         if (error) {
-          errors.push(`${row.full_name}: ${error.message}`)
+          if (error.code === '23505') {
+            skipped++
+            continue
+          }
+          console.error('import insert error', error)
+          errors.push(`${row.full_name}: could not be saved`)
           continue
         }
 

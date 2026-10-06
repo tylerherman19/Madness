@@ -47,7 +47,8 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
     let dead = false
     const load = async () => {
       try {
-        const response = await fetch('/api/live-scores', { cache: 'no-store' })
+        // Bounded so a hung request can't stack up behind the next interval.
+        const response = await fetch('/api/live-scores', { cache: 'no-store', signal: AbortSignal.timeout(15_000) })
         if (response.ok && !dead) setData(await response.json())
       } catch {
         // Keep the last successful scoreboard on a transient network failure.

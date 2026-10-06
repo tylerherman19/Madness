@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
+import { apiRequest } from '@/lib/clientApi'
 
 interface SlateOption {
   id: string
@@ -28,21 +29,14 @@ export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
     setLoading(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/admin/set-active-slate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slate_id: selected }),
-      })
-      const data = await res.json()
+      const res = await apiRequest('/api/admin/set-active-week', { method: 'POST', body: { slate_id: selected } })
       if (res.ok) {
         setMessage({ tone: 'ok', text: `${slate.slate_date} is now active` })
         setSelected('')
         router.refresh()
       } else {
-        setMessage({ tone: 'error', text: `Error: ${data.error}` })
+        setMessage({ tone: 'error', text: `Error: ${res.error}` })
       }
-    } catch {
-      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setLoading(false)
     }

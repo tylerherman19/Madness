@@ -38,7 +38,16 @@ export async function POST(req: NextRequest) {
       .select('id, full_name, pin_hash, status')
       .ilike('full_name', escapeIlike(full_name.trim()))
 
-    if (error || !players || players.length === 0) {
+    if (error) {
+      // An outage is not a wrong password — say so, so players don't start
+      // second-guessing (or resetting) credentials that are fine.
+      console.error('login lookup error', error)
+      return NextResponse.json(
+        { error: 'Login is temporarily unavailable. Try again in a minute.' },
+        { status: 503 }
+      )
+    }
+    if (!players || players.length === 0) {
       return NextResponse.json(
         { error: 'Invalid name or password. Check both and try again.' },
         { status: 401 }

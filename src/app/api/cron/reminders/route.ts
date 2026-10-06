@@ -4,6 +4,8 @@ import { requireAdmin, requireCron } from '@/lib/api'
 import { formatCentralTime, slateDeadline } from '@/lib/deadline'
 import { sendReminderEmail, sleep, SEND_DELAY_MS } from '@/lib/email'
 import type { Game } from '@/types'
+import { reportJobFailure } from '@/lib/audit'
+import { checkRateLimit } from '@/lib/rateLimit'
 
 // Sends are paced for Resend's ~2 req/sec limit — allow enough runtime for a
 // full-group reminder batch.
@@ -60,6 +62,14 @@ async function run() {
 
     const deadlineStr = formatCentralTime(deadline)
 
+    // Idempotency: Vercel Cron can deliver the same schedule twice, and an
+    // admin may also press the button. One reminder batch per slate per 20h —
+    // the atomic rate-limit row doubles as the "already sent" marker.
+    const { allowed } = await checkRateLimit(`reminders:${slate.id}`, 1, 20 * 60 * 60)
+    if (!allowed) {
+      return NextResponse.json({ ok: true, message: `Reminders for Slate ${slate.slate_number} were already sent` })
+    }
+
     // Find alive players without a pick this slate
     const { data: alivePlayers } = await supabase
       .from('players')
@@ -100,7 +110,7 @@ async function run() {
       failures: failures.length > 0 ? failures : undefined,
     })
   } catch (err) {
-    console.error('reminders error', err)
+    await reportJobFailure('Pick reminders', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

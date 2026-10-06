@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Game, Slate } from '@/types'
 import { TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
+import { apiRequest } from '@/lib/clientApi'
 
 interface Props {
   slates: Slate[]
@@ -72,15 +73,15 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     setSyncing(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/schedule/sync-espn', {
+      const res = await apiRequest<{ partial?: string[]; games_synced: number; teams_seen: number }>('/api/schedule/sync-espn', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: syncDate, season_year: seasonYear }),
+        body: { date: syncDate, season_year: seasonYear },
+        timeoutMs: 120_000,
       })
-      const data = await res.json()
       if (!res.ok) {
-        setMessage({ tone: 'error', text: `Error: ${data.error}` })
+        setMessage({ tone: 'error', text: `Error: ${res.error}` })
       } else {
+        const data = res.data
         const partial = data.partial ? ` — ${data.partial.join(', ')} did not respond` : ''
         setMessage({
           tone: 'ok',
@@ -88,8 +89,6 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
         })
         router.refresh()
       }
-    } catch {
-      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setSyncing(false)
     }
@@ -137,19 +136,18 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
         const pct = Math.min(100, Math.round((done / totalDays) * 100))
         setProgress(`${pct}% · ${cursor} → ${chunkEnd}`)
 
-        const res = await fetch('/api/schedule/sync-espn-all', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ season_year: seasonYear, start_date: cursor, end_date: chunkEnd }),
-        })
-        const data = await res.json()
+        const res = await apiRequest<{ total_games?: number; days_synced?: string[]; empty_days?: string[]; failures?: { date: string }[] }>(
+          '/api/schedule/sync-espn-all',
+          { method: 'POST', body: { season_year: seasonYear, start_date: cursor, end_date: chunkEnd }, timeoutMs: 310_000 }
+        )
         if (!res.ok) {
-          failures.push(`${cursor}: ${data.error}`)
+          failures.push(`${cursor}: ${res.error}`)
         } else {
+          const data = res.data
           games += data.total_games ?? 0
           daysWithGames += (data.days_synced ?? []).length
           emptyDays += (data.empty_days ?? []).length
-          if (data.failures) failures.push(...data.failures.map((f: { date: string }) => f.date))
+          if (data.failures) failures.push(...data.failures.map((f) => f.date))
         }
 
         done += CHUNK_DAYS
@@ -158,8 +156,8 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
 
       const failNote = failures.length > 0 ? ` · ${failures.length} failed` : ''
       setMessage({
-        tone: 'ok',
-        text: `${daysWithGames} days loaded, ${games} games total · ${emptyDays} days with no games${failNote}`,
+        tone: failures.length > 0 ? 'error' : 'ok',
+        text: `${daysWithGames} days loaded, ${games} games total · ${emptyDays} days with no games${failNote}${failures.length > 0 ? ` (${failures.slice(0, 5).join(', ')}${failures.length > 5 ? ', …' : ''}). Re-run the range to retry.` : ''}`,
       })
       router.refresh()
     } catch {
@@ -178,15 +176,14 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
     setSubmitting(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/schedule', {
+      const res = await apiRequest<{ games_saved: number; dates: string[] }>('/api/schedule', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ season_year: seasonYear, games: newGames }),
+        body: { season_year: seasonYear, games: newGames },
       })
-      const data = await res.json()
       if (!res.ok) {
-        setMessage({ tone: 'error', text: `Error: ${data.error}` })
+        setMessage({ tone: 'error', text: `Error: ${res.error}` })
       } else {
+        const data = res.data
         setMessage({
           tone: 'ok',
           text: `Saved ${data.games_saved} game(s) across ${data.dates.length} day(s)`,
@@ -194,19 +191,19 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
         setNewGames([{ ...BLANK_GAME }])
         router.refresh()
       }
-    } catch {
-      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setSubmitting(false)
     }
   }
 
-  async function deleteGame(gameId: string) {
+  async function deleteGame(gameId: string, label: string) {
+    if (deletingId) return
+    if (!confirm(`Delete ${label}? Picks on either team for that day will have no game to grade against.`)) return
     setDeletingId(gameId)
     try {
-      const res = await fetch(`/api/schedule?id=${gameId}`, { method: 'DELETE' })
+      const res = await apiRequest(`/api/schedule?id=${encodeURIComponent(gameId)}`, { method: 'DELETE' })
       if (res.ok) router.refresh()
-      else setMessage({ tone: 'error', text: 'Failed to delete game' })
+      else setMessage({ tone: 'error', text: `Failed to delete game: ${res.error}` })
     } finally {
       setDeletingId(null)
     }
@@ -382,8 +379,9 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
                     </span>
                   </div>
                   <button
-                    onClick={() => deleteGame(g.id)}
-                    disabled={deletingId === g.id}
+                    onClick={() => deleteGame(g.id, `${g.away_team} @ ${g.home_team}`)}
+                    disabled={deletingId !== null}
+                    aria-label={`Delete ${g.away_team} at ${g.home_team}`}
                     className="text-red-400 hover:text-red-300 text-sm disabled:opacity-50"
                   >
                     {deletingId === g.id ? 'Deleting…' : 'Delete'}

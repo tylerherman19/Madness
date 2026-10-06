@@ -11,7 +11,7 @@ export async function fetchNcaabOdds():Promise<GameOdds[]>{
  if(!key)return []
  try{
   const url=`https://api.the-odds-api.com/v4/sports/basketball_ncaab/odds/?apiKey=${encodeURIComponent(key)}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`
-  const res=await fetch(url,{next:{revalidate:21600}})
+  const res=await fetch(url,{next:{revalidate:21600},signal:AbortSignal.timeout(8000)})
   if(!res.ok)return []
   const events=await res.json() as OddsEvent[]
   return events.map(e=>{const b=e.bookmakers[0];const markets=b?.markets??[];const find=(market:string,team:string)=>markets.find(m=>m.key===market)?.outcomes.find(o=>norm(o.name)===norm(team));const total=markets.find(m=>m.key==='totals')?.outcomes.find(o=>o.name==='Over')?.point??null;return{homeTeam:e.home_team,awayTeam:e.away_team,commenceTime:e.commence_time,spreadHome:find('spreads',e.home_team)?.point??null,spreadAway:find('spreads',e.away_team)?.point??null,total,homeMoneyline:find('h2h',e.home_team)?.price??null,awayMoneyline:find('h2h',e.away_team)?.price??null,bookmaker:b?.title??null,updatedAt:b?.last_update??null}})
