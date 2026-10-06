@@ -4,9 +4,9 @@ import { useMemo, useState } from 'react'
 import { AUDIT_EVENT_TYPES, FAILURE_EVENTS, type AuditRow } from '@/lib/auditEvents'
 
 const ACTOR_COLORS: Record<string, string> = {
-  admin: 'var(--dark)',
+  admin: 'var(--ink)',
   system: 'var(--muted)',
-  player: 'var(--green)',
+  player: 'var(--success)',
 }
 
 // Events that represent something being destroyed or a player going out —
@@ -84,15 +84,15 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
   }, [rows, eventType, player, search, failuresOnly])
 
   const selectStyle = {
-    borderColor: 'var(--border)',
+    borderColor: 'var(--line)',
     background: 'var(--surface)',
-    color: 'var(--dark)',
+    color: 'var(--ink)',
   }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="flex items-baseline justify-between flex-wrap gap-2">
-        <h1 className="font-display text-3xl" style={{ color: 'var(--dark)' }}>AUDIT LOG</h1>
+        <h1 className="font-display text-3xl" style={{ color: 'var(--ink)' }}>AUDIT LOG</h1>
         <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--muted)' }}>
           {filtered.length === rows.length
             ? `${rows.length} event${rows.length === 1 ? '' : 's'}`
@@ -103,10 +103,11 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           onClick={() => setFailuresOnly((v) => !v)}
+          aria-pressed={failuresOnly}
           className="border rounded px-3 py-1.5 text-xs tracking-widest uppercase"
           style={{
-            borderColor: recentFailures > 0 ? 'var(--red)' : 'var(--border)',
-            color: recentFailures > 0 ? 'var(--red)' : 'var(--muted)',
+            borderColor: recentFailures > 0 ? 'var(--danger)' : 'var(--line)',
+            color: recentFailures > 0 ? 'var(--danger)' : 'var(--muted)',
             background: failuresOnly ? 'var(--surface-sunken)' : 'transparent',
           }}
         >
@@ -117,7 +118,7 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
           onClick={() => runAction('test', '/api/admin/test-alert')}
           disabled={busy !== null}
           className="border rounded px-3 py-1.5 text-xs tracking-widest uppercase disabled:opacity-50"
-          style={{ borderColor: 'var(--border)', color: 'var(--dark)' }}
+          style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
         >
           {busy === 'test' ? 'Sending…' : 'Send test text'}
         </button>
@@ -125,13 +126,13 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
           onClick={() => runAction('summary', '/api/cron/daily-summary')}
           disabled={busy !== null}
           className="border rounded px-3 py-1.5 text-xs tracking-widest uppercase disabled:opacity-50"
-          style={{ borderColor: 'var(--border)', color: 'var(--dark)' }}
+          style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
         >
           {busy === 'summary' ? 'Sending…' : 'Send daily summary now'}
         </button>
       </div>
       {notice && (
-        <p className="mt-2 text-xs" style={{ color: 'var(--muted)' }}>{notice}</p>
+        <p role="status" className="mt-2 text-xs" style={{ color: 'var(--muted)' }}>{notice}</p>
       )}
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -140,12 +141,14 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search events…"
+          aria-label="Search events"
           className="border rounded px-3 py-2 text-sm"
           style={selectStyle}
         />
         <select
           value={eventType}
           onChange={(e) => setEventType(e.target.value)}
+          aria-label="Filter by event type"
           className="border rounded px-3 py-2 text-sm"
           style={selectStyle}
         >
@@ -157,6 +160,7 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
         <select
           value={player}
           onChange={(e) => setPlayer(e.target.value)}
+          aria-label="Filter by player"
           className="border rounded px-3 py-2 text-sm"
           style={selectStyle}
         >
@@ -186,26 +190,26 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
           No events match those filters.
         </p>
       ) : (
-        <ul className="mt-6 border-t" style={{ borderColor: 'var(--border)' }}>
+        <ul className="mt-6 border-t" style={{ borderColor: 'var(--line)' }}>
           {filtered.map((row) => {
             const isOpen = expanded === row.id
             const hasDetails = row.details && Object.keys(row.details).length > 0
             return (
-              <li key={row.id} className="border-b py-3" style={{ borderColor: 'var(--border)' }}>
+              <li key={row.id} className="border-b py-3" style={{ borderColor: 'var(--line)' }}>
                 <div className="flex items-start gap-3 flex-wrap sm:flex-nowrap">
                   <span className="font-mono text-xs shrink-0 w-32" style={{ color: 'var(--muted)' }}>
                     {formatWhen(row.created_at)}
                   </span>
                   <span
                     className="text-[10px] tracking-widest uppercase shrink-0 border rounded px-1.5 py-0.5"
-                    style={{ color: ACTOR_COLORS[row.actor], borderColor: 'var(--border)' }}
+                    style={{ color: ACTOR_COLORS[row.actor], borderColor: 'var(--line)' }}
                   >
                     {row.actor}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p
                       className="text-sm"
-                      style={{ color: ALERT_EVENTS.has(row.event_type) || FAILURE_EVENTS.has(row.event_type) ? 'var(--red)' : 'var(--dark)' }}
+                      style={{ color: ALERT_EVENTS.has(row.event_type) || FAILURE_EVENTS.has(row.event_type) ? 'var(--danger)' : 'var(--ink)' }}
                     >
                       {row.message}
                     </p>
@@ -214,6 +218,7 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
                       {hasDetails && (
                         <button
                           onClick={() => setExpanded(isOpen ? null : row.id)}
+                          aria-expanded={isOpen}
                           className="ml-2 underline"
                           style={{ color: 'var(--muted)' }}
                         >
@@ -224,7 +229,7 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
                     {isOpen && hasDetails && (
                       <pre
                         className="mt-2 text-xs overflow-x-auto rounded p-2"
-                        style={{ background: 'var(--surface-sunken)', color: 'var(--dark)' }}
+                        style={{ background: 'var(--surface-sunken)', color: 'var(--ink)' }}
                       >
                         {JSON.stringify(row.details, null, 2)}
                       </pre>

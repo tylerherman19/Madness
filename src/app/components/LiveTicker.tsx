@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { LiveScoresResponse } from '@/app/api/live-scores/route'
 import s from './sports.module.css'
+import { TickerSkeleton } from './PageSkeletons'
 
 // The ticker is one continuous velocity, never a stop-and-restart. Left alone it
 // cruises; a swipe injects velocity; friction relaxes that velocity back toward
@@ -28,6 +29,7 @@ type Drag = {
 export default function LiveTicker({ label }: { slateNumber?: number | null; season?: number | null; label?: string | null }) {
   const [data, setData] = useState<LiveScoresResponse | null>(null)
   const [paused, setPaused] = useState(false)
+  const [settled, setSettled] = useState(false)
   const [reduceMotion, setReduceMotion] = useState(false)
   const [copyCount, setCopyCount] = useState(MIN_COPIES)
 
@@ -51,6 +53,8 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
         if (response.ok && !dead) setData(await response.json())
       } catch {
         // Keep the last successful scoreboard on a transient network failure.
+      } finally {
+        if (!dead) setSettled(true)
       }
     }
     load()
@@ -152,7 +156,9 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
     return () => scroller.removeEventListener('wheel', onWheel)
   }, [data])
 
-  if (!data?.games.length) return null
+  // Hold the band's space until the first response so the page doesn't jump.
+  if (!data) return settled ? null : <TickerSkeleton />
+  if (!data.games.length) return null
 
   const release = (element: HTMLDivElement, pointerId: number) => {
     const state = drag.current
@@ -169,7 +175,7 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
     <section className={s.ticker} aria-label="Live score scroll">
       <div className={s.tickerLabel}>
         <span>Scoreboard</span>
-        <small>{hasLive ? 'Games in progress' : 'College basketball'}</small>
+        {hasLive && <small>Games in progress</small>}
         <button type="button" disabled={reduceMotion} onClick={() => setPaused((value) => !value)}>
           {reduceMotion ? 'Manual scroll' : paused ? 'Resume' : 'Pause'}
         </button>
@@ -227,7 +233,7 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
             >
               {data.games.map((game) => (
                 <div className={s.tickerGame} key={`${copyIndex}-${game.id}`}>
-                  <span className={s.tickerStatus} style={game.state === 'in' ? { color: '#b7443e' } : undefined}>
+                  <span className={s.tickerStatus} style={game.state === 'in' ? { color: 'var(--danger)' } : undefined}>
                     {game.state === 'pre'
                       ? game.timeTbd
                         ? 'Time TBD'

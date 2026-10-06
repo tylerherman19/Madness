@@ -38,6 +38,5 @@ export default function GameCenter({ games, brands }: { games: Game[]; brands: T
     </div>
     {visible.length > limit && <button className="board-more" onClick={() => setLimit(limit + 6)}>Show more games <span>{visible.length - limit} remaining</span></button>}
     {visible.length === 0 && <div className="board-empty"><h3>{games.length === 0 ? 'The next slate is on its way' : 'No matching games'}</h3><p>{games.length === 0 ? 'Check the schedule for upcoming matchups.' : 'Try another team or game filter.'}</p>{games.length > 0 ? <button className="btn-secondary px-4" onClick={() => { setQuery(''); setFilter('All games') }}>Clear filters</button> : <Link className="btn-secondary px-4" href="/schedule">View schedule</Link>}</div>}
-    <p className="board-note">Times shown in Central. Live scores update in the score scroll and Live board.</p>
   </section>
 }

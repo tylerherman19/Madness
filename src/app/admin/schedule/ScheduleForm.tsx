@@ -217,92 +217,86 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
   return (
     <div className="space-y-8">
       {/* ESPN Auto-Sync — the normal way a slate gets built */}
-      <div className="rounded-xl border border-green-700 bg-green-950/40 p-5 space-y-4">
-        <div>
-          <h2 className="text-base font-bold text-green-400 tracking-wide">Auto-Sync from ESPN</h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Pulls one day at a time across the ACC, Big East, Big Ten, Big 12, SEC, Pac-12 and the NCAA
-            tournament. Seeds, regions, round labels, venue and TV come with it.
-          </p>
-        </div>
+      <div className="rounded-xl border border-line bg-surface p-5 space-y-4">
+        <h2 className="text-base font-bold text-ink">Auto-Sync from ESPN</h2>
 
         <div className="flex flex-wrap gap-3 items-end">
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Season</label>
-            <input
+            <label htmlFor="scheduleform-season" className="block text-xs text-muted mb-1">Season</label>
+            <input id="scheduleform-season"
               type="number"
               value={seasonYear}
               onChange={(e) => setSeasonYear(Number(e.target.value))}
-              className="w-24 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-green-500 focus:outline-none"
+              className="w-24 rounded-lg border border-line bg-surface px-3 py-2 text-ink focus:border-accent"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Day</label>
-            <input
+            <label htmlFor="scheduleform-day" className="block text-xs text-muted mb-1">Day</label>
+            <input id="scheduleform-day"
               type="date"
               value={syncDate}
               onChange={(e) => setSyncDate(e.target.value)}
-              className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-green-500 focus:outline-none"
+              className="rounded-lg border border-line bg-surface px-3 py-2 text-ink focus:border-accent"
             />
           </div>
           <button
             onClick={syncOneDay}
             disabled={busy}
-            className="rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-50 px-6 py-2 text-sm font-bold text-white transition-colors"
+            className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-50 px-6 py-2 text-sm font-bold text-on-accent transition-colors"
           >
             {syncing ? 'Syncing…' : 'SYNC THIS DAY'}
           </button>
         </div>
 
-        <div className="border-t border-green-900 pt-4 space-y-3">
+        <div className="border-t border-line pt-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={syncWholeSeason}
               disabled={busy}
-              className="rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-50 px-6 py-2 text-sm font-bold text-white transition-colors"
+              className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-50 px-6 py-2 text-sm font-bold text-on-accent transition-colors"
             >
               {syncingRange ? 'Loading…' : `SYNC ENTIRE ${seasonYear} SEASON`}
             </button>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-muted">
               November {seasonYear - 1} through the championship in April {seasonYear}.
             </span>
           </div>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted">
             Roughly 160 days, loaded 20 at a time — keep the tab open, it takes a few minutes.
             Days with no games are skipped, not treated as errors, and re-running is safe:
             existing days are updated in place, never duplicated. Tip times ESPN hasn&rsquo;t
             announced yet come in as TBD and fill themselves in as the season approaches.
           </p>
-          <p className="text-xs text-slate-500">Or pick your own window:</p>
+          <p className="text-xs text-muted">Or pick your own window:</p>
           <div className="flex flex-wrap gap-3 items-end">
             <div>
-              <label className="block text-xs text-slate-400 mb-1">From</label>
-              <input
+              <label htmlFor="scheduleform-from" className="block text-xs text-muted mb-1">From</label>
+              <input id="scheduleform-from"
                 type="date"
                 value={rangeStart}
                 onChange={(e) => setRangeStart(e.target.value)}
-                className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-green-500 focus:outline-none"
+                className="rounded-lg border border-line bg-surface px-3 py-2 text-ink focus:border-accent"
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-400 mb-1">To</label>
-              <input
+              <label htmlFor="scheduleform-to" className="block text-xs text-muted mb-1">To</label>
+              <input id="scheduleform-to"
                 type="date"
                 value={rangeEnd}
                 onChange={(e) => setRangeEnd(e.target.value)}
-                className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white focus:border-green-500 focus:outline-none"
+                className="rounded-lg border border-line bg-surface px-3 py-2 text-ink focus:border-accent"
               />
             </div>
             <button
               onClick={syncRange}
               disabled={busy}
-              className="rounded-lg border border-green-700 hover:bg-green-950 disabled:opacity-50 px-6 py-2 text-sm font-bold text-green-400 transition-colors"
+              className="rounded-lg border border-accent hover:bg-accent-tint disabled:opacity-50 px-6 py-2 text-sm font-bold text-accent-strong transition-colors"
             >
               {syncingRange ? 'Loading…' : 'LOAD DATE RANGE'}
             </button>
           </div>
           {progress && (
-            <p className="text-xs text-green-400 tnum" aria-live="polite">
+            <p className="text-xs text-success tnum" aria-live="polite">
               Loading {progress}…
             </p>
           )}
@@ -313,11 +307,11 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
 
       {/* Loaded days */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-3">
-          Loaded Days <span className="text-slate-500 text-sm font-normal">({slates.length})</span>
+        <h2 className="text-lg font-semibold text-ink mb-3">
+          Loaded Days <span className="text-muted text-sm font-normal">({slates.length})</span>
         </h2>
         {slates.length === 0 ? (
-          <p className="text-slate-400 text-sm">
+          <p className="text-muted text-sm">
             Nothing loaded yet. Use the date range above to pull the season in.
           </p>
         ) : (
@@ -327,8 +321,8 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
                 key={s.id}
                 className={`rounded-lg border px-2.5 py-1 text-xs font-mono ${
                   s.is_active
-                    ? 'border-green-600 bg-green-950/60 text-green-300'
-                    : 'border-slate-700 bg-slate-800 text-slate-400'
+                    ? 'border-accent bg-accent-tint text-accent-strong'
+                    : 'border-line bg-surface text-muted'
                 }`}
                 title={s.is_active ? 'Active slate' : undefined}
               >
@@ -342,32 +336,32 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
       {/* Active slate's games */}
       {activeSlate && (
         <div>
-          <h2 className="text-lg font-semibold text-white mb-3">
+          <h2 className="text-lg font-semibold text-ink mb-3">
             {activeSlate.slate_date} — Games
           </h2>
           {games.length === 0 ? (
-            <p className="text-slate-400 text-sm">No games loaded for this day.</p>
+            <p className="text-muted text-sm">No games loaded for this day.</p>
           ) : (
             <div className="space-y-2">
               {games.map((g) => (
                 <div
                   key={g.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-3"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface px-4 py-3"
                 >
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="text-white font-medium font-mono">
+                    <span className="text-ink font-medium font-mono">
                       {g.away_seed ? `(${g.away_seed}) ` : ''}
                       {g.away_team} @ {g.home_seed ? `(${g.home_seed}) ` : ''}
                       {g.home_team}
                     </span>
                     {g.round_label && (
-                      <span className="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">
+                      <span className="text-xs bg-warning-tint text-warning px-1.5 py-0.5 rounded">
                         {g.round_label}
                         {g.region ? ` · ${g.region}` : ''}
                       </span>
                     )}
-                    {g.tv && <span className="text-slate-500 text-xs">{g.tv}</span>}
-                    <span className="text-slate-500 text-xs">
+                    {g.tv && <span className="text-muted text-xs">{g.tv}</span>}
+                    <span className="text-muted text-xs">
                       {g.time_tbd
                         ? 'Tip time TBD'
                         : new Date(g.tip_time).toLocaleString('en-US', {
@@ -384,7 +378,7 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
                   <button
                     onClick={() => deleteGame(g.id)}
                     disabled={deletingId === g.id}
-                    className="text-red-400 hover:text-red-300 text-sm disabled:opacity-50"
+                    className="text-danger hover:text-danger-strong text-sm disabled:opacity-50"
                   >
                     {deletingId === g.id ? 'Deleting…' : 'Delete'}
                   </button>
@@ -396,25 +390,22 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
       )}
 
       {/* Manual entry — the fallback when ESPN doesn't carry a game */}
-      <form onSubmit={handleSubmit} className="space-y-5 border-t border-slate-800 pt-8">
+      <form onSubmit={handleSubmit} className="space-y-5 border-t border-line pt-8">
         <div>
-          <h2 className="text-lg font-semibold text-white">Add Games by Hand</h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Only needed for a game ESPN doesn&rsquo;t list. Each game files itself under its own
-            date — you don&rsquo;t pick a slate.
-          </p>
+          <h2 className="text-lg font-semibold text-ink">Add Games by Hand</h2>
+          <p className="text-xs text-muted mt-1">Only for games ESPN doesn&rsquo;t list.</p>
         </div>
 
         <div className="space-y-4">
           {newGames.map((g, i) => (
-            <div key={i} className="rounded-xl border border-slate-700 bg-slate-800 p-4 space-y-3">
+            <div key={i} className="rounded-xl border border-line bg-surface p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-slate-300">Game {i + 1}</p>
+                <p className="text-sm font-medium text-ink">Game {i + 1}</p>
                 {newGames.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeGame(i)}
-                    className="text-red-400 text-sm hover:text-red-300"
+                    className="text-danger text-sm hover:text-danger-strong"
                   >
                     Remove
                   </button>
@@ -423,48 +414,48 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Away Team</label>
-                  <input
+                  <label htmlFor="scheduleform-away-team" className="block text-xs text-muted mb-1">Away Team</label>
+                  <input id="scheduleform-away-team"
                     list="team-list"
                     value={g.away_team}
                     onChange={(e) => updateGame(i, 'away_team', e.target.value.toUpperCase())}
                     required
                     placeholder="e.g. DUKE"
-                    className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-ink focus:border-accent"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Home Team</label>
-                  <input
+                  <label htmlFor="scheduleform-home-team" className="block text-xs text-muted mb-1">Home Team</label>
+                  <input id="scheduleform-home-team"
                     list="team-list"
                     value={g.home_team}
                     onChange={(e) => updateGame(i, 'home_team', e.target.value.toUpperCase())}
                     required
                     placeholder="e.g. UNC"
-                    className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-ink focus:border-accent"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Date (Central)</label>
-                  <input
+                  <label htmlFor="scheduleform-date-central" className="block text-xs text-muted mb-1">Date (Central)</label>
+                  <input id="scheduleform-date-central"
                     type="date"
                     value={g.date}
                     onChange={(e) => updateGame(i, 'date', e.target.value)}
                     required
-                    className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-ink focus:border-accent"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Tip-off (Central)</label>
-                  <input
+                  <label htmlFor="scheduleform-tip-off-central" className="block text-xs text-muted mb-1">Tip-off (Central)</label>
+                  <input id="scheduleform-tip-off-central"
                     type="time"
                     value={g.time}
                     onChange={(e) => updateGame(i, 'time', e.target.value)}
                     required
-                    className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-ink focus:border-accent"
                   />
                 </div>
               </div>
@@ -484,14 +475,14 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
           <button
             type="button"
             onClick={addGame}
-            className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+            className="rounded-lg border border-line px-4 py-2 text-sm text-ink hover:bg-sunken"
           >
             + Add another
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-50 px-6 py-2 text-sm font-bold text-white"
+            className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-50 px-6 py-2 text-sm font-bold text-on-accent"
           >
             {submitting ? 'Saving…' : 'SAVE GAMES'}
           </button>

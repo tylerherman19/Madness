@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
+import { TONE_ROLE, TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
 
 interface SlateOption {
   id: string
@@ -49,16 +49,14 @@ export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
   }
 
   return (
-    <div className="rounded-xl border border-red-900/60 bg-slate-800 p-4 space-y-3">
-      <p className="text-sm font-semibold text-red-300">Set Active Day</p>
-      <p className="text-xs text-slate-400">
-        Manually switch which day is active. Use this to roll back or jump ahead — normally Advance to Next Day is the one you want.
-      </p>
+    <div className="rounded-xl border border-warning/40 bg-surface p-4 space-y-3">
+      <p className="text-sm font-semibold text-warning">Set Active Day</p>
       <div className="flex flex-wrap items-center gap-3">
         <select
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
-          className="w-full sm:w-auto rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+          aria-label="Day to activate"
+          className="w-full sm:w-auto rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink"
         >
           <option value="">Select a day…</option>
           {inactive.map((w) => (
@@ -70,13 +68,13 @@ export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
         <button
           onClick={handleActivate}
           disabled={!selected || loading}
-          className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
+          className="rounded-lg border border-line-strong bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-sunken disabled:opacity-50 transition-colors"
         >
           {loading ? 'Activating…' : 'Activate'}
         </button>
       </div>
       {message && (
-        <p className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
+        <p role={TONE_ROLE[message.tone]} className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
     </div>
   )

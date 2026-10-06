@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
+import { TONE_ROLE, TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
 
 const CONFIRM_PHRASE = 'RESET POOL'
 
@@ -39,9 +39,9 @@ export default function ResetPoolButton() {
   }
 
   return (
-    <div className="rounded-xl border border-red-600 bg-red-950/30 p-4 space-y-3">
-      <p className="text-sm font-semibold text-red-300">Reset Pool to Zero</p>
-      <p className="text-xs text-slate-400">
+    <div className="rounded-xl border border-danger bg-danger-tint p-4 space-y-3">
+      <p className="text-sm font-semibold text-danger">Reset Pool to Zero</p>
+      <p className="text-xs text-ink">
         Permanently deletes every player, slate, game, and pick in production. Cannot be undone.
       </p>
       <div className="flex flex-wrap items-center gap-3">
@@ -50,18 +50,19 @@ export default function ResetPoolButton() {
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
           placeholder={`Type "${CONFIRM_PHRASE}" to enable`}
-          className="w-64 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white focus:border-red-500 focus:outline-none"
+          aria-label={`Type ${CONFIRM_PHRASE} to enable reset`}
+          className="w-64 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-danger"
         />
         <button
           onClick={handleReset}
           disabled={typed !== CONFIRM_PHRASE || loading}
-          className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-40 transition-colors"
+          className="rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-on-accent hover:bg-danger-strong disabled:opacity-40 transition-colors"
         >
           {loading ? 'Resetting…' : 'Reset Pool'}
         </button>
       </div>
       {message && (
-        <p className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
+        <p role={TONE_ROLE[message.tone]} className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
     </div>
   )

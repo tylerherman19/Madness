@@ -1,8 +1,13 @@
-import InfoPage from './components/InfoPage'
+import SiteHeader from './components/SiteHeader'
+import { HomeSkeleton, TickerSkeleton } from './components/PageSkeletons'
+import s from './components/sports.module.css'
 
 export default function Loading() {
-  return <InfoPage title="Getting the board ready">
-    <p role="status" aria-live="polite">Loading MADNESS pool information…</p>
-    <div className="loading-board" aria-hidden="true"><span /><span /><span /></div>
-  </InfoPage>
+  return (
+    <div className={s.root}>
+      <SiteHeader />
+      <TickerSkeleton />
+      <main id="main" className={s.main}><HomeSkeleton /></main>
+    </div>
+  )
 }

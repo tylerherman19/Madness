@@ -9,15 +9,15 @@ export default async function TestModeBanner() {
   return (
     <div
       className="sticky top-0 z-50 flex items-center justify-center gap-3 px-4 py-1.5 text-center"
-      style={{ background: 'repeating-linear-gradient(135deg, #b45309, #b45309 12px, #92400e 12px, #92400e 24px)' }}
+      style={{ background: 'repeating-linear-gradient(135deg, var(--warning), var(--warning) 12px, color-mix(in srgb, var(--warning) 80%, black) 12px, color-mix(in srgb, var(--warning) 80%, black) 24px)' }}
     >
-      <span className="text-xs font-bold tracking-widest uppercase text-white">
+      <span className="text-xs font-bold tracking-widest uppercase text-ink">
         Testing Mode — sandbox data, nothing here touches the real pool
       </span>
       {/* Plain <a>: a prefetched Link would clear the cookies just by hovering */}
       <a
         href="/api/test-mode/leave"
-        className="text-xs font-bold uppercase tracking-widest text-amber-200 underline hover:text-white"
+        className="text-xs font-bold uppercase tracking-widest text-warning underline hover:text-ink"
       >
         Exit
       </a>

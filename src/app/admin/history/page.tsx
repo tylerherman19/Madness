@@ -89,13 +89,12 @@ export default async function AdminHistoryPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-white">Season History</h1>
-        <p className="text-slate-400 mt-1">Every pick period&apos;s games, results, picks, and eliminations.</p>
+        <h1 className="text-2xl font-bold text-ink">Season History</h1>
       </div>
 
       {weekRows.length === 0 && (
-        <div className="rounded-xl border border-slate-700 bg-slate-800 p-6 text-center">
-          <p className="text-slate-400">No pick periods created yet.</p>
+        <div className="rounded-xl border border-line bg-surface p-6 text-center">
+          <p className="text-muted">No pick periods created yet.</p>
         </div>
       )}
 
@@ -108,16 +107,16 @@ export default async function AdminHistoryPage() {
           : []
 
         return (
-          <div key={slate.id} className="rounded-xl border border-slate-700 bg-slate-800 p-5 space-y-4">
+          <div key={slate.id} className="rounded-xl border border-line bg-surface p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <p className="font-semibold text-white text-lg">
+              <p className="font-semibold text-ink text-lg">
                 {periodById[slate.id]?.label ?? `Slate ${slate.slate_number}`} · {slate.season_year}
               </p>
               <div className="flex items-center gap-3">
                 {slate.is_active && (
-                  <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-semibold text-green-400">ACTIVE</span>
+                  <span className="rounded-full bg-accent-tint px-3 py-1 text-xs font-semibold text-accent-strong">ACTIVE</span>
                 )}
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-muted">
                   {stats?.total ?? 0} picks{stats && stats.auto > 0 ? ` (${stats.auto} auto)` : ''}
                 </span>
               </div>
@@ -126,7 +125,7 @@ export default async function AdminHistoryPage() {
             {weekGames.length > 0 ? (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wide text-slate-400">
+                  <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
                     <th className="py-1.5 font-medium">Game</th>
                     <th className="py-1.5 font-medium hidden sm:table-cell">Tip (CT)</th>
                     <th className="py-1.5 font-medium text-right">Result</th>
@@ -134,18 +133,18 @@ export default async function AdminHistoryPage() {
                 </thead>
                 <tbody>
                   {weekGames.map((g) => (
-                    <tr key={g.id} className="border-b border-slate-700/60 last:border-0">
-                      <td className="py-1.5 font-mono text-white">
+                    <tr key={g.id} className="border-b border-line last:border-0">
+                      <td className="py-1.5 font-mono text-ink">
                         {g.away_team} @ {g.home_team}
                       </td>
-                      <td className="py-1.5 text-slate-400 hidden sm:table-cell">{formatCentralTime(g.tip_time)}</td>
+                      <td className="py-1.5 text-muted hidden sm:table-cell">{formatCentralTime(g.tip_time)}</td>
                       <td className="py-1.5 text-right">
                         {g.result === 'pending' ? (
-                          <span className="text-xs text-amber-400">pending</span>
+                          <span className="text-xs text-warning">pending</span>
                         ) : g.result === 'tie' ? (
-                          <span className="text-xs font-semibold text-red-400">TIE</span>
+                          <span className="text-xs font-semibold text-danger">TIE</span>
                         ) : (
-                          <span className="text-xs font-semibold text-green-400">
+                          <span className="text-xs font-semibold text-success">
                             {g.result === 'home_win' ? g.home_team : g.away_team} won
                           </span>
                         )}
@@ -155,31 +154,31 @@ export default async function AdminHistoryPage() {
                 </tbody>
               </table>
             ) : (
-              <p className="text-sm text-slate-500">No games entered for this slate.</p>
+              <p className="text-sm text-muted">No games entered for this slate.</p>
             )}
 
             {topPicks.length > 0 && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted">
                 Most picked:{' '}
                 {topPicks.map(([team, count], i) => (
                   <span key={team}>
                     {i > 0 && ' · '}
-                    <span className="font-mono font-semibold text-slate-300">{team}</span> ×{count}
+                    <span className="font-mono font-semibold text-ink">{team}</span> ×{count}
                   </span>
                 ))}
               </p>
             )}
 
             {elims.length > 0 && (
-              <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-red-400 mb-1.5">
+              <div className="rounded-lg border border-danger/40 bg-danger-tint p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-danger mb-1.5">
                   Eliminated in Slate {slate.slate_number} ({elims.length})
                 </p>
-                <ul className="space-y-0.5 text-sm text-slate-300">
+                <ul className="space-y-0.5 text-sm text-ink">
                   {elims.map((e) => (
                     <li key={e.full_name}>
                       {e.full_name}
-                      {e.elimination_reason && <span className="text-slate-500"> — {e.elimination_reason}</span>}
+                      {e.elimination_reason && <span className="text-muted"> — {e.elimination_reason}</span>}
                     </li>
                   ))}
                 </ul>
@@ -200,11 +199,11 @@ function NeverPicked({ picks, allTeams }: { picks: { team: string }[]; allTeams:
   const never = allTeams.filter((t) => !pickedTeams.has(t))
   if (never.length === 0) return null
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-      <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">
+    <div className="rounded-xl border border-line bg-surface p-5">
+      <p className="text-muted text-xs font-medium uppercase tracking-wide mb-2">
         Never Picked This Season ({never.length})
       </p>
-      <p className="text-sm font-mono text-slate-300 leading-relaxed">{never.join(', ')}</p>
+      <p className="text-sm font-mono text-ink leading-relaxed">{never.join(', ')}</p>
     </div>
   )
 }

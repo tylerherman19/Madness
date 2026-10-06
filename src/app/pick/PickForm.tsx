@@ -211,7 +211,7 @@ export default function PickForm({
       : 'This game day is locked. Check back when results are final.'
     : sharedRound
       ? `Choose ${requiredPicks} different teams before the round ends. You can make both picks on the same game day.`
-      : 'Choose one team from the entire slate. A new pick replaces your previous one.'
+      : null
 
   return (
     <div className={s.root} style={{ minHeight: 0 }}>
@@ -219,7 +219,7 @@ export default function PickForm({
         <div>
           <p className={s.context}>{periodLabel}</p>
           <h1>{heading}</h1>
-          <p>{helper}</p>
+          {helper && <p>{helper}</p>}
         </div>
       </div>
 
@@ -337,7 +337,6 @@ export default function PickForm({
             <h2>{editingPick ? `Change pick ${nextPickNumber}` : `Pick ${nextPickNumber}`}</h2>
             <span>{picks.length} / {requiredPicks}</span>
           </div>
-          <p className={s.deskDate}>{periodLabel}</p>
           <div className={s.selectedTeam} aria-live="polite">
             {selected ? (
               <>
@@ -361,7 +360,7 @@ export default function PickForm({
           </div>
           <div className={s.deadline}>
             <div>
-              <span>All picks for this game day lock at the first tip</span>
+              <span>Locks at first tip</span>
               <b>
                 {deadline
                   ? new Date(deadline).toLocaleString('en-US', {
@@ -396,11 +395,6 @@ export default function PickForm({
             {submitting ? 'Saving…' : editingPick ? 'Save changed pick' : `Save pick ${nextPickNumber}`}
             <Arrow />
           </button>
-          <p className={s.deskNote}>
-            {sharedRound
-              ? `You need ${requiredPicks} total picks across this round, not one pick each day.`
-              : 'You can change your pick until the deadline.'}
-          </p>
         </aside>
       </div>
     </div>

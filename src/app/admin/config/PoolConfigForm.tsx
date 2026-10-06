@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Modal from '@/app/components/Modal'
 import {
   COMPETITION_COPY,
   MODE_LABEL,
@@ -68,7 +69,7 @@ function Segmented({
       role="radiogroup"
       aria-label="Competition Format"
       className="inline-flex rounded-lg p-1 w-full sm:w-auto"
-      style={{ background: '#0f172a', border: '1px solid #334155' }}
+      style={{ background: 'var(--surface-sunken)', border: '1px solid var(--line)' }}
     >
       {(['regular-season', 'march-madness'] as CompetitionMode[]).map((mode) => {
         const on = value === mode
@@ -80,10 +81,10 @@ function Segmented({
             aria-checked={on}
             disabled={disabled}
             onClick={() => onChange(mode)}
-            className="flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-md transition-colors whitespace-nowrap"
+            className="flex-1 sm:flex-none px-3 sm:px-5 py-2 text-sm font-semibold rounded-md transition-colors"
             style={{
-              background: on ? 'var(--red)' : 'transparent',
-              color: on ? '#fff' : '#94a3b8',
+              background: on ? 'var(--accent)' : 'transparent',
+              color: on ? 'var(--on-accent)' : 'var(--muted)',
               cursor: disabled ? 'not-allowed' : 'pointer',
             }}
           >
@@ -106,15 +107,15 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="block text-xs font-medium uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="block text-xs font-medium uppercase tracking-wide text-muted">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
     </label>
   )
 }
 
 const SELECT_CLASS =
-  'mt-1.5 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white'
+  'mt-1.5 w-full rounded-lg border border-line bg-sunken px-3 py-2 text-sm text-ink'
 
 function Choice({
   label,
@@ -158,27 +159,21 @@ function ModeSwitchDialog({
 }) {
   const toTournament = to === 'march-madness'
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(2,6,23,0.75)' }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="mode-switch-title"
-    >
-      <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-800 p-6">
-        <p id="mode-switch-title" className="text-lg font-bold text-white">
+    <Modal titleId="mode-switch-title" onClose={onCancel} width="max-w-lg">
+      <div className="rounded-xl border border-line bg-surface p-6">
+        <p id="mode-switch-title" className="text-lg font-bold text-ink">
           Switch to {MODE_LABEL[to]} Mode?
         </p>
-        <p className="mt-3 text-sm leading-relaxed text-slate-300">
+        <p className="mt-3 text-sm leading-relaxed text-ink">
           {toTournament
             ? 'Tournament-specific round names, seeds, bracket information, and scheduling will become active.'
             : 'Tournament rounds, seeds, regions, and bracket context will be hidden. The pool returns to game-day organisation and regular-season terminology.'}
         </p>
-        <p className="mt-3 text-sm leading-relaxed text-slate-300">
-          Existing users, picks, and pool history will <strong className="text-white">NOT</strong> be
+        <p className="mt-3 text-sm leading-relaxed text-ink">
+          Existing users, picks, and pool history will <strong className="text-ink">NOT</strong> be
           deleted. This changes how the same survivor history is organised and displayed.
         </p>
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-muted">
           Currently {MODE_LABEL[from]}. You can switch back at any time.
         </p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -186,7 +181,7 @@ function ModeSwitchDialog({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700"
+            className="rounded-lg border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-line"
           >
             Cancel
           </button>
@@ -194,14 +189,14 @@ function ModeSwitchDialog({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-            style={{ background: 'var(--red)' }}
+            className="rounded-lg px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-60"
+            style={{ background: 'var(--accent)' }}
           >
             {busy ? 'Switching…' : 'Switch Mode'}
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -277,9 +272,9 @@ export default function PoolConfigForm({ pool }: { pool: PoolConfig }) {
   return (
     <div className="space-y-8">
       {/* ---- Competition Format ---- */}
-      <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Competition Format</p>
-        <p className="mt-1 text-sm text-slate-400">
+      <section className="rounded-xl border border-line bg-surface p-5">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted">Competition Format</p>
+        <p className="mt-1 text-sm text-muted">
           The administrator decides the format. It is never inferred from the calendar.
         </p>
 
@@ -300,20 +295,20 @@ export default function PoolConfigForm({ pool }: { pool: PoolConfig }) {
               key={m}
               className="rounded-lg border p-3"
               style={{
-                borderColor: m === mode ? 'var(--red)' : '#334155',
-                background: m === mode ? 'rgba(180,30,30,0.08)' : 'transparent',
+                borderColor: m === mode ? 'var(--accent)' : 'var(--line)',
+                background: m === mode ? 'var(--accent-tint)' : 'transparent',
               }}
             >
-              <p className="text-sm font-semibold text-white">{MODE_LABEL[m]}</p>
-              <p className="mt-1 text-xs leading-relaxed text-slate-400">{MODE_BLURB[m]}</p>
+              <p className="text-sm font-semibold text-ink">{MODE_LABEL[m]}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted">{MODE_BLURB[m]}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ---- Pool settings ---- */}
-      <section className="rounded-xl border border-slate-700 bg-slate-800 p-5 space-y-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Pool Settings</p>
+      <section className="rounded-xl border border-line bg-surface p-5 space-y-5">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted">Pool Settings</p>
 
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Pool Name">
@@ -398,13 +393,13 @@ export default function PoolConfigForm({ pool }: { pool: PoolConfig }) {
           </Field>
         </div>
 
-        <div className="border-t border-slate-700 pt-5">
+        <div className="border-t border-line pt-5">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Status guide</p>
-              <p className="mt-1 text-sm text-slate-400">What each stage means from setup through closeout.</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">Status guide</p>
+              <p className="mt-1 text-sm text-muted">What each stage means from setup through closeout.</p>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted">
               Status is a label. Dates and tip times still control signup and pick access.
             </p>
           </div>
@@ -415,24 +410,24 @@ export default function PoolConfigForm({ pool }: { pool: PoolConfig }) {
                 <li
                   key={status}
                   aria-current={active ? 'step' : undefined}
-                  className="relative border-l border-slate-600 pb-5 pl-5 last:pb-0 sm:border-l-0 sm:border-t sm:pb-0 sm:pl-0 sm:pt-5"
+                  className="relative border-l border-line pb-5 pl-5 last:pb-0 sm:border-l-0 sm:border-t sm:pb-0 sm:pl-0 sm:pt-5"
                 >
                   <span
                     aria-hidden="true"
                     className="absolute -left-2 top-0 flex h-4 w-4 items-center justify-center rounded-full border text-[9px] font-bold sm:-top-2 sm:left-0"
                     style={{
-                      background: active ? 'var(--red)' : '#0f172a',
-                      borderColor: active ? 'var(--red)' : '#64748b',
-                      color: active ? '#fff' : '#94a3b8',
+                      background: active ? 'var(--accent)' : 'var(--surface)',
+                      borderColor: active ? 'var(--accent)' : 'var(--line-strong)',
+                      color: active ? 'var(--on-accent)' : 'var(--muted)',
                     }}
                   >
                     {index + 1}
                   </span>
                   <div className="pr-4">
-                    <p className={active ? 'text-sm font-semibold text-white' : 'text-sm font-semibold text-slate-300'}>
+                    <p className={active ? 'text-sm font-semibold text-ink' : 'text-sm font-semibold text-ink'}>
                       {STATUS_LABEL[status]}
                     </p>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-500">{STATUS_DESCRIPTION[status]}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted">{STATUS_DESCRIPTION[status]}</p>
                   </div>
                 </li>
               )
@@ -441,23 +436,23 @@ export default function PoolConfigForm({ pool }: { pool: PoolConfig }) {
         </div>
 
         {error && (
-          <p className="rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(180,30,30,0.15)', color: '#fca5a5' }}>
+          <p role="alert" className="rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--danger-tint)', color: 'var(--danger)' }}>
             {error}
           </p>
         )}
-        {saved && !error && <p className="text-sm text-green-400">{saved}</p>}
+        {saved && !error && <p role="status" className="text-sm text-success">{saved}</p>}
 
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={saveSettings}
             disabled={saving || !dirty}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            style={{ background: 'var(--red)' }}
+            className="rounded-lg px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50"
+            style={{ background: 'var(--accent)' }}
           >
             {saving ? 'Saving…' : 'Save Configuration'}
           </button>
-          {dirty && <span className="text-xs text-slate-500">Unsaved changes</span>}
+          {dirty && <span className="text-xs text-muted">Unsaved changes</span>}
         </div>
       </section>
 

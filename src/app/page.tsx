@@ -22,13 +22,13 @@ export default async function Home(){
  const label=data?.currentPeriod?formatPeriodDate(data.currentPeriod.date):'Next game day'
  const tip=(iso:string)=>new Date(iso).toLocaleTimeString('en-US',{timeZone:CT,hour:'numeric',minute:'2-digit'})
  return <div className={s.root}><SiteHeader mode={data?.mode} signupsClosed={closed}/><LiveTicker label={label}/>
- <main className={s.main}>
+ <main id="main" className={s.main}>
   <section className={s.welcome}>
-   <div className={s.welcomeCopy}><span className={s.heroKicker}>College basketball survivor pool</span><h1>One team<br/>each round.<br/>Stay alive.</h1><p>Pick one team from the board. If they win, you move on.<br/>The last player standing takes the pot.</p><div className={s.heroActions}><Link href="/pick" className={s.primary}>Make your pick <Arrow/></Link><Link href="#rules" className={s.heroSecondary}>How it works</Link></div></div>
+   <div className={s.welcomeCopy}><span className={s.heroKicker}>College basketball survivor pool</span><h1>One team<br/>each round.<br/>Stay alive.</h1><div className={s.heroActions}><Link href="/pick" className={s.primary}>Make your pick <Arrow/></Link><Link href="#rules" className={s.heroSecondary}>How it works</Link></div></div>
    <div className={s.heroArt} aria-hidden="true"><span>SAME<br/>GAMES.<br/><b>BIGGER<br/>STAKES.</b></span></div>
   </section>
   {!data&&<p role="status" className={s.privacyNotice}>Pool data is unavailable. Refresh to try again.</p>}
-  <dl className={s.stats}><div><dt>Still alive</dt><dd>{data?.aliveCount??'-'}<small>{data?.totalPlayers?Math.round((data.aliveCount/data.totalPlayers)*100):0}% of field</small></dd></div><div><dt>Eliminated</dt><dd>{data?.eliminatedCount??'-'}<small>{data?.totalPlayers??0} total entries</small></dd></div><div><dt>Current pot</dt><dd>{data?'$'+data.potSize.toLocaleString():'-'}<small>Last one wins</small></dd></div><div><dt>Picks in</dt><dd>{data?.picksMade??'-'}<small>of {data?.aliveCount??'-'} survivors</small></dd></div></dl>
+  <dl className={s.stats}><div><dt>Still alive</dt><dd>{data?.aliveCount??'-'}<small>{data?.totalPlayers?Math.round((data.aliveCount/data.totalPlayers)*100):0}% of field</small></dd></div><div><dt>Eliminated</dt><dd>{data?.eliminatedCount??'-'}<small>{data?.totalPlayers??0} total entries</small></dd></div><div><dt>Current pot</dt><dd>{data?'$'+data.potSize.toLocaleString():'-'}</dd></div><div><dt>Picks in</dt><dd>{data?.picksMade??'-'}<small>of {data?.aliveCount??'-'} survivors</small></dd></div></dl>
   <div className={s.dashboardGrid}>
    <section className={s.gamesCard}>
     <div className={s.sectionTitle}>
@@ -36,7 +36,7 @@ export default async function Home(){
      <Link href="/schedule">View all games <Arrow/></Link>
     </div>
     <div className={s.gameTable} role="region" aria-label="Today's games" tabIndex={0}>
-     <div className={s.gameHead}><span>Time</span><span>Matchup</span><span>Line / status</span></div>
+     <div className={s.gameHead}><span>Time (CT)</span><span>Matchup</span><span>Line / status</span></div>
      {games.map(g=>{
       const o=matchOdds(odds,[brandFor(g.home_team,brands).name,brandFor(g.home_team,brands).shortName,g.home_team],[brandFor(g.away_team,brands).name,brandFor(g.away_team,brands).shortName,g.away_team],g.tip_time)
       return <Link href="/schedule" className={s.gameRow} key={g.id}>

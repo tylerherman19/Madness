@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Game, Slate } from '@/types'
-import { TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
+import { TONE_ROLE, TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
 
 interface Props {
   slate: Slate
@@ -91,13 +91,13 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
         {games.map((g) => (
           <div
             key={g.id}
-            className="rounded-xl border border-slate-700 bg-slate-800 p-4 flex items-center justify-between gap-4 flex-wrap"
+            className="rounded-xl border border-line bg-surface p-4 flex items-center justify-between gap-4 flex-wrap"
           >
             <div>
-              <p className="text-white font-medium font-mono">
+              <p className="text-ink font-medium font-mono">
                 {g.away_team} @ {g.home_team}
               </p>
-              <p className="text-slate-400 text-xs mt-0.5">
+              <p className="text-muted text-xs mt-0.5">
                 {g.round_label ?? 'Regular season'}
                 {g.region && ` · ${g.region}`}
                 {g.tv && ` · ${g.tv}`}
@@ -108,14 +108,15 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
                 <button
                   key={opt.value}
                   onClick={() => saveResult(g.id, opt.value)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  aria-pressed={results[g.id] === opt.value}
+                  className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
                     results[g.id] === opt.value
                       ? opt.value === 'pending'
-                        ? 'bg-slate-600 text-white'
+                        ? 'border-ink bg-ink text-on-accent'
                         : opt.value === 'tie'
-                        ? 'bg-yellow-600 text-white'
-                        : 'bg-green-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                        ? 'border-warning bg-warning text-on-accent'
+                        : 'border-success bg-success text-on-accent'
+                      : 'border-line-strong bg-surface text-ink hover:bg-sunken'
                   }`}
                 >
                   {opt.label}
@@ -130,38 +131,38 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
         <button
           onClick={gradeAllPending}
           disabled={submitting}
-          className="rounded-lg bg-green-600 px-6 py-2.5 font-semibold text-white hover:bg-green-500 disabled:opacity-50 transition-colors"
+          className="rounded-lg bg-accent px-6 py-2.5 font-semibold text-on-accent hover:bg-accent-strong disabled:opacity-50 transition-colors"
         >
           {submitting ? 'Grading…' : 'Grade All Picks & Eliminate Losers'}
         </button>
       </div>
 
-      <p className="text-slate-400 text-sm">
-        <span className="font-semibold text-white">Pending Grade:</span>{' '}
+      <p className="text-muted text-sm">
+        <span className="font-semibold text-ink">Pending Grade:</span>{' '}
         {pendingEliminations} player{pendingEliminations === 1 ? '' : 's'} slated to be eliminated
       </p>
 
       {message && (
-        <p className={`text-sm ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
+        <p role={TONE_ROLE[message.tone]} className={`text-sm ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
 
       {gradingResult && (
-        <div className="rounded-xl border border-slate-700 bg-slate-800 p-4 space-y-3">
-          <p className="font-semibold text-white">Grading Result:</p>
+        <div className="rounded-xl border border-line bg-surface p-4 space-y-3">
+          <p className="font-semibold text-ink">Grading Result:</p>
           {gradingResult.eliminated.length > 0 && (
             <div>
-              <p className="text-red-400 text-sm font-medium">Eliminated ({gradingResult.eliminated.length}):</p>
-              <p className="text-slate-300 text-sm">{gradingResult.eliminated.join(', ')}</p>
+              <p className="text-danger text-sm font-medium">Eliminated ({gradingResult.eliminated.length}):</p>
+              <p className="text-ink text-sm">{gradingResult.eliminated.join(', ')}</p>
             </div>
           )}
           {gradingResult.advanced.length > 0 && (
             <div>
-              <p className="text-green-400 text-sm font-medium">Advanced ({gradingResult.advanced.length}):</p>
-              <p className="text-slate-300 text-sm">{gradingResult.advanced.join(', ')}</p>
+              <p className="text-success text-sm font-medium">Advanced ({gradingResult.advanced.length}):</p>
+              <p className="text-ink text-sm">{gradingResult.advanced.join(', ')}</p>
             </div>
           )}
           {gradingResult.eliminated.length === 0 && gradingResult.advanced.length === 0 && (
-            <p className="text-slate-400 text-sm">No picks found for this slate yet.</p>
+            <p className="text-muted text-sm">No picks found for this slate yet.</p>
           )}
         </div>
       )}

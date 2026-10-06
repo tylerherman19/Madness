@@ -29,7 +29,7 @@ export default async function LivePage() {
       <SiteHeader mode={mode} />
       <LiveTicker />
 
-      <main className="content-width py-9 pb-16">
+      <main id="main" className="content-width py-9 pb-16">
         <SweatBoard teamBrands={teamBrands} autoPickBehavior={pool.auto_pick_behavior} />
       </main>
       <Footer />

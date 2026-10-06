@@ -19,7 +19,7 @@ export default async function AdminLayout({
   return (
     <div className="admin-shell min-h-screen">
       {isAdmin && <AdminNav testMode={testMode} />}
-      <div className={isAdmin ? 'admin-canvas' : 'admin-login-canvas'}>{children}</div>
+      <main id="main" className={isAdmin ? 'admin-canvas' : 'admin-login-canvas'}>{children}</main>
     </div>
   )
 }

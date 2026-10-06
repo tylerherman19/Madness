@@ -22,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${geist.variable} ${display.variable} ${text.variable}`}>
       <body className="min-h-full antialiased">
+        <a href="#main" className="skip-link">Skip to content</a>
         <TestModeBanner />
         <SiteAnalytics />
         {children}

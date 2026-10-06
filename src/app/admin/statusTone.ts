@@ -12,7 +12,14 @@ export interface StatusMessage {
 }
 
 export const TONE_TEXT_CLASS: Record<StatusTone, string> = {
-  ok: 'text-green-400',
-  info: 'text-slate-300',
-  error: 'text-red-400',
+  ok: 'text-success',
+  info: 'text-ink',
+  error: 'text-danger',
+}
+
+// Errors interrupt; everything else waits its turn.
+export const TONE_ROLE: Record<StatusTone, 'alert' | 'status'> = {
+  ok: 'status',
+  info: 'status',
+  error: 'alert',
 }

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Player } from '@/types'
 import { teamColor } from '@/lib/teamColors'
+import Modal from '@/app/components/Modal'
 
 interface Props {
   players: Player[]
@@ -15,9 +16,9 @@ interface Props {
 }
 
 function actionBtn(color: 'neutral' | 'red' | 'green') {
-  const c = color === 'red' ? 'var(--red)' : color === 'green' ? 'var(--green)' : 'var(--dark)'
+  const c = color === 'red' ? 'var(--danger)' : color === 'green' ? 'var(--success)' : 'var(--ink)'
   return {
-    borderColor: color === 'neutral' ? 'var(--border)' : c,
+    borderColor: color === 'neutral' ? 'var(--line)' : c,
     color: c,
   }
 }
@@ -285,7 +286,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           <button
             onClick={() => setShowImport(!showImport)}
             className="rounded-lg border px-4 py-2 text-sm font-semibold"
-            style={{ borderColor: 'var(--border)', color: 'var(--dark)' }}
+            style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
           >
             Import Players from CSV
           </button>
@@ -295,7 +296,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           <div className="card mt-4 p-4 space-y-3">
             <p className="text-sm" style={{ color: 'var(--muted)' }}>
               Paste CSV with headers:{' '}
-              <code style={{ color: 'var(--dark)' }}>Full Name, Phone, Email, Venmo, Paid, Password</code>
+              <code style={{ color: 'var(--ink)' }}>Full Name, Phone, Email, Venmo, Paid, Password</code>
             </p>
             <textarea
               value={csvText}
@@ -303,21 +304,21 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               placeholder="Full Name,Phone,Email,Venmo,Paid,Password&#10;John Smith,555-1234,john@example.com,@johnsmith,yes,full-court-press"
               rows={8}
               className="field w-full px-3 py-2 text-sm font-mono"
-              style={{ color: 'var(--dark)' }}
+              style={{ color: 'var(--ink)' }}
             />
             <div className="flex gap-3">
               <button
                 onClick={handleImport}
                 disabled={importing || !csvText.trim()}
-                className="rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-50"
-                style={{ background: 'var(--green)' }}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-on-accent transition-colors disabled:opacity-50"
+                style={{ background: 'var(--accent)' }}
               >
                 {importing ? 'Importing…' : 'Import Players'}
               </button>
               <button
                 onClick={() => setShowImport(false)}
                 className="rounded-lg border px-4 py-2 text-sm"
-                style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+                style={{ borderColor: 'var(--line)', color: 'var(--muted)' }}
               >
                 Cancel
               </button>
@@ -327,7 +328,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       </div>
 
       {message && (
-        <p className="text-sm font-medium" style={{ color: message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') ? 'var(--red)' : 'var(--green)' }}>
+        <p role="status" className="text-sm font-medium" style={{ color: message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') ? 'var(--danger)' : 'var(--success)' }}>
           {message}
         </p>
       )}
@@ -335,12 +336,12 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       {/* Bulk actions */}
       {someSelected && (
         <div className="card flex items-center gap-3 px-4 py-2.5">
-          <span className="text-sm" style={{ color: 'var(--dark)' }}>{selected.size} selected</span>
+          <span className="text-sm" style={{ color: 'var(--ink)' }}>{selected.size} selected</span>
           <button
             onClick={() => bulkSetPaid(true)}
             disabled={bulkWorking}
             className="pill disabled:opacity-50"
-            style={{ background: 'var(--green-tint)', color: 'var(--green)' }}
+            style={{ background: 'var(--success-tint)', color: 'var(--success)' }}
           >
             Mark Paid
           </button>
@@ -348,7 +349,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             onClick={() => bulkSetPaid(false)}
             disabled={bulkWorking}
             className="pill disabled:opacity-50"
-            style={{ background: 'var(--red-tint)', color: 'var(--red)' }}
+            style={{ background: 'var(--warning-tint)', color: 'var(--warning)' }}
           >
             Mark Unpaid
           </button>
@@ -356,7 +357,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             onClick={bulkDelete}
             disabled={bulkWorking}
             className="pill disabled:opacity-50"
-            style={{ background: 'var(--red-tint)', color: 'var(--red)' }}
+            style={{ background: 'var(--danger-tint)', color: 'var(--danger)' }}
           >
             Delete
           </button>
@@ -378,7 +379,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search players by name or email…"
           className="field w-full max-w-sm px-3 py-2 text-sm"
-          style={{ color: 'var(--dark)' }}
+          style={{ color: 'var(--ink)' }}
         />
         {query && (
           <span className="text-xs" style={{ color: 'var(--muted)' }}>
@@ -399,7 +400,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             <div
               key={p.id}
               className="card p-4 space-y-3"
-              style={selected.has(p.id) ? { borderColor: 'var(--dark)', borderWidth: 2 } : {}}
+              style={selected.has(p.id) ? { borderColor: 'var(--ink)', borderWidth: 2 } : {}}
             >
               {/* Top row: checkbox + name + status */}
               <div className="flex items-center gap-3">
@@ -407,9 +408,10 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                   type="checkbox"
                   checked={selected.has(p.id)}
                   onChange={() => toggleSelect(p.id)}
+                  aria-label={`Select ${p.full_name}`}
                   className="shrink-0"
                 />
-                <span className="font-medium flex-1" style={{ color: 'var(--dark)' }}>{p.full_name}</span>
+                <span className="font-medium flex-1" style={{ color: 'var(--ink)' }}>{p.full_name}</span>
                 <span className={`pill ${p.status === 'alive' ? 'pill-alive' : 'pill-out'}`}>
                   {p.status === 'alive' ? 'Alive' : 'Out'}
                 </span>
@@ -420,14 +422,14 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 <button
                   onClick={() => togglePaid(p.id, p.paid)}
                   className="pill"
-                  style={{ background: p.paid ? 'var(--green-tint)' : 'var(--red-tint)', color: p.paid ? 'var(--green)' : 'var(--red)' }}
+                  style={{ background: p.paid ? 'var(--success-tint)' : 'var(--warning-tint)', color: p.paid ? 'var(--success)' : 'var(--warning)' }}
                 >
                   {p.paid ? 'Paid' : 'Unpaid'}
                 </button>
                 {pick ? (
                   <span className="team-chip-swatch" style={{ background: teamColor(pick).primary, width: 'auto', padding: '3px 8px', borderRadius: 6 }}>{pick}</span>
                 ) : p.status === 'alive' ? (
-                  <span className="text-xs" style={{ color: 'var(--red)' }}>pending pick</span>
+                  <span className="text-xs" style={{ color: 'var(--warning)' }}>pending pick</span>
                 ) : null}
               </div>
 
@@ -484,9 +486,9 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       <div className="hidden sm:block card overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--border)' }} className="text-left">
+            <tr style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--line)' }} className="text-left">
               <th className="px-4 py-3">
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all players" />
               </th>
               <th className="px-4 py-3 eyebrow">Name</th>
               <th className="px-4 py-3 eyebrow">Status</th>
@@ -513,15 +515,14 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                   key={p.id}
                   className="row-hover"
                   style={{
-                    borderBottom: '1px solid var(--border)',
-                    background: selected.has(p.id) ? 'var(--surface-sunken)' : 'transparent',
-                    opacity: p.status === 'eliminated' ? 0.65 : 1,
+                    borderBottom: '1px solid var(--line)',
+                    background: selected.has(p.id) ? 'var(--accent-tint)' : p.status === 'eliminated' ? 'var(--surface-sunken)' : 'transparent',
                   }}
                 >
                   <td className="px-4 py-3">
-                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />
+                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} aria-label={`Select ${p.full_name}`} />
                   </td>
-                  <td className="px-4 py-3 font-medium" style={{ color: 'var(--dark)' }}>{p.full_name}</td>
+                  <td className="px-4 py-3 font-medium" style={{ color: 'var(--ink)' }}>{p.full_name}</td>
                   <td className="px-4 py-3">
                     <span className={`pill ${p.status === 'alive' ? 'pill-alive' : 'pill-out'}`}>
                       {p.status === 'alive' ? 'Alive' : 'Out'}
@@ -532,7 +533,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                     {pick ? (
                       <span className="team-chip-swatch" style={{ background: teamColor(pick).primary, width: 'auto', padding: '3px 8px', borderRadius: 6 }}>{pick}</span>
                     ) : p.status === 'alive' ? (
-                      <span className="text-xs font-semibold" style={{ color: 'var(--red)' }}>pending</span>
+                      <span className="text-xs font-semibold" style={{ color: 'var(--warning)' }}>pending</span>
                     ) : (
                       <span className="text-xs" style={{ color: 'var(--muted)' }}>—</span>
                     )}
@@ -541,7 +542,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                     <button
                       onClick={() => togglePaid(p.id, p.paid)}
                       className="pill"
-                      style={{ background: p.paid ? 'var(--green-tint)' : 'var(--red-tint)', color: p.paid ? 'var(--green)' : 'var(--red)' }}
+                      style={{ background: p.paid ? 'var(--success-tint)' : 'var(--warning-tint)', color: p.paid ? 'var(--success)' : 'var(--warning)' }}
                     >
                       {p.paid ? 'Paid' : 'Unpaid'}
                     </button>
@@ -598,10 +599,10 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
 
       {/* Late player signup modal */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+        <Modal titleId="add-player-title" onClose={() => setShowAdd(false)}>
           <form onSubmit={addPlayer} className="card p-6 w-full max-w-sm space-y-4" style={{ background: 'var(--surface)' }}>
             <div>
-              <h3 className="font-display text-2xl" style={{ color: 'var(--dark)' }}>Add Player</h3>
+              <h3 id="add-player-title" className="font-display text-2xl" style={{ color: 'var(--ink)' }}>Add Player</h3>
               <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
                 This bypasses the public signup deadline. Give the player the password you set below.
               </p>
@@ -614,7 +615,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 value={newPlayer.full_name}
                 onChange={(event) => setNewPlayer({ ...newPlayer, full_name: event.target.value })}
                 className="field w-full px-3 py-2 text-sm"
-                style={{ color: 'var(--dark)' }}
+                style={{ color: 'var(--ink)' }}
                 autoFocus
                 required
                 maxLength={80}
@@ -628,7 +629,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 value={newPlayer.password}
                 onChange={(event) => setNewPlayer({ ...newPlayer, password: event.target.value })}
                 className="field w-full px-3 py-2 text-sm"
-                style={{ color: 'var(--dark)' }}
+                style={{ color: 'var(--ink)' }}
                 required
                 minLength={8}
                 maxLength={72}
@@ -643,12 +644,12 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 value={newPlayer.email}
                 onChange={(event) => setNewPlayer({ ...newPlayer, email: event.target.value })}
                 className="field w-full px-3 py-2 text-sm"
-                style={{ color: 'var(--dark)' }}
+                style={{ color: 'var(--ink)' }}
                 required
                 maxLength={254}
               />
             </div>
-            {addError && <p className="text-sm" style={{ color: 'var(--red)' }}>{addError}</p>}
+            {addError && <p className="text-sm" style={{ color: 'var(--danger)' }}>{addError}</p>}
             <div className="flex gap-3">
               <button
                 type="submit"
@@ -661,34 +662,34 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 type="button"
                 onClick={() => setShowAdd(false)}
                 className="flex-1 rounded-lg border py-2"
-                style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+                style={{ borderColor: 'var(--line)', color: 'var(--muted)' }}
               >
                 Cancel
               </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
 
       {/* Admin pick modal */}
       {pickModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+        <Modal titleId="pick-modal-title" onClose={() => setPickModal(null)}>
           <div className="card p-6 w-full max-w-sm space-y-4" style={{ background: 'var(--surface)' }}>
-            <h3 className="font-display text-2xl" style={{ color: 'var(--dark)' }}>
+            <h3 id="pick-modal-title" className="font-display text-2xl" style={{ color: 'var(--ink)' }}>
               {currentPicks[pickModal.player.id] ? 'Change Pick' : 'Submit Pick'} — {pickModal.player.full_name}
             </h3>
             {currentPicks[pickModal.player.id] && (
               <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                Current pick: <span className="font-mono font-bold" style={{ color: 'var(--dark)' }}>{currentPicks[pickModal.player.id]}</span>
+                Current pick: <span className="font-mono font-bold" style={{ color: 'var(--ink)' }}>{currentPicks[pickModal.player.id]}</span>
               </p>
             )}
             <div>
-              <label className="eyebrow block mb-1">Team</label>
-              <select
+              <label htmlFor="playersmanager-team" className="eyebrow block mb-1">Team</label>
+              <select id="playersmanager-team"
                 value={pickModal.team}
                 onChange={(e) => setPickModal({ ...pickModal, team: e.target.value })}
                 className="field w-full px-3 py-2"
-                style={{ color: 'var(--dark)' }}
+                style={{ color: 'var(--ink)' }}
               >
                 <option value="">Select team…</option>
                 {teams.map((t) => (
@@ -709,44 +710,44 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               <button
                 onClick={() => setPickModal(null)}
                 className="flex-1 rounded-lg border py-2"
-                style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+                style={{ borderColor: 'var(--line)', color: 'var(--muted)' }}
               >
                 Cancel
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Edit player modal */}
       {editModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+        <Modal titleId="edit-player-title" onClose={() => setEditModal(null)}>
           <div className="card p-6 w-full max-w-sm space-y-4" style={{ background: 'var(--surface)' }}>
-            <h3 className="font-display text-2xl" style={{ color: 'var(--dark)' }}>Edit Player</h3>
+            <h3 id="edit-player-title" className="font-display text-2xl" style={{ color: 'var(--ink)' }}>Edit Player</h3>
             <p className="text-xs" style={{ color: 'var(--muted)' }}>
               Name is the login key — changing it changes what they type in to log in.
             </p>
             <div>
-              <label className="eyebrow block mb-1">Full Name</label>
-              <input
+              <label htmlFor="playersmanager-full-name" className="eyebrow block mb-1">Full Name</label>
+              <input id="playersmanager-full-name"
                 type="text"
                 value={editModal.full_name}
                 onChange={(e) => setEditModal({ ...editModal, full_name: e.target.value })}
                 className="field w-full px-3 py-2 text-sm"
-                style={{ color: 'var(--dark)' }}
+                style={{ color: 'var(--ink)' }}
               />
             </div>
             <div>
-              <label className="eyebrow block mb-1">Email</label>
-              <input
+              <label htmlFor="playersmanager-email" className="eyebrow block mb-1">Email</label>
+              <input id="playersmanager-email"
                 type="email"
                 value={editModal.email}
                 onChange={(e) => setEditModal({ ...editModal, email: e.target.value })}
                 className="field w-full px-3 py-2 text-sm"
-                style={{ color: 'var(--dark)' }}
+                style={{ color: 'var(--ink)' }}
               />
             </div>
-            {editError && <p className="text-sm" style={{ color: 'var(--red)' }}>{editError}</p>}
+            {editError && <p className="text-sm" style={{ color: 'var(--danger)' }}>{editError}</p>}
             <div className="flex gap-3">
               <button
                 onClick={saveEdit}
@@ -758,13 +759,13 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               <button
                 onClick={() => setEditModal(null)}
                 className="flex-1 rounded-lg border py-2"
-                style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+                style={{ borderColor: 'var(--line)', color: 'var(--muted)' }}
               >
                 Cancel
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

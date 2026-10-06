@@ -42,7 +42,7 @@ export default async function PlayersPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-6">
-      <h1 className="font-display text-4xl" style={{ color: 'var(--dark)' }}>MANAGE PLAYERS</h1>
+      <h1 className="font-display text-4xl" style={{ color: 'var(--ink)' }}>MANAGE PLAYERS</h1>
       <PlayersManager
         players={(players || []) as Player[]}
         activeWeekId={activeSlate?.id || null}
