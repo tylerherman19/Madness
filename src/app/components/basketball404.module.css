@@ -1,42 +1,6 @@
 .scene { max-width:640px; margin:24px 0; }
 .toggle { min-height:44px; padding:8px 14px; margin-top:8px; border:1px solid #536175; border-radius:6px; background:#fff; color:#214f91; font-size:14px; cursor:pointer; }
-.paused .court * { animation-play-state:paused; }
 .court { display:block; width:100%; height:auto; overflow:hidden; }
-.shooter { animation:drive 7s ease-in-out infinite; }
-.defender { animation:defend 7s ease-in-out infinite; }
-.rebounder { animation:rebound 7s ease-in-out infinite; }
-.leftLeg,.rightLeg { transform-origin:0 22px; animation:stride .55s ease-in-out infinite alternate; }
-.rightLeg { animation-direction:alternate-reverse; }
-.shooterArms { transform-origin:0 -12px; animation:shoot 7s ease-in-out infinite; }
-.defenderArms { transform-origin:0 -12px; animation:contest 7s ease-in-out infinite; }
-.ball { animation:ball 7s linear infinite; }
-.net { transform-origin:433px 98px; animation:swish 7s ease-in-out infinite; }
-@keyframes drive { 0%,100% { transform:translateX(0); } 30% { transform:translateX(100px); } 40%,66% { transform:translateX(120px); } }
-@keyframes stride { from { transform:rotate(-12deg); } to { transform:rotate(12deg); } }
-@keyframes shoot { 0%,30%,72%,100% { transform:rotate(0); } 40%,64% { transform:rotate(-65deg); } }
-@keyframes defend { 0%,100% { transform:translate(0,0); } 35% { transform:translate(-20px,0); } 45% { transform:translate(-20px,-20px); } 56%,75% { transform:translate(-20px,0); } }
-@keyframes contest { 0%,100% { transform:rotate(0); } 35%,55% { transform:rotate(-8deg); } }
-@keyframes rebound { 0%,58%,90%,100% { transform:translateY(0); } 70% { transform:translateY(-14px); } }
-@keyframes ball {
-  0%,100% { transform:translate(125px,174px); }
-  5% { transform:translate(142px,243px); }
-  10% { transform:translate(158px,174px); }
-  15% { transform:translate(175px,243px); }
-  20% { transform:translate(192px,174px); }
-  25% { transform:translate(208px,243px); }
-  30% { transform:translate(225px,174px); }
-  38% { transform:translate(242px,138px); }
-  46% { transform:translate(300px,55px); }
-  53% { transform:translate(364px,40px); }
-  60% { transform:translate(432px,98px); }
-  67% { transform:translate(432px,243px); }
-  73% { transform:translate(475px,168px); }
-  80% { transform:translate(384px,130px); }
-  90% { transform:translate(244px,151px); }
-}
-@keyframes swish { 0%,58%,72%,100% { transform:scaleY(1); } 63% { transform:scaleY(1.22); } }
 @media(prefers-reduced-motion:reduce) {
-  .court * { animation:none; }
   .toggle { display:none; }
-  .ball { transform:translate(125px,174px); }
 }
