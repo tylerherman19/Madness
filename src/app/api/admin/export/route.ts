@@ -34,8 +34,8 @@ export async function GET(req: NextRequest) {
       const { data: players, error } = await supabase
         .from('players')
         .select('full_name, email, phone, venmo_handle, paid, status, elimination_slate')
-        .order('full_name')
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        .order('full_name').order('id')
+      if (error) throw error
 
       const csv = toCsv(
         ['full_name', 'email', 'phone', 'venmo_handle', 'paid', 'status', 'elimination_slate'],
@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
           'Content-Disposition': 'attachment; filename="survivor-players.csv"',
+          'Cache-Control': 'no-store, private',
         },
       })
     }
@@ -85,6 +86,7 @@ export async function GET(req: NextRequest) {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': 'attachment; filename="survivor-picks.csv"',
+        'Cache-Control': 'no-store, private',
       },
     })
   } catch (err) {

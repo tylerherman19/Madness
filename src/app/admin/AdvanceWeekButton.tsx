@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
+import { apiRequest } from '@/lib/clientApi'
 
 interface Props {
   currentSlateDate: string | null
@@ -23,23 +24,24 @@ export default function AdvanceSlateButton({ currentSlateDate }: Props) {
     setLoading(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/cron/auto-advance', { method: 'POST' })
-      const data = await res.json()
+      const res = await apiRequest<{ advanced_to?: string; games_synced?: number; message?: string }>(
+        '/api/cron/auto-advance',
+        { method: 'POST', timeoutMs: 120_000 }
+      )
       if (!res.ok) {
-        setMessage({ tone: 'error', text: `Error: ${data.error}` })
+        setMessage({ tone: 'error', text: `Error: ${res.error}` })
         return
       }
+      const data = res.data
       // The route answers ok:true with a message when it declines to advance
       // (games still to tip, nothing found ahead) — surface that verbatim
       // rather than claiming success.
       setMessage(
         data.advanced_to
           ? { tone: 'ok', text: `Advanced to ${data.advanced_to} — ${data.games_synced} games synced` }
-          : { tone: 'info', text: data.message }
+          : { tone: 'info', text: data.message ?? 'Nothing to advance' }
       )
       router.refresh()
-    } catch {
-      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setLoading(false)
     }
@@ -61,7 +63,7 @@ export default function AdvanceSlateButton({ currentSlateDate }: Props) {
         {loading ? 'Advancing…' : 'Advance to next day'}
       </button>
       {message && (
-        <p className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
+        <p role="status" className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
     </div>
   )

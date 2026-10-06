@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
 import { runAutoAssignNow } from '@/lib/autoAssign'
+import { reportJobFailure } from '@/lib/audit'
 
 // Per-player DB round trips plus awaited emails — allow a big no-pick cohort.
 export const maxDuration = 300
@@ -27,10 +28,12 @@ export async function POST() {
 
 async function run() {
   try {
-    const outcome = await runAutoAssignNow(await getDb(), await getEffectiveNow())
+    const db = await getDb()
+    const outcome = await runAutoAssignNow(db, await getEffectiveNow())
+    if (!outcome.ok) await reportJobFailure('Auto-assign missed picks', outcome.message ?? 'Auto-assign reported a failure', {}, db)
     return NextResponse.json({ ok: outcome.ok, message: outcome.message, results: outcome.results })
   } catch (err) {
-    console.error('auto-assign error', err)
+    await reportJobFailure('Auto-assign missed picks', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

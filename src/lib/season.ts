@@ -56,8 +56,9 @@ export async function getSignupCutoff(): Promise<SignupCutoff | null> {
     if (!cutoff) return null
 
     return { cutoff, seasonYear, slateNumber: firstSlate.slate_number }
-  } catch {
+  } catch (err) {
     // No schedule synced yet — signups stay open.
+    console.error('signup cutoff lookup failed', err)
     return null
   }
 }

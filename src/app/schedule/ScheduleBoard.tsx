@@ -11,7 +11,7 @@ export default function ScheduleBoard({days,season,brands}:{days:ScheduleDay[];s
  const [date,setDate]=useState(days.find(d=>d.games.length)?.date??days[0]?.date??'')
  const [query,setQuery]=useState('')
  const [live,setLive]=useState<LiveScoresResponse|null>(null)
- useEffect(()=>{let cancelled=false;async function load(){try{const res=await fetch('/api/live-scores',{cache:'no-store'});if(res.ok){const json=await res.json();if(!cancelled)setLive(json)}}catch{/* scheduled games stay available */}}load();const timer=setInterval(load,30000);return()=>{cancelled=true;clearInterval(timer)}},[])
+ useEffect(()=>{let cancelled=false;async function load(){try{const res=await fetch('/api/live-scores',{cache:'no-store',signal:AbortSignal.timeout(15000)});if(res.ok){const json=await res.json();if(!cancelled)setLive(json)}}catch{/* scheduled games stay available */}}load();const timer=setInterval(load,30000);return()=>{cancelled=true;clearInterval(timer)}},[])
  const day=days.find(d=>d.date===date)
  const name=(team:string)=>brandFor(team,brands).shortName
  const games=(day?.games??[]).filter(g=>(name(g.awayAbbr)+' '+name(g.homeAbbr)+' '+g.awayAbbr+' '+g.homeAbbr).toLowerCase().includes(query.toLowerCase()))

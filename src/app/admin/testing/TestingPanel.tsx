@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { SandboxSnapshot, SandboxGame } from './page'
+import { apiRequest } from '@/lib/clientApi'
 
 function formatCt(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
@@ -55,20 +56,13 @@ export default function TestingPanel({
     setMessage(null)
     setError(null)
     try {
-      const res = await fetch('/api/admin/test-mode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...extra }),
-      })
-      const data = await res.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await apiRequest<any>('/api/admin/test-mode', { method: 'POST', body: { action, ...extra }, timeoutMs: 120_000 })
       if (!res.ok) {
-        setError(data.error || 'Request failed')
+        setError(res.error)
         return null
       }
-      return data
-    } catch {
-      setError('Network error')
-      return null
+      return res.data
     } finally {
       setBusy(null)
     }
@@ -79,12 +73,9 @@ export default function TestingPanel({
     setMessage(null)
     setError(null)
     try {
-      const res = await fetch(path, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) setError(data.error || `${label} failed`)
-      else setMessage(`${label}: ${JSON.stringify(data.results ?? data.grading ?? data.message ?? data)}`)
-    } catch {
-      setError('Network error')
+      const res = await apiRequest(path, { method: 'POST', timeoutMs: 300_000 })
+      if (!res.ok) setError(`${label} failed: ${res.error}`)
+      else setMessage(`${label}: ${JSON.stringify(res.data.results ?? res.data.grading ?? res.data.message ?? res.data)}`)
     } finally {
       setBusy(null)
       router.refresh()

@@ -120,7 +120,7 @@ export async function GET() {
       supabase
         .from('players')
         .select('id, full_name, email, status, elimination_slate')
-        .order('full_name'),
+        .order('full_name').order('id'),
       supabase.from('picks').select('player_id, team').eq('slate_id', slate.id),
       supabase.from('games').select('*').eq('slate_id', slate.id),
       // Sandbox matchups are fabricated, so there's nothing to look up on the

@@ -53,7 +53,7 @@ export async function GET() {
         .from('players')
         .select('id, full_name, status, elimination_slate')
         .not('email', 'like', '%@nflsurvivor.internal')
-        .order('full_name'),
+        .order('full_name').order('id'),
       loadAll<ExportPick>(supabase, 'picks', 'player_id, slate_id, team').then((data) => ({ data, error: null })),
       loadAll<ExportGame>(supabase, 'games', 'slate_id, home_team, away_team, result, tip_time, round_label, time_tbd')
         .then((data) => ({ data, error: null })),

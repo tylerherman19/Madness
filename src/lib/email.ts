@@ -25,7 +25,7 @@ export function getResend(): Resend {
   return _resend
 }
 
-export const FROM_EMAIL = 'Griffin Sell - NFL Survivor <pool@pickandpray.org>'
+export const FROM_EMAIL = 'Griffin Sell - Madness <pool@pickandpray.org>'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://madness-cyan.vercel.app'
 
 // Resend's free tier allows ~2 requests/sec — loops sending to many
@@ -101,7 +101,8 @@ async function sendChecked(payload: {
 }): Promise<SendResult> {
   const { error } = await getResend().emails.send({ from: FROM_EMAIL, ...payload })
   if (error) {
-    console.error(`Email to ${payload.to} failed ("${payload.subject}"):`, error)
+    // The recipient address stays out of the logs; the subject identifies the send.
+    console.error(`Email failed ("${payload.subject}"):`, error)
     return { ok: false, error: error.message }
   }
   return { ok: true }
@@ -122,7 +123,7 @@ export async function sendPickConfirmationEmail(
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
         ${LOGO_HEADER}
         <p>Hey ${esc(fullName)},</p>
-        <p>You&rsquo;re locked in with ${esc(teamName)} for Slate ${slateNumber}. You can still change it up until kickoff or Sunday at 12PM CT, whichever comes first. Let&rsquo;s see how it shakes out.</p>
+        <p>You&rsquo;re locked in with ${esc(teamName)} for Slate ${slateNumber}. You can still change it until the day&rsquo;s first game tips off. Let&rsquo;s see how it shakes out.</p>
         <a href="${APP_URL}" style="display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">View Standings</a>
         <p style="margin-top: 24px;">Best of luck,</p>
         <p>Griffin Sell</p>

@@ -59,9 +59,10 @@ export async function getPoolConfig(db?: SupabaseClient): Promise<PoolConfig> {
       .maybeSingle()
     if (error || !data) return DEFAULT_POOL_CONFIG
     return normalize(data)
-  } catch {
+  } catch (err) {
     // Table missing (migration not applied) or the database is unreachable —
     // the pages that call this must still render.
+    console.error('pool config load failed', err)
     return DEFAULT_POOL_CONFIG
   }
 }

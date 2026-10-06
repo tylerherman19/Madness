@@ -294,3 +294,6 @@
   .sweatControls .pills::-webkit-scrollbar { display:none; }
   .sweatControls .pills button { min-height:42px; flex:0 0 auto; }
 }
+
+/* Dynamic viewport height on mobile (see globals.css). */
+@supports (height: 100dvh) { .root { min-height: 100dvh; } }

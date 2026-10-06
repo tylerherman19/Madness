@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { requireAdmin } from '@/lib/api'
+import { requireAdmin, isUuid, readJsonObject, badRequest, serverError } from '@/lib/api'
+import { isClockTime, isIsoDate, isTeamCode } from '@/lib/validation'
 import { getOrCreateSlate, renumberSlates, refreshLockTime } from '@/lib/slates'
 import { fromZonedTime } from 'date-fns-tz'
 
@@ -21,10 +22,13 @@ export async function POST(req: NextRequest) {
   if (unauthorized) return unauthorized
 
   try {
-    const { season_year, games } = await req.json()
-    if (!Number.isInteger(season_year) || !Array.isArray(games) || games.length === 0) {
+    const body = await readJsonObject(req)
+    if (!body) return badRequest()
+    const { season_year, games } = body
+    if (!Number.isInteger(season_year) || (season_year as number) < 2000 || (season_year as number) > 2100 || !Array.isArray(games) || games.length === 0) {
       return NextResponse.json({ error: 'Missing season_year or games' }, { status: 400 })
     }
+    if (games.length > 200) return badRequest('Too many games in one request (max 200)')
 
     const supabase = await getDb()
 
@@ -32,9 +36,16 @@ export async function POST(req: NextRequest) {
     // form no longer asks which slate a game belongs to.
     const byDate = new Map<string, ManualGame[]>()
     for (const g of games as ManualGame[]) {
-      if (!g.date || !g.time || !g.home_team || !g.away_team) {
+      if (!g || typeof g !== 'object' || !g.date || !g.time || !g.home_team || !g.away_team) {
         return NextResponse.json({ error: 'Every game needs a date, time, and both teams' }, { status: 400 })
       }
+      if (!isIsoDate(g.date)) return badRequest(`${g.date} is not a real date (YYYY-MM-DD)`)
+      if (!isClockTime(g.time)) return badRequest(`${g.time} is not a valid time (HH:MM, 24-hour)`)
+      if (!isTeamCode(g.home_team) || !isTeamCode(g.away_team)) {
+        return badRequest('Team codes must be 1–12 letters, digits, &, ., \' or -')
+      }
+      g.home_team = g.home_team.trim().toUpperCase()
+      g.away_team = g.away_team.trim().toUpperCase()
       if (g.home_team === g.away_team) {
         return NextResponse.json({ error: 'A team cannot play itself' }, { status: 400 })
       }
@@ -46,9 +57,9 @@ export async function POST(req: NextRequest) {
     const touched: string[] = []
 
     for (const [date, dayGames] of byDate) {
-      const slate = await getOrCreateSlate(supabase, date, season_year)
+      const slate = await getOrCreateSlate(supabase, date, season_year as number)
       if ('error' in slate) {
-        return NextResponse.json({ error: slate.error }, { status: 500 })
+        return serverError('schedule slate error', slate.error, `Could not create the ${date} game day`)
       }
 
       const rows = dayGames.map((g) => ({
@@ -73,14 +84,14 @@ export async function POST(req: NextRequest) {
         .from('games')
         .upsert(rows, { onConflict: 'espn_event_id' })
       if (insertError) {
-        return NextResponse.json({ error: `Failed to save games: ${insertError.message}` }, { status: 500 })
+        return serverError('schedule upsert error', insertError, `Failed to save games for ${date}`)
       }
 
       await refreshLockTime(supabase, slate.id)
       touched.push(date)
     }
 
-    await renumberSlates(supabase, season_year)
+    await renumberSlates(supabase, season_year as number)
 
     return NextResponse.json({ ok: true, dates: touched, games_saved: games.length })
   } catch (err) {
@@ -95,7 +106,7 @@ export async function DELETE(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
-  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  if (!isUuid(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
 
   const supabase = await getDb()
 
@@ -104,8 +115,10 @@ export async function DELETE(req: NextRequest) {
   // no longer exists.
   const { data: game } = await supabase.from('games').select('slate_id').eq('id', id).maybeSingle()
 
+  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+
   const { error } = await supabase.from('games').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError('schedule delete error', error, 'Failed to delete game')
 
   if (game?.slate_id) await refreshLockTime(supabase, game.slate_id)
 

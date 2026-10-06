@@ -5,6 +5,7 @@ import Link from 'next/link'
 import AuthShell from '@/app/components/AuthShell'
 import { signupValidationError } from '@/lib/signupValidation'
 import { supportEmail } from '@/lib/site'
+import { apiRequest } from '@/lib/clientApi'
 
 export default function SignupForm() {
   const [fullName, setFullName] = useState('')
@@ -30,16 +31,9 @@ export default function SignupForm() {
     if (validationError) { setError(validationError); return }
     setLoading(true)
     try {
-      const res = await fetch('/api/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Signup failed'); return }
+      const res = await apiRequest('/api/signup', { method: 'POST', body })
+      if (!res.ok) { setError(res.error); return }
       setDone(true)
-    } catch {
-      setError('Something went wrong. Try again.')
     } finally {
       setLoading(false)
     }

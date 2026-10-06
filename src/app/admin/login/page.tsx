@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import styles from './login.module.css'
+import { apiRequest } from '@/lib/clientApi'
 
 export default function AdminLoginPage() {
   const router = useRouter()
@@ -17,22 +18,14 @@ export default function AdminLoginPage() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/auth/admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      })
-      const data = await res.json()
-
+      const res = await apiRequest('/api/auth/admin', { method: 'POST', body: { password } })
       if (!res.ok) {
-        setError(data.error || 'Login failed')
+        setError(res.error)
         return
       }
 
       router.push('/admin')
       router.refresh()
-    } catch {
-      setError('Something went wrong.')
     } finally {
       setLoading(false)
     }
@@ -49,8 +42,11 @@ export default function AdminLoginPage() {
         <p className="mb-7">Manage the pool, schedule, results, players, and messages.</p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="eyebrow block mb-2">Password</label>
+            <label className="eyebrow block mb-2" htmlFor="admin-password">Password</label>
             <input
+              id="admin-password"
+              autoComplete="current-password"
+              maxLength={200}
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -59,7 +55,7 @@ export default function AdminLoginPage() {
               className="field w-full px-3.5 py-2.5 text-sm"
             />
           </div>
-          {error && <p className="text-sm rounded-md px-3 py-2" style={{ color: '#ff8a7a', background: 'rgba(192,57,43,0.18)' }}>{error}</p>}
+          {error && <p role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: '#ff8a7a', background: 'rgba(192,57,43,0.18)' }}>{error}</p>}
           <button
             type="submit"
             disabled={loading}

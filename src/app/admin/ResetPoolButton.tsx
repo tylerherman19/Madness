@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TONE_TEXT_CLASS, type StatusMessage } from './statusTone'
+import { apiRequest } from '@/lib/clientApi'
 
 const CONFIRM_PHRASE = 'RESET POOL'
 
@@ -18,21 +19,14 @@ export default function ResetPoolButton() {
     setLoading(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/admin/reset-pool', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: typed }),
-      })
-      const data = await res.json()
+      const res = await apiRequest('/api/admin/reset-pool', { method: 'POST', body: { confirm: typed }, timeoutMs: 120_000 })
       if (res.ok) {
         setMessage({ tone: 'ok', text: 'Pool reset to zero.' })
         setTyped('')
         router.refresh()
       } else {
-        setMessage({ tone: 'error', text: `Error: ${data.error}` })
+        setMessage({ tone: 'error', text: `Error: ${res.error}` })
       }
-    } catch {
-      setMessage({ tone: 'error', text: 'Server error. Try again.' })
     } finally {
       setLoading(false)
     }
@@ -47,6 +41,7 @@ export default function ResetPoolButton() {
       <div className="flex flex-wrap items-center gap-3">
         <input
           type="text"
+          aria-label={`Type ${CONFIRM_PHRASE} to enable reset`}
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
           placeholder={`Type "${CONFIRM_PHRASE}" to enable`}
@@ -61,7 +56,7 @@ export default function ResetPoolButton() {
         </button>
       </div>
       {message && (
-        <p className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
+        <p role="status" className={`text-xs ${TONE_TEXT_CLASS[message.tone]}`}>{message.text}</p>
       )}
     </div>
   )

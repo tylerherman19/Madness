@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
 import { getSession, getAdminSession } from '@/lib/session'
-import { isUuid } from '@/lib/api'
+import { isUuid, readJsonObject, badRequest } from '@/lib/api'
 import { isSlateLocked, seedForTeam } from '@/lib/deadline'
 import { loadPickWindow } from '@/lib/pickWindow'
 import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
@@ -13,7 +13,8 @@ import type { Game } from '@/types'
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
+    const body = await readJsonObject(req)
+    if (!body) return badRequest()
     const { slate_id, team, pick_id, player_id_override, submitted_by_admin } = body
 
     // Allow admin to submit on behalf of a player
@@ -34,6 +35,9 @@ export async function POST(req: NextRequest) {
     if (!slate_id || !team) {
       return NextResponse.json({ error: 'Missing slate_id or team' }, { status: 400 })
     }
+    if (typeof team !== 'string' || team.length > 20) {
+      return NextResponse.json({ error: 'Invalid team' }, { status: 400 })
+    }
 
     // No global team whitelist: the only teams that exist are the ones ESPN
     // listed, and the only legal picks are teams playing on this slate. The
@@ -50,11 +54,16 @@ export async function POST(req: NextRequest) {
     const pool = await getPoolConfig(supabase)
 
     // Check player is alive
-    const { data: player } = await supabase
+    const { data: player, error: playerError } = await supabase
       .from('players')
       .select('id, email, full_name, status')
       .eq('id', playerId)
-      .single()
+      .maybeSingle()
+
+    if (playerError) {
+      console.error('picks player lookup error', playerError)
+      return NextResponse.json({ error: 'Could not load your entry. Try again.' }, { status: 500 })
+    }
 
     if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
     if (player.status === 'eliminated') {

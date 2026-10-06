@@ -369,3 +369,12 @@ body { background:#f4f7fb; color:#0d1c34; font-family:var(--concept-text),Arial,
 .pool-rule:last-child { margin-bottom:0; }
 .pool-rule-number { display:flex; align-items:center; justify-content:center; flex:0 0 24px; height:24px; border-radius:50%; background:var(--red-tint); color:var(--red); font-size:12px; font-weight:700; }
 @media(min-width:900px) { .pool-rules { columns:2; column-gap:32px; padding:24px; } }
+
+/* Mobile browser chrome: 100vh is the *largest* viewport on iOS/Android, so
+   full-height shells overflow behind the address bar. Prefer the dynamic
+   viewport where supported; 100vh above stays as the fallback. */
+@supports (height: 100dvh) {
+  .site-shell, .auth-shell, .admin-shell, .admin-canvas, .admin-login-canvas { min-height: 100dvh; }
+}
+/* With viewport-fit=cover, keep in-flow content clear of a landscape notch. */
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }

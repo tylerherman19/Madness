@@ -27,7 +27,7 @@ export async function getDashboardData() {
       // 1,000-row response cap (see lib/db.ts).
       const [weeks, playersRes] = await Promise.all([
         loadAll<{ id: string; season_year: number; is_active: boolean }>(supabase, 'slates', '*'),
-        supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name'),
+        supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name').order('id'),
       ])
       if (playersRes.error) throw playersRes.error
       const seasonYear = seasonYearOf(weeks)
@@ -187,8 +187,11 @@ export async function getDashboardData() {
         status: p.status as 'alive' | 'eliminated',
         slates_survived: weeksSurvivedByPlayer[p.id] || 0,
         seed_total: seedTotalByPlayer[p.id] || 0,
-        current_pick: currentPicks[p.id]?.[0] || null,
-        current_picks: currentPicks[p.id] || [],
+        // Hidden picks never leave this function: rows are handed to client
+        // components and serialized into the page, so an unrevealed team
+        // here would be readable in the page source before the lock.
+        current_pick: revealedPicks[p.id] ? currentPicks[p.id]?.[0] || null : null,
+        current_picks: revealedPicks[p.id] ? currentPicks[p.id] || [] : [],
         pick_locked: (currentPicks[p.id]?.length ?? 0) > 0,
         pick_revealed: !!revealedPicks[p.id],
         elimination_reason: p.elimination_reason,
@@ -272,7 +275,8 @@ export async function getDashboardData() {
       insights,
       teamBrands,
     }
-  } catch {
+  } catch (err) {
+    console.error('dashboard load failed', err)
     return null
   }
 }

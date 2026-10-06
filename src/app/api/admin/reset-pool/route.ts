@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
-import { requireAdmin } from '@/lib/api'
+import { requireAdmin, readJsonObject, serverError } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { logAudit } from '@/lib/audit'
 
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   if (unauthorized) return unauthorized
 
   try {
-    const { confirm } = await req.json()
+    const confirm = (await readJsonObject(req))?.confirm
     if (confirm !== CONFIRM_PHRASE) {
       return NextResponse.json({ error: `Must confirm with exact phrase "${CONFIRM_PHRASE}"` }, { status: 400 })
     }
@@ -31,16 +31,16 @@ export async function POST(req: NextRequest) {
     // Children first, though FKs cascade anyway — explicit is safer than
     // relying on cascade order for a destructive, irreversible operation.
     const { error: picksError } = await supabase.from('picks').delete().not('id', 'is', null)
-    if (picksError) return NextResponse.json({ error: `Failed to clear picks: ${picksError.message}` }, { status: 500 })
+    if (picksError) return serverError('reset picks error', picksError, 'Failed to clear picks. Nothing else was deleted.')
 
     const { error: gamesError } = await supabase.from('games').delete().not('id', 'is', null)
-    if (gamesError) return NextResponse.json({ error: `Failed to clear games: ${gamesError.message}` }, { status: 500 })
+    if (gamesError) return serverError('reset games error', gamesError, 'Failed to clear games after picks were cleared. Run the reset again.')
 
     const { error: weeksError } = await supabase.from('slates').delete().not('id', 'is', null)
-    if (weeksError) return NextResponse.json({ error: `Failed to clear slates: ${weeksError.message}` }, { status: 500 })
+    if (weeksError) return serverError('reset slates error', weeksError, 'Failed to clear slates after picks and games were cleared. Run the reset again.')
 
     const { error: playersError } = await supabase.from('players').delete().not('id', 'is', null)
-    if (playersError) return NextResponse.json({ error: `Failed to clear players: ${playersError.message}` }, { status: 500 })
+    if (playersError) return serverError('reset players error', playersError, 'Failed to clear players after everything else was cleared. Run the reset again.')
 
     await logAudit(supabase, {
       event_type: 'pool-reset',

@@ -25,6 +25,7 @@ export const AUDIT_EVENT_TYPES: Record<string, string> = {
   'pool-config-updated': 'Pool configuration updated',
   'welcome-email-failed': 'Welcome email failed',
   'player-signed-up': 'Player signed up',
+  'job-failed': 'Scheduled job failed',
 }
 
 export type AuditEventType = keyof typeof AUDIT_EVENT_TYPES
