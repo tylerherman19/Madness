@@ -35,6 +35,7 @@ export interface SavedPick {
   team: string
   slateId: string
   editable: boolean
+  updatedAt?: string
   autoAssigned: boolean
 }
 
@@ -168,14 +169,14 @@ export default function PickForm({
       const response = await fetch('/api/picks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slate_id: slateId, team: selected, pick_id: editingId }),
+        body: JSON.stringify({ slate_id: slateId, team: selected, pick_id: editingId, expected_version: picks.find(pick => pick.id === editingId)?.updatedAt }),
       })
       const result = await response.json()
       if (!response.ok) {
         setError(result.error || 'Could not save your pick. Try again.')
         return
       }
-      const saved = result.pick as { id: string; team: string; slate_id: string }
+      const saved = result.pick as { id: string; team: string; slate_id: string; updated_at: string }
       setPicks((current) => {
         const next: SavedPick = {
           id: saved.id,
@@ -183,6 +184,7 @@ export default function PickForm({
           slateId: saved.slate_id,
           editable: true,
           autoAssigned: false,
+          updatedAt: saved.updated_at,
         }
         return editingId
           ? current.map((pick) => (pick.id === editingId ? next : pick))

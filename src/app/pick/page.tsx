@@ -169,6 +169,7 @@ async function loadPickData(
         slateId: pick.slate_id,
         editable: pick.slate_id === slate.id && !locked,
         autoAssigned: !!pick.auto_assigned,
+        updatedAt: pick.updated_at,
       }))
 
     return {
