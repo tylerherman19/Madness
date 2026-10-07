@@ -178,12 +178,12 @@ export const STATUS_DESCRIPTION: Record<PoolStatus, string> = {
 export function autoPickRule(behavior: AutoPickBehavior, tournament: boolean): string {
   if (behavior === 'highest-seed') {
     return tournament
-      ? 'Miss the lock and you will be auto-assigned the highest remaining seed you have not used, starting with a No. 1 seed. AP rank breaks ties.'
+      ? 'Miss the lock and you will be auto-assigned the highest remaining seed you have not used, starting with a No. 1 seed. Team abbreviation breaks ties deterministically.'
       : 'Miss the lock and the system will use the latest-game fallback; seed priority is available only for tournament games.'
   }
   if (behavior === 'eliminate') return 'Miss the lock and your entry is eliminated.'
   if (behavior === 'none') return 'Miss the lock and no pick is recorded or graded.'
-  return "Miss the lock and you're auto-assigned an unused team from the day's last game. If no unused team remains, you're eliminated."
+  return "Miss the lock and you're auto-assigned an unused team from the day's last game. If no unused team remains, you're eliminated. A delayed worker uses the schedule frozen at lock, even when the assigned game has started or finished."
 }
 
 // -------------------------------------------------------------------- rounds

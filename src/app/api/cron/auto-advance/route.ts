@@ -4,6 +4,9 @@ import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
+import { gradeSlatePicks } from '@/lib/grading'
+import { runAutoAssignNow } from '@/lib/autoAssign'
+import { loadGamesForSlates } from '@/lib/seasonData'
 import type { Game } from '@/types'
 import { serverError } from '@/lib/alerts'
 
@@ -50,22 +53,22 @@ async function run(actor: 'system' | 'admin') {
 
   try {
     const supabase = await getDb()
-    const { data: slate } = await supabase
+    const { data: slate, error: slateError } = await supabase
       .from('slates')
       .select('id, slate_number, slate_date, season_year')
       .eq('is_active', true)
-      .single()
+      .maybeSingle()
 
+    if (slateError) throw slateError
     if (!slate) return NextResponse.json({ ok: true, message: 'No active slate' })
 
-    const { data: currentGames } = await supabase.from('games').select('tip_time').eq('slate_id', slate.id)
-    const lastTip = ((currentGames || []) as Pick<Game, 'tip_time'>[])
-      .map((g) => new Date(g.tip_time).getTime())
-      .sort((a, b) => b - a)[0]
-    const now = await getEffectiveNow()
-    if (lastTip && now.getTime() < lastTip) {
-      return NextResponse.json({ ok: true, message: `Slate ${slate.slate_number}'s games haven't all tipped off yet — nothing to advance` })
+    const currentGames: Game[] = await loadGamesForSlates(supabase, [slate.id])
+    if (!currentGames.length || currentGames.some(game => game.result === 'pending')) {
+      return NextResponse.json({ ok: true, message: 'Awaiting all final results; current slate remains active' })
     }
+    const assignment = await runAutoAssignNow(supabase, await getEffectiveNow())
+    if (!assignment.ok || !assignment.done) return NextResponse.json({ error: 'Assignments are incomplete; advancement deferred' }, { status: 409 })
+    await gradeSlatePicks(supabase, slate.id, slate.slate_number, currentGames)
 
     // Walk forward day by day until one has games. Each probe is a real sync,
     // so the day that wins is already populated when it goes active.
@@ -76,7 +79,8 @@ async function run(actor: 'system' | 'admin') {
       const day = new Date(from.getTime() + i * 86_400_000)
       const yyyymmdd = day.toISOString().slice(0, 10).replace(/-/g, '')
       const attempt = await syncSlateFromEspn(supabase, yyyymmdd, slate.season_year)
-      if (attempt.ok && attempt.slateId && (attempt.gamesSynced ?? 0) > 0) {
+      if (attempt.partial?.length || (!attempt.ok && !attempt.error?.startsWith('No games found'))) throw new Error(attempt.error ?? 'Schedule is incomplete')
+      if (attempt.ok && !attempt.partial?.length && attempt.slateId && (attempt.gamesSynced ?? 0) > 0) {
         result = attempt
         nextDate = day.toISOString().slice(0, 10)
         break
@@ -90,9 +94,8 @@ async function run(actor: 'system' | 'admin') {
       })
     }
 
-    await supabase.from('slates').update({ is_active: false }).eq('is_active', true)
-    const { error: activateErr } = await supabase.from('slates').update({ is_active: true }).eq('id', result.slateId)
-    if (activateErr) return serverError('api/cron/auto-advance', activateErr, activateErr.message)
+    const { error: activateErr } = await supabase.rpc('activate_slate', { p_slate_id: result.slateId })
+    if (activateErr) return serverError('api/cron/auto-advance', activateErr, 'Transactional activation unavailable; apply migration 022')
 
     const label = nextDate
     await logAudit(supabase, {

@@ -39,7 +39,7 @@ const AUTO_PICK_OPTIONS: [string, string, string][] = [
   [
     'highest-seed',
     'Highest remaining seed',
-    'Tournament only: starts at No. 1, then moves down when that seed was already used. AP rank breaks ties.',
+    'Tournament only: starts at No. 1, then moves down when that seed was already used. Team abbreviation breaks ties deterministically.',
   ],
   ['eliminate', 'Eliminate', 'Missing the lock ends the entry immediately.'],
   ['none', 'Leave blank', 'No pick is recorded and nothing is graded.'],

@@ -16,7 +16,7 @@ import { serverError } from '@/lib/alerts'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { slate_id, team, pick_id, player_id_override, submitted_by_admin } = body
+    const { slate_id, team, pick_id, expected_version, player_id_override, submitted_by_admin } = body
 
     // Allow admin to submit on behalf of a player
     const isAdmin = submitted_by_admin ? await getAdminSession() : false
@@ -68,6 +68,8 @@ export async function POST(req: NextRequest) {
 
     const now = await getEffectiveNow()
     const window = await loadPickWindow(supabase, playerId, pool, now, !isAdmin)
+    const retry = window.picks.find(pick => pick.slate_id === slate_id && pick.team === team && (!pick_id || pick.id === pick_id))
+    if (retry) return NextResponse.json({ ok: true, pick: retry })
     const slate = window.seasonSlates.find((row) => row.id === slate_id)
     if (!slate || (isAdmin ? !slate.is_active : window.pickSlate?.id !== slate_id)) {
       return NextResponse.json(
@@ -130,6 +132,13 @@ export async function POST(req: NextRequest) {
     if (pick_id && !existingPick) {
       return NextResponse.json({ error: 'That pick cannot be changed on this game day' }, { status: 400 })
     }
+    // An accepted identical retry returns the durable saved receipt, including
+    // in a shared round where inserts otherwise fill another slot.
+    const identical = !pick_id && playerPicks.find(pick => pick.slate_id === slate_id && pick.team === team)
+    if (identical) return NextResponse.json({ ok: true, pick: identical })
+    if (existingPick && existingPick.team !== team && expected_version !== existingPick.updated_at) {
+      return NextResponse.json({ error: 'This pick changed or the edit is stale. Refresh and try again.' }, { status: 409 })
+    }
     if (!existingPick && picksInPeriod.length >= quota) {
       return NextResponse.json(
         { error: `You already made all ${quota} required pick${quota === 1 ? '' : 's'} for this round` },
@@ -161,9 +170,11 @@ export async function POST(req: NextRequest) {
         .update({ team, seed: pickedSeed, auto_assigned: false, submitted_by_admin: isAdmin })
         .eq('id', existingPick.id)
         .eq('team', existingPick.team)
-        .select('id, team, slate_id')
+        .eq('updated_at', existingPick.updated_at!)
+        .select('id, team, slate_id, updated_at')
         .single()
       if (updateError) {
+        if (updateError.code === 'P0001') return NextResponse.json({ error: updateError.message }, { status: 409 })
         if (updateError.code === 'PGRST116') return NextResponse.json({ error: 'This pick changed while you were editing. Refresh and try again.' }, { status: 409 })
         console.error('update error', updateError)
         if (updateError.code === '23505') {
@@ -185,9 +196,10 @@ export async function POST(req: NextRequest) {
           auto_assigned: false,
           submitted_by_admin: isAdmin,
         })
-        .select('id, team, slate_id')
+        .select('id, team, slate_id, updated_at')
         .single()
       if (insertError) {
+        if (insertError.code === 'P0001') return NextResponse.json({ error: insertError.message }, { status: 409 })
         console.error('insert error', insertError)
         if (insertError.code === '23505') {
           return NextResponse.json({ error: `${player.full_name} already has a pick for this slate or already used ${team}` }, { status: 409 })

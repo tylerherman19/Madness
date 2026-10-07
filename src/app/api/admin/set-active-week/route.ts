@@ -25,8 +25,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Slate not found' }, { status: 404 })
     }
 
-    await supabase.from('slates').update({ is_active: false }).gt('slate_number', 0)
-    const { error } = await supabase.from('slates').update({ is_active: true }).eq('id', slate_id)
+    const { error } = await supabase.rpc('activate_slate', { p_slate_id: slate_id })
     if (error) return serverError('api/admin/set-active-week', error, error.message)
 
     await logAudit(supabase, {
