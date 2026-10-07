@@ -24,15 +24,16 @@ export default async function Home(){
  return <div className={s.root}><SiteHeader mode={data?.mode} signupsClosed={closed}/><LiveTicker label={label}/>
  <main id="main" className={s.main}>
   <section className={s.welcome}>
-   <div className={s.welcomeCopy}><span className={s.heroKicker}>College basketball survivor pool</span><h1>One team<br/>each round.<br/>Stay alive.</h1><div className={s.heroActions}><Link href="/pick" className={s.primary}>Make your pick <Arrow/></Link><Link href="#rules" className={s.heroSecondary}>How it works</Link></div></div>
+   <div className={s.welcomeCopy}><span className={s.heroKicker}>College basketball survivor pool</span><h1>One team<br/>{data?.mode === 'march-madness' ? 'each round.' : 'each game day.'}<br/>Stay alive.</h1><div className={s.heroActions}><Link href="/pick" className={s.primary}>Make your pick <Arrow/></Link><Link href="/login" className={s.heroSecondary}>Sign in</Link>{!closed && <Link href="/signup" className={s.heroSecondary}>Join pool · $25</Link>}</div></div>
    <div className={s.heroArt} aria-hidden="true"><span>SAME<br/>GAMES.<br/><b>BIGGER<br/>STAKES.</b></span></div>
   </section>
+  {!closed && data?.slate && !data.slateIsToday && <p className={s.privacyNotice}>Registration open — next game day: {label}. $25 entry via Venmo to @griffinsell. Picks lock at the first tip; teams cannot be reused.</p>}
   {!data&&<p role="status" className={s.privacyNotice}>Pool data is unavailable. Refresh to try again.</p>}
-  <dl className={s.stats}><div><dt>Still alive</dt><dd>{data?.aliveCount??'-'}<small>{data?.totalPlayers?Math.round((data.aliveCount/data.totalPlayers)*100):0}% of field</small></dd></div><div><dt>Eliminated</dt><dd>{data?.eliminatedCount??'-'}<small>{data?.totalPlayers??0} total entries</small></dd></div><div><dt>Current pot</dt><dd>{data?'$'+data.potSize.toLocaleString():'-'}</dd></div><div><dt>Picks in</dt><dd>{data?.picksMade??'-'}<small>of {data?.aliveCount??'-'} survivors</small></dd></div></dl>
+  <dl className={s.stats}><div><dt>Still alive</dt><dd>{data?.aliveCount??'-'}<small>{data?.totalPlayers?Math.round((data.aliveCount/data.totalPlayers)*100):0}% of field</small></dd></div><div><dt>Eliminated</dt><dd>{data?.eliminatedCount??'-'}<small>{data?.totalPlayers??0} total entries</small></dd></div><div><dt>Paid entry estimate</dt><dd>{data?'$'+data.potSize.toLocaleString():'-'}<small>{data?.paidEntries ?? 0} paid · {data?.pendingEntries ?? 0} pending</small></dd></div><div><dt>Picks in</dt><dd>{data?.picksMade??'-'}<small>of {data?.aliveCount??'-'} survivors</small></dd></div></dl>
   <div className={s.dashboardGrid}>
    <section className={s.gamesCard}>
     <div className={s.sectionTitle}>
-     <h2>Today&apos;s games</h2>
+     <h2>{data?.slateIsToday ? "Today's games" : label + ' games'}</h2>
      <Link href="/schedule">View all games <Arrow/></Link>
     </div>
     <div className={s.gameTable} role="region" aria-label="Today's games" tabIndex={0}>
@@ -59,7 +60,7 @@ export default async function Home(){
    </section>
    <section id="rules" className={s.howCard}>
     <div className={s.sectionTitle}><h2>How it works</h2><Link href="/standings#rules">Full rules <Arrow/></Link></div>
-    <div className={s.steps}>{[['1','Join','Create an account and enter the pool.'],['2','Pick','Choose one team each round.'],['3','Survive','A win keeps your run alive.'],['4','Win','Last player standing takes the pot.']].map(x=><div key={x[0]}><b>{x[0]}</b><span><strong>{x[1]}</strong><small>{x[2]}</small></span></div>)}</div>
+    <div className={s.steps}>{[['1','Join','Create an account and enter the pool.'],['2','Pick',data?.mode === 'march-madness' ? 'Complete the picks required each round.' : 'Choose one team each game day.'],['3','Survive','A win keeps your run alive.'],['4','Win','Last player standing takes the pot.']].map(x=><div key={x[0]}><b>{x[0]}</b><span><strong>{x[1]}</strong><small>{x[2]}</small></span></div>)}</div>
    </section>
   </div>
  </main><Footer/></div>

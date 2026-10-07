@@ -23,19 +23,15 @@ const MODE_BLURB: Record<CompetitionMode, string> = {
 
 const PICK_FREQUENCY_OPTIONS: [string, string, string][] = [
   ['every-game-day', 'Every game day', 'One pick per day that has games.'],
-  ['weekends-only', 'Weekends only', 'Picks are required on Saturdays and Sundays.'],
   ['tournament-round', 'Per tournament round', "The round's quota, spent across that round's days."],
 ]
 
 const DEADLINE_OPTIONS: [string, string, string][] = [
   ['first-tip', "First tip of the day", 'The whole slate locks together, at its earliest tip.'],
-  ['per-game', 'Each game individually', "Every pick locks at its own team's tip."],
 ]
 
 const REUSE_OPTIONS: [string, string, string][] = [
   ['once-per-pool', 'Once per pool', 'Classic survivor — a team is spent for good.'],
-  ['once-per-round', 'Once per round', 'Teams reset when a new round starts.'],
-  ['unlimited', 'No restriction', 'Any eligible team, any pick period.'],
 ]
 
 const AUTO_PICK_OPTIONS: [string, string, string][] = [

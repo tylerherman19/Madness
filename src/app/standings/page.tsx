@@ -65,7 +65,7 @@ export default async function DashboardPage() {
         label={period?.roundLabel ?? (period ? formatPeriodDate(period.date) : null)}
       />
 
-      {data && data.aliveCount === 1 && aliveRows.length === 1 && (
+      {data && data.pool?.status === 'completed' && data.aliveCount === 1 && aliveRows.length === 1 && (
         <div style={{ background: 'var(--ink)', borderBottom: '4px solid var(--success)' }}>
           <div className="content-width py-10 text-center">
             <p className="eyebrow mb-2" style={{ color: 'var(--success)' }}>Survivor Champion</p>

@@ -13,6 +13,7 @@ import {
   type CompetitionMode,
 } from '@/lib/competition'
 import type { Game } from '@/types'
+import { loadPicksForSlates } from '@/lib/seasonData'
 import { reportFailure } from '@/lib/alerts'
 
 export type SweatStatus =
@@ -122,7 +123,7 @@ export async function GET() {
         .from('players')
         .select('id, full_name, email, status, elimination_slate')
         .order('full_name'),
-      supabase.from('picks').select('player_id, team').eq('slate_id', slate.id),
+      loadPicksForSlates<{ player_id: string; team: string }>(supabase, [slate.id], 'player_id, team').then(data => ({ data })),
       supabase.from('games').select('*').eq('slate_id', slate.id),
       // Sandbox matchups are fabricated, so there's nothing to look up on the
       // real scoreboard — skip the network call and read sandbox.games (with

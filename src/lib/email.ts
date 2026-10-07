@@ -35,6 +35,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://madness-cyan.vercel.
 export const SEND_DELAY_MS = 600
 
 export function sleep(ms: number): Promise<void> {
+  if (process.env.EMAILS_ENABLED !== 'true') return Promise.resolve()
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 

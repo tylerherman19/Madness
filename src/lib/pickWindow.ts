@@ -41,13 +41,18 @@ export async function loadPickWindow(
   games: Game[]
   picks: PlayerPick[]
 }> {
-  const { data: activeSlate } = await db.from('slates').select('*').eq('is_active', true).maybeSingle()
+  const { data: activeSlate, error: activeError } = await db.from('slates').select('*').eq('is_active', true).maybeSingle()
+  if (activeError) throw activeError
   if (!activeSlate) return { activeSlate: null, pickSlate: null, seasonSlates: [], games: [], picks: [] }
 
-  const [{ data: slates }, { data: picks }] = await Promise.all([
+  const [slatesRes, picksRes] = await Promise.all([
     db.from('slates').select('*').eq('season_year', activeSlate.season_year),
     db.from('picks').select('id, team, slate_id, auto_assigned').eq('player_id', playerId),
   ])
+  if (slatesRes.error) throw slatesRes.error
+  if (picksRes.error) throw picksRes.error
+  const slates = slatesRes.data
+  const picks = picksRes.data
   let seasonSlates = (slates ?? []) as Slate[]
   const playerPicks = (picks ?? []) as PlayerPick[]
   let games = await loadGamesForSlates(db, seasonSlates.map((slate) => slate.id))

@@ -75,18 +75,20 @@ export async function renumberSlates(
   db: SupabaseClient,
   seasonYear: number
 ): Promise<void> {
-  const { data: slates } = await db
+  const { data: slates, error: readError } = await db
     .from('slates')
     .select('id, slate_number, slate_date')
     .eq('season_year', seasonYear)
     .order('slate_date', { ascending: true })
 
+  if (readError) throw readError
   if (!slates) return
 
   for (let i = 0; i < slates.length; i++) {
     const want = i + 1
     if (slates[i].slate_number === want) continue
-    await db.from('slates').update({ slate_number: want }).eq('id', slates[i].id)
+    const { error } = await db.from('slates').update({ slate_number: want }).eq('id', slates[i].id)
+    if (error) throw error
   }
 }
 
@@ -95,7 +97,7 @@ export async function renumberSlates(
 export async function refreshLockTime(db: SupabaseClient, slateId: string): Promise<void> {
   // Announced tips only — a placeholder time would lock the slate at 11pm
   // the previous night. Null when nothing on the day has a time yet.
-  const { data } = await db
+  const { data, error: gameError } = await db
     .from('games')
     .select('tip_time')
     .eq('slate_id', slateId)
@@ -103,8 +105,12 @@ export async function refreshLockTime(db: SupabaseClient, slateId: string): Prom
     .order('tip_time', { ascending: true })
     .limit(1)
 
-  await db
-    .from('slates')
-    .update({ locks_at: data?.[0]?.tip_time ?? null })
-    .eq('id', slateId)
+  if (gameError) throw gameError
+  const { data: slate, error: slateError } = await db.from('slates').select('locks_at').eq('id', slateId).single()
+  if (slateError) throw slateError
+  const tip = data?.[0]?.tip_time ?? null
+  const previous = slate?.locks_at
+  const locksAt = previous && (!tip || new Date(previous) <= new Date(tip)) ? previous : tip
+  const { error } = await db.from('slates').update({ locks_at: locksAt }).eq('id', slateId)
+  if (error) throw error
 }

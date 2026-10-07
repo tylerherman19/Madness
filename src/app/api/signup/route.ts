@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { hashPassword } from '@/lib/password'
@@ -17,15 +18,20 @@ export async function POST(req: NextRequest) {
 
     // Enforced server-side, not just hidden in the UI — the whole point is to
     // stop late signups once Slate 1's picks have locked.
-    if (await haveSignupsClosed()) {
+    if (await haveSignupsClosed(true)) {
       return NextResponse.json({ error: 'Signups are closed — Slate 1 picks have locked.' }, { status: 403 })
     }
 
     const ip = await getIP()
-    const { allowed } = await checkRateLimit(`signup:${ip}`, 5, 60 * 60)
+    const identityKey = createHash('sha256').update(email.trim().toLowerCase()).digest('hex')
+    const limits = await Promise.all([
+      checkRateLimit(`signup-account:${identityKey}`, 5, 60 * 60),
+      checkRateLimit(`signup-network:${ip}`, 1000, 60 * 60),
+    ])
+    const allowed = limits.every(limit => limit.allowed)
     if (!allowed) {
       return NextResponse.json(
-        { error: 'Too many signups from this device. Try again in an hour.' },
+        { error: 'Too many signup attempts. Try again in an hour.' },
         { status: 429 }
       )
     }
@@ -39,13 +45,14 @@ export async function POST(req: NextRequest) {
     // .single() — .single() errors out (leaving data undefined) when more
     // than one row matches, which would let a case-variant duplicate slip
     // past this check.
-    const { data: byEmail } = await supabase
+    const { data: byEmail, error: emailReadError } = await supabase
       .from('players')
       .select('id')
       .ilike('email', escapeIlike(emailLower))
       .limit(1)
       .maybeSingle()
 
+    if (emailReadError) throw emailReadError
     if (byEmail) {
       return NextResponse.json(
         { error: 'An account with that email already exists. Log in with the password you chose.' },
@@ -92,7 +99,7 @@ export async function POST(req: NextRequest) {
       player_id: inserted.id,
       player_name: name,
       message: `${name} signed up`,
-      details: { email: emailLower, terms_version: TERMS_VERSION, terms_accepted: true },
+      details: { email: emailLower, terms_version: TERMS_VERSION, acceptance_method: 'account-creation' },
     })
 
     return NextResponse.json({ ok: true })

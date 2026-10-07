@@ -10,6 +10,7 @@ import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
 import { sendPickConfirmationEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
+import { checkRateLimit } from '@/lib/rateLimit'
 import { serverError } from '@/lib/alerts'
 
 export async function POST(req: NextRequest) {
@@ -32,7 +33,10 @@ export async function POST(req: NextRequest) {
       playerId = session.player_id
     }
 
-    if (!slate_id || !team) {
+    const { allowed } = await checkRateLimit(`pick:${playerId}`, 30, 60)
+    if (!allowed) return NextResponse.json({ error: 'Too many pick changes. Try again in a minute.' }, { status: 429, headers: { 'Retry-After': '60' } })
+
+    if (!slate_id || typeof team !== 'string' || !team || team.length > 80) {
       return NextResponse.json({ error: 'Missing slate_id or team' }, { status: 400 })
     }
 
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await getDb()
-    const pool = await getPoolConfig(supabase)
+    const pool = await getPoolConfig(supabase, true)
 
     // Check player is alive
     const { data: player } = await supabase
@@ -75,6 +79,10 @@ export async function POST(req: NextRequest) {
     const seasonSlates = window.seasonSlates
     const playerPicks = window.picks
     const allGames: Game[] = window.games
+    if (playerPicks.some(pick => {
+      const game = allGames.find(game => game.slate_id === pick.slate_id && (game.home_team === pick.team || game.away_team === pick.team))
+      return game && (game.result === 'tie' || (game.result === 'home_win' && game.away_team === pick.team) || (game.result === 'away_win' && game.home_team === pick.team))
+    })) return NextResponse.json({ error: 'A previous pick lost. Your entry is no longer eligible.' }, { status: 403 })
     const gamesData = allGames.filter((game) => game.slate_id === slate_id)
     const teamGame = gamesData.find((g) => g.home_team === team || g.away_team === team)
 
@@ -152,9 +160,11 @@ export async function POST(req: NextRequest) {
         .from('picks')
         .update({ team, seed: pickedSeed, auto_assigned: false, submitted_by_admin: isAdmin })
         .eq('id', existingPick.id)
+        .eq('team', existingPick.team)
         .select('id, team, slate_id')
         .single()
       if (updateError) {
+        if (updateError.code === 'PGRST116') return NextResponse.json({ error: 'This pick changed while you were editing. Refresh and try again.' }, { status: 409 })
         console.error('update error', updateError)
         if (updateError.code === '23505') {
           return NextResponse.json({ error: `${player.full_name} already used ${team} in a previous slate` }, { status: 400 })
