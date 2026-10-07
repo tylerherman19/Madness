@@ -2,9 +2,10 @@ import { NextResponse, after } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { isDeliverable } from '@/lib/email'
 import { fetchDayScoreboard, eventCompetitors, seedOf } from '@/lib/espn'
-import { isSlateLocked } from '@/lib/deadline'
+import { isPickRevealed } from '@/lib/deadline'
 import { autoAssignIfDue } from '@/lib/autoAssign'
 import type { Game } from '@/types'
+import { loadPicksForSlates } from '@/lib/seasonData'
 import { reportFailure } from '@/lib/alerts'
 
 export interface LiveGame {
@@ -137,7 +138,10 @@ export async function GET() {
     let games: LiveGame[] = []
     let source: LiveScoresResponse['source'] = 'none'
 
+    const authoritativeEvents = new Map(dbGames.map(game => [game.espn_event_id, game]))
     for (const event of events ?? []) {
+      const scheduled = authoritativeEvents.get(event.id)
+      if (!scheduled) continue
       const teams = eventCompetitors(event)
       if (!teams) continue
       const status = event.competitions[0].status
@@ -152,8 +156,8 @@ export async function GET() {
         awayScore: parseInt(teams.away.score ?? '0') || 0,
         state: status.type.state as 'pre' | 'in' | 'post',
         statusText: status.type.shortDetail ?? '',
-        kickoff: event.date,
-        timeTbd: event.competitions[0].timeValid === false,
+        kickoff: scheduled.tip_time,
+        timeTbd: scheduled.time_tbd,
         homeSeed: seedOf(teams.home),
         awaySeed: seedOf(teams.away),
         homeLogo: teams.home.team.logo ?? teams.home.team.logos?.[0]?.href ?? null,
@@ -164,6 +168,8 @@ export async function GET() {
     }
 
     if (games.length > 0) {
+      const liveIds = new Set(games.map(game => game.id))
+      games.push(...dbGames.filter(game => !liveIds.has(game.espn_event_id)).map(game => gameFromSchedule(game, now, teamRows)))
       source = 'espn'
     } else if (dbGames.length > 0) {
       // No ESPN coverage (sandbox, or a slate it can't serve): show this pool's
@@ -180,21 +186,12 @@ export async function GET() {
     // The slate locks as a unit at its first tip, so picks go public as a
     // unit too — there is no longer a per-team reveal to compute.
     const revealedTeams = new Set<string>()
-    if (isSlateLocked(slate, dbGames, now)) {
+    if (isPickRevealed(slate, dbGames, now)) {
       for (const g of dbGames) {
         revealedTeams.add(g.home_team)
         revealedTeams.add(g.away_team)
       }
     }
-    // A tipped-off ESPN game is revealed regardless, which covers a slate
-    // whose locks_at is missing or whose schedule row never synced.
-    for (const g of games) {
-      if (g.state !== 'pre') {
-        revealedTeams.add(g.homeTeam)
-        revealedTeams.add(g.awayTeam)
-      }
-    }
-
     if (revealedTeams.size > 0) {
       // Fetch pick counts from DB, excluding test accounts
       const { data: allPlayers } = await supabase
@@ -207,10 +204,7 @@ export async function GET() {
           .map((p: { id: string }) => p.id)
       )
 
-      const { data: picks } = await supabase
-        .from('picks')
-        .select('player_id, team')
-        .eq('slate_id', slate.id)
+      const picks = await loadPicksForSlates<{ player_id: string; team: string }>(supabase, [slate.id], 'player_id, team')
 
       const pickCounts: Record<string, number> = {}
       for (const pick of picks || []) {

@@ -1,8 +1,9 @@
 import 'server-only'
+import { survivedPeriodsByPlayer } from './survival'
 import type { StandingRow, TeamStat, Slate, Game } from '@/types'
 import { computeInsights } from '@/lib/insights'
 import { getPoolConfig } from '@/lib/pool'
-import { buildPickPeriods, capabilitiesFor, type CompetitionMode, type PickPeriod } from '@/lib/competition'
+import { buildPickPeriods, sharedRoundPickQuota, capabilitiesFor, type CompetitionMode, type PickPeriod } from '@/lib/competition'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
 import { compareBySeedTotal, seedTotalsByPlayer } from '@/lib/standings'
 import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from '@/lib/seasonData'
@@ -171,14 +172,12 @@ export async function getDashboardData() {
     ])
 
     // Count slates survived per player from this season's picks (including current slate)
-    const weeksSurvivedByPlayer: Record<string, number> = {}
-    // Sum of the seeds each player has taken — the tiebreak when more than
-    // one survivor is left. Regular-season picks carry no seed, so this stays
-    // at zero until the bracket is set.
+    const periodScopes = Object.fromEntries(periods.map(period => {
+      const quota = sharedRoundPickQuota(mode, pool.pick_frequency, period.round)
+      return [period.id, { key: quota ? period.round! : period.id, quota: quota ?? 1 }]
+    }))
+    const weeksSurvivedByPlayer = survivedPeriodsByPlayer(seasonPicks, allGames ?? [], periodScopes)
     const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks)
-    for (const pick of seasonPicks) {
-      weeksSurvivedByPlayer[pick.player_id] = (weeksSurvivedByPlayer[pick.player_id] || 0) + 1
-    }
 
     const standings: StandingRow[] = players.map(
       (p: { id: string; full_name: string; status: string; elimination_reason: string | null; elimination_slate: number | null }) => ({
@@ -218,7 +217,10 @@ export async function getDashboardData() {
         teamMap[pick.team].times_picked++
         const winners = winnersByWeek[pick.slate_id] || []
         if (winners.includes(pick.team)) teamMap[pick.team].wins++
-        else if (winners.length > 0) teamMap[pick.team].eliminations++
+        else {
+          const game = (allGames ?? []).find((game: Game) => game.slate_id === pick.slate_id && (game.home_team === pick.team || game.away_team === pick.team))
+          if (game && game.result !== 'pending') teamMap[pick.team].eliminations++
+        }
       }
     }
 
@@ -264,6 +266,8 @@ export async function getDashboardData() {
       aliveCount: alive.length,
       eliminatedCount: players.length - alive.length,
       totalPlayers: players.length,
+      paidEntries: totalPaid,
+      pendingEntries: players.length - totalPaid,
       nextDeadline,
       nextDeadlineFormatted,
       picksRevealed,

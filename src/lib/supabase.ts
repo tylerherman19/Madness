@@ -1,3 +1,4 @@
+import 'server-only'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 // Lazy singleton per schema — only creates the client when first called, so

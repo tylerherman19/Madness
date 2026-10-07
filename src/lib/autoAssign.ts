@@ -128,7 +128,7 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
 
   if (!slate) return { ok: true, message: 'No active slate', done: false }
 
-  const pool = await getPoolConfig(supabase)
+  const pool = await getPoolConfig(supabase, true)
   const { data: seasonSlatesData, error: slatesError } = await supabase
     .from('slates')
     .select('id, slate_number, slate_date, locks_at')

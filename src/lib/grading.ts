@@ -1,7 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game } from '@/types'
-import { sendEliminationEmail, sleep, SEND_DELAY_MS } from './email'
+import { selectAll } from './db'
 import { logAudit } from './audit'
 import { reportFailure } from './alerts'
 
@@ -43,8 +43,7 @@ export function countPendingEliminations(
 
 // Grade every pick for a slate against its completed games: a loss
 // eliminates, a win advances, an unfinished game is skipped. Idempotent —
-// already-eliminated players are ignored, so re-running after each new final
-// (or after a manual result correction) is safe. Shared by the admin
+// already-eliminated players are ignored. Result corrections require an explicit replay. Shared by the admin
 // grade-slate endpoint and the sync-results cron.
 export async function gradeSlatePicks(
   db: SupabaseClient,
@@ -59,13 +58,15 @@ export async function gradeSlatePicks(
   }
   const losers = computeLosers(completedGames)
 
-  const { data: picks } = await db
-    .from('picks')
+  const picks = await selectAll<{
+    id: string; player_id: string; team: string
+    players: { id: string; full_name: string; email: string; status: string } | null
+  }>((from, to) => db.from('picks')
     .select('id, player_id, team, players(id, full_name, email, status)')
-    .eq('slate_id', slateId)
+    .eq('slate_id', slateId).order('id').range(from, to))
 
   const eliminated: string[] = []
-  const advanced = new Set<string>()
+  const advanced = new Map<string, string>()
   const eliminatedPlayerIds = new Set<string>()
 
   for (const pick of picks ?? []) {
@@ -102,12 +103,12 @@ export async function gradeSlatePicks(
           message: `Couldn't eliminate ${player.full_name} on Slate ${slateNumber} (will retry next grade)`,
           error: eliminateError,
         })
-        continue
+        throw eliminateError
       }
 
       eliminated.push(player.full_name)
       eliminatedPlayerIds.add(player.id)
-      advanced.delete(player.full_name)
+      advanced.delete(player.id)
       await logAudit(db, {
         event_type: 'player-eliminated',
         actor: 'system',
@@ -116,16 +117,11 @@ export async function gradeSlatePicks(
         message: `${player.full_name} eliminated — ${reason}`,
         details: { slate_number: slateNumber, team: pick.team, result: game.result },
       })
-      // Awaited: fire-and-forget sends can be dropped when the serverless
-      // function is frozen after responding; paced for Resend's rate limit.
-      if (player.email) {
-        await sendEliminationEmail(player.email, player.full_name, pick.team, slateNumber)
-        await sleep(SEND_DELAY_MS)
-      }
-    } else if (winners.has(pick.team)) {
-      advanced.add(player.full_name)
+      // Notification delivery is independent of grading (migration 022 outbox).
+    } else if (winners.has(pick.team) && picks.filter(row => row.player_id === player.id).every(row => winners.has(row.team))) {
+      advanced.set(player.id, player.full_name)
     }
   }
 
-  return { eliminated, advanced: [...advanced] }
+  return { eliminated, advanced: [...advanced.values()] }
 }

@@ -1,4 +1,7 @@
 import 'server-only'
+import { createHmac, timingSafeEqual } from 'node:crypto'
+import { getDb } from './testMode'
+import { cache } from 'react'
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import type { SessionPayload } from '@/types'
@@ -13,13 +16,24 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(s)
 }
 
+function environmentAudience(): string {
+  return `madness:${process.env.VERCEL_ENV ?? 'local'}`
+}
+function credentialVersion(hash: string): string {
+  return createHmac('sha256', getSecret()).update(hash).digest('hex')
+}
+
 export async function createSession(payload: SessionPayload): Promise<void> {
   const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
   // Stamp the environment: a session created in the testing sandbox holds a
   // sandbox player_id, which must never resolve against production (and vice
   // versa). getSession() rejects sessions whose stamp doesn't match.
   const test_mode = await isTestMode()
-  const token = await new SignJWT({ ...payload, test_mode })
+  const db = await getDb()
+  const { data: player, error } = await db.from('players').select('pin_hash').eq('id', payload.player_id).single()
+  if (error || !player) throw new Error('Cannot create session')
+  const token = await new SignJWT({ ...payload, test_mode, purpose: 'player', credential_version: credentialVersion(player.pin_hash) })
+    .setIssuer('madness').setAudience(environmentAudience()).setIssuedAt()
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime(expires)
     .sign(getSecret())
@@ -36,7 +50,8 @@ export async function createSession(payload: SessionPayload): Promise<void> {
 
 export async function createAdminSession(): Promise<void> {
   const expires = new Date(Date.now() + 8 * 60 * 60 * 1000) // 8 hours
-  const token = await new SignJWT({ is_admin: true })
+  const token = await new SignJWT({ is_admin: true, purpose: 'admin' })
+    .setIssuer('madness').setAudience(environmentAudience()).setIssuedAt()
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime(expires)
     .sign(getSecret())
@@ -51,30 +66,37 @@ export async function createAdminSession(): Promise<void> {
   })
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
+export const getSession = cache(async (): Promise<SessionPayload | null> => {
   const cookieStore = await cookies()
   const token = cookieStore.get(SESSION_COOKIE)?.value
   if (!token) return null
   try {
-    const { payload } = await jwtVerify(token, getSecret())
+    const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'], issuer: 'madness', audience: environmentAudience() })
     // Sessions are scoped to the environment they were created in — a sandbox
     // session is invisible in production and vice versa.
     if ((payload.test_mode === true) !== (await isTestMode())) return null
+    if (payload.purpose !== 'player' || typeof payload.player_id !== 'string' || typeof payload.credential_version !== 'string') return null
+    const db = await getDb()
+    const { data: player, error } = await db.from('players').select('pin_hash').eq('id', payload.player_id).maybeSingle()
+    if (error || !player) return null
+    const expected = Buffer.from(credentialVersion(player.pin_hash))
+    const actual = Buffer.from(payload.credential_version)
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null
     return payload as unknown as SessionPayload
   } catch {
     return null
   }
-}
+})
 
 export async function getAdminSession(): Promise<boolean> {
   const cookieStore = await cookies()
   const token = cookieStore.get(ADMIN_COOKIE)?.value
   if (!token) return false
   try {
-    const { payload } = await jwtVerify(token, getSecret())
+    const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'], issuer: 'madness', audience: environmentAudience() })
     // Player sessions are signed with the same secret, so a valid signature is
     // not enough — require the is_admin claim that only createAdminSession sets.
-    return payload.is_admin === true
+    return payload.is_admin === true && payload.purpose === 'admin'
   } catch {
     return false
   }

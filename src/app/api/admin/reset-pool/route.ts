@@ -1,59 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
+import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/api'
-import { supabase } from '@/lib/supabase'
-import { logAudit } from '@/lib/audit'
-import { serverError } from '@/lib/alerts'
+import { isTestMode } from '@/lib/testMode'
 
-const CONFIRM_PHRASE = 'RESET POOL'
-
-// Wipes every player, slate, game, and pick from production (public schema)
-// back to zero. Deliberately always targets `supabase` (prod) directly, never
-// getDb() — this must never be reachable from the sandbox cookie path, and
-// must always hit prod regardless of the admin's current test-mode state.
-export async function POST(req: NextRequest) {
+export async function POST() {
   const unauthorized = await requireAdmin()
   if (unauthorized) return unauthorized
-
-  try {
-    const { confirm } = await req.json()
-    if (confirm !== CONFIRM_PHRASE) {
-      return NextResponse.json({ error: `Must confirm with exact phrase "${CONFIRM_PHRASE}"` }, { status: 400 })
-    }
-
-    // Snapshot what's about to be destroyed — audit_log is deliberately not
-    // cleared below, so this record outlives the reset.
-    const [{ count: playerCount }, { count: pickCount }, { count: weekCount }] = await Promise.all([
-      supabase.from('players').select('*', { count: 'exact', head: true }),
-      supabase.from('picks').select('*', { count: 'exact', head: true }),
-      supabase.from('slates').select('*', { count: 'exact', head: true }),
-    ])
-
-    // Children first, though FKs cascade anyway — explicit is safer than
-    // relying on cascade order for a destructive, irreversible operation.
-    const { error: picksError } = await supabase.from('picks').delete().not('id', 'is', null)
-    if (picksError) return serverError('api/admin/reset-pool', picksError, `Failed to clear picks: ${picksError.message}`)
-
-    const { error: gamesError } = await supabase.from('games').delete().not('id', 'is', null)
-    if (gamesError) return serverError('api/admin/reset-pool', gamesError, `Failed to clear games: ${gamesError.message}`)
-
-    const { error: weeksError } = await supabase.from('slates').delete().not('id', 'is', null)
-    if (weeksError) return serverError('api/admin/reset-pool', weeksError, `Failed to clear slates: ${weeksError.message}`)
-
-    const { error: playersError } = await supabase.from('players').delete().not('id', 'is', null)
-    if (playersError) return serverError('api/admin/reset-pool', playersError, `Failed to clear players: ${playersError.message}`)
-
-    await logAudit(supabase, {
-      event_type: 'pool-reset',
-      actor: 'admin',
-      message: `Admin reset the pool — wiped ${playerCount ?? 0} players, ${pickCount ?? 0} picks, ${weekCount ?? 0} slates`,
-      details: { players: playerCount, picks: pickCount, slates: weekCount },
-    })
-
-    revalidatePath('/')
-
-    return NextResponse.json({ ok: true })
-  } catch (err) {
-    return serverError('api/admin/reset-pool', err)
-  }
+  if (await isTestMode()) return NextResponse.json({ error: 'Production reset is unavailable from test mode.' }, { status: 403 })
+  return NextResponse.json({ error: 'Live reset is disabled. Archive the competition and verify a backup before an operator performs a transactional reset.' }, { status: 409 })
 }

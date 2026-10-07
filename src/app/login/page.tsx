@@ -7,7 +7,7 @@ import AuthShell from '@/app/components/AuthShell'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -20,7 +20,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: fullName.trim(), password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Login failed'); return }
@@ -34,17 +34,17 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell eyebrow="Player access" title="Log in" description="Enter your name and the password you chose when you joined.">
+    <AuthShell eyebrow="Player access" title="Log in" description="Enter your email and the password you chose when you joined.">
             <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading} aria-describedby={error ? "login-error" : undefined}>
               <div>
-                <label htmlFor="login-name" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Full name</label>
+                <label htmlFor="login-email" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Email</label>
                 <input
-                  id="login-name" name="full_name" maxLength={80} type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="e.g. John Smith"
+                  id="login-email" name="email" maxLength={254} type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
                   required
-                  autoComplete="name"
+                  autoComplete="username"
                   className="field w-full px-3.5 py-2.5 text-sm"
                   style={{ color: 'var(--ink)' }}
                 />

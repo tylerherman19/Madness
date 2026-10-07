@@ -13,7 +13,6 @@ export default function SignupForm() {
   const [venmo, setVenmo] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [termsAccepted, setTermsAccepted] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -25,7 +24,7 @@ export default function SignupForm() {
       setError('Passwords do not match')
       return
     }
-    const body = { full_name: fullName.trim(), email: email.trim(), phone: phone.trim(), venmo: venmo.trim(), password, terms_accepted: termsAccepted }
+    const body = { full_name: fullName.trim(), email: email.trim(), phone: phone.trim(), venmo: venmo.trim(), password }
     const validationError = signupValidationError(body)
     if (validationError) { setError(validationError); return }
     setLoading(true)
@@ -97,10 +96,7 @@ export default function SignupForm() {
                     <input id="signup-confirm-password" name="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--ink)' }} />
                   </div>
 
-                  <div className="flex gap-3 items-start text-sm leading-6">
-                    <input id="signup-terms" type="checkbox" required checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} className="mt-1 h-5 w-5 shrink-0" />
-                    <label htmlFor="signup-terms">I agree to the <Link className="underline" href="/terms">Terms of Use</Link> and acknowledge the <Link className="underline" href="/privacy">Privacy Policy</Link>, including the $25 entry fee and payment arrangements.</label>
-                  </div>
+                  <p className="text-sm leading-6">By creating an account, you agree to the <Link className="underline" href="/terms">Terms of Use</Link> and acknowledge the <Link className="underline" href="/privacy">Privacy Policy</Link>, including the $25 entry fee and payment arrangements.</p>
                   <p className="text-sm leading-6">Questions before joining? <a className="underline" href={`mailto:${supportEmail}`}>{supportEmail}</a>.</p>
                   {error && <p id="signup-error" role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--danger)', background: 'var(--danger-tint)' }}>{error}</p>}
 

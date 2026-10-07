@@ -49,7 +49,7 @@ function normalize(row: Record<string, unknown>): PoolConfig {
 }
 
 // The active pool, or the regular-season default when none is configured.
-export async function getPoolConfig(db?: SupabaseClient): Promise<PoolConfig> {
+export async function getPoolConfig(db?: SupabaseClient, strict = false): Promise<PoolConfig> {
   try {
     const supabase = db ?? (await getDb())
     const { data, error } = await supabase
@@ -57,9 +57,13 @@ export async function getPoolConfig(db?: SupabaseClient): Promise<PoolConfig> {
       .select('*')
       .eq('is_active', true)
       .maybeSingle()
-    if (error || !data) return DEFAULT_POOL_CONFIG
+    if (error || !data) {
+      if (strict) throw new Error('Competition rules are unavailable. Please contact support.')
+      return DEFAULT_POOL_CONFIG
+    }
     return normalize(data)
-  } catch {
+  } catch (error) {
+    if (strict) throw error
     // Table missing (migration not applied) or the database is unreachable —
     // the pages that call this must still render.
     return DEFAULT_POOL_CONFIG

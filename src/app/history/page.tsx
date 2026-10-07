@@ -1,3 +1,4 @@
+import { survivedPeriodsByPlayer } from '@/lib/survival'
 import { pageMetadata } from '@/lib/site'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
@@ -6,6 +7,7 @@ import { getDb } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
 import {
   buildPickPeriods,
+  sharedRoundPickQuota,
   capabilitiesFor,
   formatPeriodDateShort,
   type PickPeriod,
@@ -35,7 +37,7 @@ export default async function HistoryPage() {
       supabase, 'games', 'slate_id, home_team, away_team, result, round_label'
     ).then((data) => ({ data })),
     supabase.from('players').select('id, status, email'),
-    loadAll<{ player_id: string; slate_id: string }>(supabase, 'picks', 'player_id, slate_id').then((data) => ({ data })),
+    loadAll<{ player_id: string; slate_id: string; team: string }>(supabase, 'picks', 'player_id, slate_id, team').then((data) => ({ data })),
     getTeamBrandDirectory(),
   ])
 
@@ -117,12 +119,12 @@ export default async function HistoryPage() {
   const allTeams = await getTeamAbbrs(supabase)
   const teamsRemaining = allTeams.filter((t) => !usedTeams.has(t))
 
-  // Percentile: how many other players this player has outlasted (slates survived = picks made)
-  const survivedByPlayer: Record<string, number> = {}
-  for (const pick of allPicks) {
-    survivedByPlayer[pick.player_id] = (survivedByPlayer[pick.player_id] || 0) + 1
-  }
-  const mySurvived = picksData.length
+  // Completed wins, grouped by game day; pending picks do not add survival.
+  const survivedByPlayer = survivedPeriodsByPlayer(allPicks, gamesData, Object.fromEntries(periods.map(period => {
+    const quota = sharedRoundPickQuota(mode, pool.pick_frequency, period.round)
+    return [period.id, { key: quota ? period.round! : period.id, quota: quota ?? 1 }]
+  })))
+  const mySurvived = survivedByPlayer[session.player_id] ?? 0
   const others = allPlayers.filter((p: { id: string }) => p.id !== session.player_id)
   const outlasted = others.filter((p: { id: string; status: string }) => {
     const theirSurvived = survivedByPlayer[p.id] || 0

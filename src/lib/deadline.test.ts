@@ -93,3 +93,14 @@ test('an early winner can pick until the next day first tips', () => {
   assert.equal(isSlateLocked(next, [tomorrow], new Date('2027-03-19T15:59:59.000Z')), false)
   assert.equal(isSlateLocked(next, [tomorrow], new Date('2027-03-19T16:00:00.000Z')), true)
 })
+
+test('an earlier game overrides a later stored deadline', () => {
+  const early = game('early', 'A', null, 'B', null)
+  early.tip_time = '2027-03-18T16:00:00Z'
+  assert.equal(isSlateLocked({ locks_at: '2027-03-18T17:00:00Z' }, [early], new Date('2027-03-18T16:30:00Z')), true)
+})
+
+test('an unknown deadline closes mutations without revealing private picks', () => {
+  const tbd = { ...game('tbd', 'A', null, 'B', null), time_tbd: true }
+  assert.equal(isSlateLocked(null, [tbd], new Date('2027-03-18T16:30:00Z')), true)
+})

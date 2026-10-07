@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -25,12 +25,8 @@ jobs:
       - name: Test
         run: npm test
 
-      # Lint is currently informational: some pre-existing frontend files still
-      # trip eslint. Once those are cleaned up, drop continue-on-error to make
-      # lint a required gate.
       - name: Lint
         run: npx eslint
-        continue-on-error: true
 
       - name: Build
         run: npx next build

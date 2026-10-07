@@ -32,6 +32,7 @@ export async function POST() {
 }
 
 async function run() {
+  if (process.env.EMAILS_ENABLED !== 'true') return NextResponse.json({ ok: true, reminded: 0, suppressed: true })
   try {
     const supabase = await getDb()
     const { data: slate } = await supabase

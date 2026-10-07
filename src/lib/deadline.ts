@@ -35,27 +35,28 @@ export function getSlateDeadline(games: Game[]): Date | null {
   return earliest
 }
 
-// Prefer the slate's cached `locks_at` (written at sync time) and fall back to
-// deriving it from the games. The cache exists so callers that only need the
-// deadline don't have to load the whole slate.
+// An earlier published lock remains binding; refreshed games may close the
+// window earlier, but never silently extend it. Unknown schedules cannot open picks.
 export function slateDeadline(slate: SlateLock, games: Game[]): Date | null {
-  if (slate?.locks_at) {
-    const d = new Date(slate.locks_at)
-    if (!isNaN(d.getTime())) return d
-  }
-  return getSlateDeadline(games)
+  const stored = slate?.locks_at ? new Date(slate.locks_at) : null
+  const derived = getSlateDeadline(games)
+  const validStored = stored && !isNaN(stored.getTime()) ? stored : null
+  if (!validStored) return derived
+  if (!derived) return validStored
+  return derived < validStored ? derived : validStored
 }
 
 export function isSlateLocked(slate: SlateLock, games: Game[], now: Date): boolean {
   const deadline = slateDeadline(slate, games)
-  if (!deadline) return false
+  if (!deadline) return true
   return now >= deadline
 }
 
 // Picks become public exactly when they lock — there is nothing left to give
 // away once nobody can change their pick.
 export function isPickRevealed(slate: SlateLock, games: Game[], now: Date): boolean {
-  return isSlateLocked(slate, games, now)
+  const deadline = slateDeadline(slate, games)
+  return deadline !== null && now >= deadline
 }
 
 // The game a team plays on this slate, if any.
@@ -88,17 +89,17 @@ export function seedForTeam(team: string, games: Game[]): number | null {
 // Auto-assign fallback, in the spirit of the NFL pool's "SNF away team, then
 // MNF away team, then you're out": walk the slate from the last tip backwards
 // and take the first team the player hasn't already used, away side first.
-// Latest-tipping games are chosen deliberately — a player who missed the
-// deadline shouldn't be handed a game that has already finished.
+// Callers provide the frozen lock-time schedule. A delayed worker makes the
+// same choice even after tip or final; game outcomes are never consulted.
 //
 // Returns null only when every team on the slate is already spent, which is
 // the one case that eliminates rather than assigns.
 export function autoAssignTeam(games: Game[], usedTeams: string[]): string | null {
   const used = new Set(usedTeams)
   const byLatest = games
-    .filter((g) => tipOf(g) !== null)
+    .filter((g) => !g.time_tbd && tipOf(g) !== null)
     .slice()
-    .sort((a, b) => new Date(b.tip_time).getTime() - new Date(a.tip_time).getTime())
+    .sort((a, b) => new Date(b.tip_time).getTime() - new Date(a.tip_time).getTime() || a.id.localeCompare(b.id))
 
   for (const game of byLatest) {
     if (!used.has(game.away_team)) return game.away_team

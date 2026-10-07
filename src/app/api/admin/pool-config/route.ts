@@ -13,9 +13,9 @@ import {
   type PoolStatus,
 } from '@/lib/competition'
 
-const PICK_FREQUENCIES = ['every-game-day', 'weekends-only', 'tournament-round']
-const DEADLINE_RULES = ['first-tip', 'per-game']
-const REUSE_RULES = ['once-per-pool', 'once-per-round', 'unlimited']
+const PICK_FREQUENCIES = ['every-game-day', 'tournament-round']
+const DEADLINE_RULES = ['first-tip']
+const REUSE_RULES = ['once-per-pool']
 const AUTO_PICK = ['latest-game', 'highest-seed', 'eliminate', 'none']
 const TIEBREAKERS = ['seed-total', 'most-survived', 'none']
 
@@ -103,6 +103,20 @@ export async function POST(req: NextRequest) {
 
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+    }
+
+    const next = { ...current, ...patch }
+    if (next.pick_frequency === 'tournament-round' && next.competition_mode !== 'march-madness') {
+      return NextResponse.json({ error: 'Round quotas require tournament mode' }, { status: 400 })
+    }
+    if (next.auto_pick_behavior === 'highest-seed' && next.competition_mode !== 'march-madness') {
+      return NextResponse.json({ error: 'Seed assignment requires tournament mode' }, { status: 400 })
+    }
+    const ruleKeys = ['competition_mode', 'season_year', 'pick_frequency', 'pick_deadline_rule', 'team_reuse_rule', 'auto_pick_behavior', 'tiebreaker', 'starts_on'] as const
+    if (ruleKeys.some(key => key in patch && patch[key] !== current[key])) {
+      const { count, error } = await supabase.from('picks').select('id', { count: 'exact', head: true })
+      if (error) throw error
+      if (count) return NextResponse.json({ error: 'Rules are frozen after the first accepted pick. Contact support for a reviewed migration.' }, { status: 409 })
     }
 
     const result = await updatePoolConfig(supabase, poolId, patch)
