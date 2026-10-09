@@ -24,7 +24,7 @@ export default async function Home(){
  return <div className={s.root}><SiteHeader mode={data?.mode} signupsClosed={closed}/><LiveTicker label={label}/>
  <main id="main" className={s.main}>
   <section className={s.welcome}>
-   <div className={s.welcomeCopy}><span className={s.heroKicker}>College basketball survivor pool</span><h1>One team<br/>{data?.mode === 'march-madness' ? 'each round.' : 'each game day.'}<br/>Stay alive.</h1><div className={s.heroActions}><Link href="/pick" className={s.primary}>Make your pick <Arrow/></Link><Link href="/login" className={s.heroSecondary}>Sign in</Link>{!closed && <Link href="/signup" className={s.heroSecondary}>Join pool · $25</Link>}</div></div>
+   <div className={s.welcomeCopy}><h1>One team<br/>{data?.mode === 'march-madness' ? 'each round.' : 'each game day.'}<br/>Stay alive.</h1><div className={s.heroActions}><Link href="/pick" className={s.primary}>Make your pick <Arrow/></Link><Link href="/login" className={s.heroSecondary}>Sign in</Link>{!closed && <Link href="/signup" className={s.heroSecondary}>Join pool · $25</Link>}</div></div>
    <div className={s.heroArt} aria-hidden="true"><span>SAME<br/>GAMES.<br/><b>BIGGER<br/>STAKES.</b></span></div>
   </section>
   {!closed && data?.slate && !data.slateIsToday && <p className={s.privacyNotice}>Registration open — next game day: {label}. $25 entry via Venmo to @griffinsell. Picks lock at the first tip; teams cannot be reused.</p>}

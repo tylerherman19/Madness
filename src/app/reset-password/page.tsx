@@ -12,7 +12,7 @@ export default async function ResetPasswordPage({
 }) {
   const { token } = await searchParams
   return (
-    <AuthShell eyebrow="Account recovery" title="Choose a new password">
+    <AuthShell title="Choose a new password">
       {typeof token === 'string' && token ? (
         <ResetPasswordForm token={token} />
       ) : (

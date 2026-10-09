@@ -45,7 +45,7 @@ export default function SignupForm() {
   }
 
   return (
-    <AuthShell eyebrow="Open registration" title="Join the pool" description="$25 entry.">
+    <AuthShell title="Join the pool" description="$25 entry.">
           {done ? (
             <div className="card p-6 sm:p-8 text-center space-y-4">
               <p className="font-display text-5xl" style={{ color: 'var(--success)' }}>You&apos;re in</p>

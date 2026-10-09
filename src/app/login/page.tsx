@@ -34,7 +34,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell eyebrow="Player access" title="Log in" description="Enter your email and the password you chose when you joined.">
+    <AuthShell title="Log in" description="Enter your email and the password you chose when you joined.">
             <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading} aria-describedby={error ? "login-error" : undefined}>
               <div>
                 <label htmlFor="login-email" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Email</label>

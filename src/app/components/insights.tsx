@@ -12,8 +12,7 @@ export function Story({ kicker, lede, deck, method, children, id }: {
 }) {
   return (
     <section id={id} className="pt-10">
-      <h2 className="kicker">{kicker}</h2>
-      {lede && <h2 className="lede mt-2">{lede}</h2>}
+      <h2 className={lede ? 'lede' : 'kicker'}>{lede ?? kicker}</h2>
       {deck && <p className="deck mt-2.5">{deck}</p>}
       {children && <div className="mt-5">{children}</div>}
       {method && <p className="method">{method}</p>}

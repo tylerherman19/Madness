@@ -17,7 +17,7 @@ export default async function SignupPage() {
 
   if (signupsClosed) {
     return (
-      <AuthShell eyebrow="Registration closed" title="The pool is underway" description="New entries close when the first game day locks.">
+      <AuthShell title="The pool is underway" description="New entries close when the first game day locks.">
           <div className="card p-6 sm:p-8 text-center space-y-4">
             <p className="text-sm" style={{ color: 'var(--muted)' }}>
               Slate 1 picks have locked, so new entries aren&apos;t accepted anymore. Already signed up?
