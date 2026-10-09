@@ -378,7 +378,7 @@ body { background:var(--paper); color:var(--ink); font-family:var(--concept-text
 .trust-footer nav a { display:inline-flex; align-items:center; min-height:44px; }
 .trust-footer>p { max-width:100ch; margin:14px 0 0; }
 .info-page { max-width:900px; margin:auto; padding:40px 24px 56px; min-height:65vh; overflow-wrap:anywhere; }
-.info-page h1 { font-size:clamp(30px,5vw,48px); line-height:1.1; letter-spacing:-.04em; margin:12px 0 24px; color:var(--ink); }
+.info-page h1 { font-size:clamp(30px,5vw,48px); line-height:1.1; letter-spacing:-.04em; margin:0 0 24px; color:var(--ink); }
 .info-page h2 { margin:28px 0 10px; font-size:22px; font-weight:700; }
 .info-page p { margin:14px 0; line-height:1.8; color:var(--muted); }
 .info-page a:not(.btn-primary) { color:var(--accent-strong); text-decoration:underline; text-underline-offset:3px; }

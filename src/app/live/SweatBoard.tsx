@@ -27,7 +27,7 @@ export default function SweatBoard({teamBrands,autoPickBehavior}:{teamBrands:Tea
  const stateLabels={in:'Live',pre:'Upcoming',post:'Final'}
  const ordered=[...(data?.games??[])].sort((a,b)=>({in:0,pre:1,post:2}[a.state]-{in:0,pre:1,post:2}[b.state])||new Date(a.kickoff).getTime()-new Date(b.kickoff).getTime())
  const games=ordered.filter(g=>filter==='All games'||stateLabels[g.state]===filter)
- return <div className={s.root} style={{minHeight:0}}><div className={s.pageHeading}><div><p className={s.context}>{data?.periodLabel??'College basketball survivor'}</p><h1>Sweatboard.</h1></div>{live&&<span className={s.sweatLive}><i/>{data?.games.filter(g=>g.state==='in').length} live</span>}</div>
+ return <div className={s.root} style={{minHeight:0}}><div className={s.pageHeading}><div><h1>Sweatboard.</h1></div>{live&&<span className={s.sweatLive}><i/>{data?.games.filter(g=>g.state==='in').length} live</span>}</div>
  {error&&<p role="alert" className={s.privacyNotice}>{data?'Updates are unavailable. Showing the last received scores.':'Could not load the Sweatboard.'} <button className={s.textButton} onClick={()=>setRetry(retry+1)}>Try again</button></p>}
  {!data&&!error&&<LiveBoardSkeleton heading={false}/>}
  {data&&<><div className={s.sweatControls}><div className={s.pills}>{['All games','Live','Final','Upcoming'].map(f=><button key={f} aria-pressed={filter===f} onClick={()=>setFilter(f)}>{f}</button>)}</div>{updated&&<span className={s.muted} style={{fontSize:11}}>Updated {updated.toLocaleTimeString('en-US',{timeZone:'America/Chicago',hour:'numeric',minute:'2-digit',timeZoneName:'short'})}</span>}</div>

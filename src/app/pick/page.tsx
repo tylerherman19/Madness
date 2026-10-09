@@ -243,7 +243,6 @@ export default async function PickPage() {
       <PickForm
         key={data.slateId}
         slateId={data.slateId}
-        periodLabel={data.periodLabel}
         gameRows={data.gameRows}
         usedTeams={data.usedTeams}
         savedPicks={data.savedPicks}

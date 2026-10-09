@@ -4,12 +4,10 @@ import SiteHeader from './SiteHeader'
 import TrustFooter from './TrustFooter'
 
 export default function AuthShell({
-  eyebrow,
   title,
   description,
   children,
 }: {
-  eyebrow: string
   title: string
   description?: string
   children: React.ReactNode
@@ -21,8 +19,7 @@ export default function AuthShell({
         <div className="auth-panel mx-auto grid max-w-4xl overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)] lg:grid-cols-[1.15fr_.85fr]">
         <section className="flex items-center p-7 sm:p-10 lg:p-14">
           <div className="w-full max-w-md mx-auto">
-            <p className="text-sm font-bold" style={{ color: 'var(--accent-strong)' }}>{eyebrow}</p>
-            <h1 className="font-display mt-1 text-5xl leading-none">{title}</h1>
+            <h1 className="font-display text-5xl leading-none">{title}</h1>
             {description ? <p className="mt-3 mb-8 text-sm leading-6" style={{ color: 'var(--muted)' }}>{description}</p> : <div className="mb-8" />}
             {children}
           </div>

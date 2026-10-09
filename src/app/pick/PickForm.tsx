@@ -40,7 +40,6 @@ export interface SavedPick {
 
 interface Props {
   slateId: string
-  periodLabel: string
   gameRows: GameRow[]
   usedTeams: string[]
   savedPicks: SavedPick[]
@@ -52,7 +51,6 @@ interface Props {
 
 export default function PickForm({
   slateId,
-  periodLabel,
   gameRows,
   usedTeams,
   savedPicks: initialPicks,
@@ -217,7 +215,6 @@ export default function PickForm({
     <div className={s.root} style={{ minHeight: 0 }}>
       <div className={s.pageHeading}>
         <div>
-          <p className={s.context}>{periodLabel}</p>
           <h1>{heading}</h1>
           {helper && <p>{helper}</p>}
         </div>

@@ -202,7 +202,7 @@ export const metadata = pageMetadata('Game Schedule', 'See the current college b
 
 export default async function SchedulePage(){
  const pool=await getPoolConfig()
- const [{days,season},teamBrands,odds]=await Promise.all([getScheduleData(pool.competition_mode),getTeamBrandDirectory(),fetchNcaabOdds()])
+ const [{days},teamBrands,odds]=await Promise.all([getScheduleData(pool.competition_mode),getTeamBrandDirectory(),fetchNcaabOdds()])
  const enriched=days.map(day=>({...day,games:day.games.map(game=>({...game,odds:matchOdds(odds,[teamBrands[game.homeAbbr]?.name??'',teamBrands[game.homeAbbr]?.shortName??'',game.homeAbbr],[teamBrands[game.awayAbbr]?.name??'',teamBrands[game.awayAbbr]?.shortName??'',game.awayAbbr],game.kickoff)}))}))
- return <div className={s.root}><SiteHeader mode={pool.competition_mode}/><LiveTicker/><main id="main" className={s.main}><ScheduleBoard days={enriched} season={season - 1} brands={teamBrands}/></main><Footer/></div>
+ return <div className={s.root}><SiteHeader mode={pool.competition_mode}/><LiveTicker/><main id="main" className={s.main}><ScheduleBoard days={enriched} brands={teamBrands}/></main><Footer/></div>
 }

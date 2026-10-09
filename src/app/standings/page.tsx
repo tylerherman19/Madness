@@ -68,7 +68,6 @@ export default async function DashboardPage() {
       {data && data.pool?.status === 'completed' && data.aliveCount === 1 && aliveRows.length === 1 && (
         <div style={{ background: 'var(--ink)', borderBottom: '4px solid var(--success)' }}>
           <div className="content-width py-10 text-center">
-            <p className="eyebrow mb-2" style={{ color: 'var(--success)' }}>Survivor Champion</p>
             <p className="font-display text-7xl sm:text-8xl" style={{ color: 'var(--paper)' }}>{aliveRows[0].full_name.toUpperCase()}</p>
             <p className="mt-3 eyebrow" style={{ color: 'var(--success)' }}>Winner Takes ${data.potSize}</p>
           </div>
