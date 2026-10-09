@@ -1,3 +1,5 @@
+import ContestRefresh from '@/app/components/ContestRefresh'
+import { publicPlayerLabels } from '@/lib/playerLabels'
 import { pageMetadata } from '@/lib/site'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline, isPickRevealed } from '@/lib/deadline'
@@ -34,7 +36,7 @@ export default async function GridPage() {
     // One season's grid — the one being played — paged past the row cap.
     const seasonYear = seasonYearOf(allSlates)
     slates = allSlates
-      .filter((w) => w.season_year === seasonYear)
+      .filter((w) => w.season_year === seasonYear && (!pool.starts_on || w.slate_date >= pool.starts_on))
       .sort((a, b) => a.slate_number - b.slate_number)
     const seasonIds = slates.map((w) => w.id)
     players = playersRes.data ?? []
@@ -51,6 +53,8 @@ export default async function GridPage() {
     // fall through to empty state
   }
 
+  const labels = publicPlayerLabels(players)
+  players = players.map(player => ({ ...player, full_name: labels.get(player.id) ?? player.full_name }))
   const mode = pool.competition_mode
   const caps = capabilitiesFor(mode)
 
@@ -164,7 +168,7 @@ export default async function GridPage() {
 
   return (
     <div className="site-shell">
-      <SiteHeader mode={mode} />
+      <ContestRefresh /><SiteHeader mode={mode} />
 
       <main id="main" className="content-width py-9 sm:py-12">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

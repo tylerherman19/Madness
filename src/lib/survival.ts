@@ -1,6 +1,6 @@
 // Count completed qualifying periods, never selections or pending games.
 export function survivedPeriodsByPlayer(
-  picks: { player_id: string; slate_id: string; team: string }[],
+  picks: { player_id: string; slate_id: string; team: string; loss_excused?: boolean }[],
   games: { slate_id: string; home_team: string; away_team: string; result: string }[],
   periods: Record<string, { key: string; quota: number }>
 ): Record<string, number> {
@@ -14,7 +14,7 @@ export function survivedPeriodsByPlayer(
     const period = periods[pick.slate_id] ?? { key: pick.slate_id, quota: 1 }
     const key = `${pick.player_id}:${period.key}`
     const group = groups.get(key) ?? { player: pick.player_id, quota: period.quota, won: [] }
-    group.won.push(outcomes.get(`${pick.slate_id}:${pick.team}`) === true)
+    group.won.push(pick.loss_excused === true || outcomes.get(`${pick.slate_id}:${pick.team}`) === true)
     groups.set(key, group)
   }
   const totals: Record<string, number> = {}

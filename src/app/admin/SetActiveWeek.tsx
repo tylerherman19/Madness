@@ -28,7 +28,7 @@ export default function SetActiveSlate({ slates }: { slates: SlateOption[] }) {
     setLoading(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/admin/set-active-slate', {
+      const res = await fetch('/api/admin/set-active-week', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slate_id: selected }),

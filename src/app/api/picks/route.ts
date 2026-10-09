@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
 import { getSession, getAdminSession } from '@/lib/session'
@@ -8,7 +8,7 @@ import { isSlateLocked, seedForTeam } from '@/lib/deadline'
 import { loadPickWindow } from '@/lib/pickWindow'
 import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
 import { sendPickConfirmationEmail } from '@/lib/email'
-import { logAudit } from '@/lib/audit'
+import { pickWriteError } from '@/lib/pickErrors'
 import type { Game } from '@/types'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { serverError } from '@/lib/alerts'
@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
     const playerPicks = window.picks
     const allGames: Game[] = window.games
     if (playerPicks.some(pick => {
+      if (pick.loss_excused) return false
       const game = allGames.find(game => game.slate_id === pick.slate_id && (game.home_team === pick.team || game.away_team === pick.team))
       return game && (game.result === 'tie' || (game.result === 'home_win' && game.away_team === pick.team) || (game.result === 'away_win' && game.home_team === pick.team))
     })) return NextResponse.json({ error: 'A previous pick lost. Your entry is no longer eligible.' }, { status: 403 })
@@ -164,12 +165,9 @@ export async function POST(req: NextRequest) {
         .select('id, team, slate_id')
         .single()
       if (updateError) {
-        if (updateError.code === 'PGRST116') return NextResponse.json({ error: 'This pick changed while you were editing. Refresh and try again.' }, { status: 409 })
-        console.error('update error', updateError)
-        if (updateError.code === '23505') {
-          return NextResponse.json({ error: `${player.full_name} already used ${team} in a previous slate` }, { status: 400 })
-        }
-        return serverError('api/picks', updateError, 'Failed to update pick')
+        const expected = pickWriteError(updateError)
+        if (expected) return NextResponse.json({ error: expected.message }, { status: expected.status })
+        return serverError('api/picks', updateError, 'Could not save your pick. Try again.')
       }
       savedPick = updated
     } else {
@@ -188,30 +186,14 @@ export async function POST(req: NextRequest) {
         .select('id, team, slate_id')
         .single()
       if (insertError) {
-        console.error('insert error', insertError)
-        if (insertError.code === '23505') {
-          return NextResponse.json({ error: `${player.full_name} already has a pick for this slate or already used ${team}` }, { status: 409 })
-        }
-        return serverError('api/picks', insertError, 'Failed to save pick')
+        const expected = pickWriteError(insertError)
+        if (expected) return NextResponse.json({ error: expected.message }, { status: expected.status })
+        return serverError('api/picks', insertError, 'Could not save your pick. Try again.')
       }
       savedPick = inserted
     }
 
-    await logAudit(supabase, {
-      event_type: existingPick ? 'pick-changed' : 'pick-submitted',
-      actor: isAdmin ? 'admin' : 'player',
-      player_id: playerId,
-      player_name: player.full_name,
-      message: existingPick
-        ? `${player.full_name} changed Slate ${slate.slate_number} pick: ${existingPick.team} → ${team}${isAdmin ? ' (by admin)' : ''}`
-        : `${player.full_name} picked ${team} for Slate ${slate.slate_number}${isAdmin ? ' (by admin)' : ''}`,
-      details: {
-        slate_number: slate.slate_number,
-        team,
-        previous_team: existingPick?.team ?? null,
-        required_picks: quota,
-      },
-    })
+    // Migration 022 records exactly one audit event in the pick transaction.
 
     // Awaited: fire-and-forget sends can be dropped when the serverless
     // function is frozen after responding. The pick is already saved, so a
@@ -220,7 +202,7 @@ export async function POST(req: NextRequest) {
       await sendPickConfirmationEmail(player.email, player.full_name, team, slate.slate_number)
     }
 
-    revalidatePath('/')
+    revalidateContest()
     return NextResponse.json({ ok: true, pick: savedPick })
   } catch (err) {
     return serverError('api/picks', err)

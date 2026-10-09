@@ -2,7 +2,6 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game } from '@/types'
 import { selectAll } from './db'
-import { logAudit } from './audit'
 import { reportFailure } from './alerts'
 
 export interface GradeResult {
@@ -59,10 +58,10 @@ export async function gradeSlatePicks(
   const losers = computeLosers(completedGames)
 
   const picks = await selectAll<{
-    id: string; player_id: string; team: string
+    id: string; player_id: string; team: string; loss_excused?: boolean
     players: { id: string; full_name: string; email: string; status: string } | null
   }>((from, to) => db.from('picks')
-    .select('id, player_id, team, players(id, full_name, email, status)')
+    .select('id, player_id, team, loss_excused, players(id, full_name, email, status)')
     .eq('slate_id', slateId).order('id').range(from, to))
 
   const eliminated: string[] = []
@@ -83,14 +82,13 @@ export async function gradeSlatePicks(
     )
     if (!game) continue // game not final yet — graded on a later run
 
-    if (losers.has(pick.team)) {
+    if (!pick.loss_excused && losers.has(pick.team)) {
       const reason = `Slate ${slateNumber}: picked ${pick.team} — ${
         game.result === 'tie' ? 'game ended in a tie' : 'lost'
       }`
-      const { error: eliminateError } = await db
-        .from('players')
-        .update({ status: 'eliminated', elimination_slate: slateNumber, elimination_reason: reason })
-        .eq('id', player.id)
+      const { data: didEliminate, error: eliminateError } = await db.rpc('grade_pick_loss', {
+        p_pick_id: pick.id, p_slate_number: slateNumber, p_reason: reason,
+      })
 
       if (eliminateError) {
         // Leave player.status as 'alive' — next run (grading is idempotent)
@@ -106,19 +104,12 @@ export async function gradeSlatePicks(
         throw eliminateError
       }
 
+      if (!didEliminate) continue // Re-read under the player lock: restoration and concurrent grading win safely.
       eliminated.push(player.full_name)
       eliminatedPlayerIds.add(player.id)
       advanced.delete(player.id)
-      await logAudit(db, {
-        event_type: 'player-eliminated',
-        actor: 'system',
-        player_id: player.id,
-        player_name: player.full_name,
-        message: `${player.full_name} eliminated — ${reason}`,
-        details: { slate_number: slateNumber, team: pick.team, result: game.result },
-      })
       // Notification delivery is independent of grading (migration 022 outbox).
-    } else if (winners.has(pick.team) && picks.filter(row => row.player_id === player.id).every(row => winners.has(row.team))) {
+    } else if ((pick.loss_excused || winners.has(pick.team)) && picks.filter(row => row.player_id === player.id).every(row => row.loss_excused || winners.has(row.team))) {
       advanced.set(player.id, player.full_name)
     }
   }

@@ -44,6 +44,7 @@ type PickPageData =
       savedPicks: SavedPick[]
       requiredPicks: number
       sharedRound: boolean
+      serverNow: string
       locked: boolean
       teamBrands: TeamBrandDirectory
     }
@@ -182,6 +183,7 @@ async function loadPickData(
       requiredPicks: sharedQuota ?? 1,
       sharedRound: sharedQuota != null,
       locked,
+      serverNow: now.toISOString(),
       teamBrands,
     }
   } catch (err) {
@@ -241,7 +243,7 @@ export default async function PickPage() {
   return (
     <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
       <PickForm
-        key={data.slateId}
+        key={`${data.slateId}:${data.locked}:${data.savedPicks.map(p => `${p.id}/${p.team}/${p.autoAssigned}`).join(",")}`}
         slateId={data.slateId}
         gameRows={data.gameRows}
         usedTeams={data.usedTeams}
@@ -249,6 +251,7 @@ export default async function PickPage() {
         requiredPicks={data.requiredPicks}
         sharedRound={data.sharedRound}
         locked={data.locked}
+        serverNow={data.serverNow}
         teamBrands={data.teamBrands}
       />
     </Shell>

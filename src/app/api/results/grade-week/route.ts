@@ -1,3 +1,4 @@
+import { revalidateContest } from '@/lib/revalidateContest'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
 
     const grading = await gradeSlatePicks(supabase, slate.id, slate.slate_number, games as Game[])
 
+    revalidateContest()
     return NextResponse.json({ ok: true, grading })
   } catch (err) {
     return serverError('api/results/grade-week', err)

@@ -1,3 +1,4 @@
+import ContestRefresh from '@/app/components/ContestRefresh'
 import { pageMetadata } from '@/lib/site'
 import PoolRules from '../components/PoolRules'
 import Link from 'next/link'
@@ -55,6 +56,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="site-shell">
+      <ContestRefresh />
       {/* Header */}
       <SiteHeader signupsClosed={signupsClosed} mode={mode} />
 
@@ -199,7 +201,7 @@ function buildRules(
       : 'Every day there are games, pick one team to win.',
     copy.reuseRule,
     "Your team wins, you survive. Loses and you're out.",
-    'Picks lock when the first game of the day tips off — all of them, at once.',
+    'Picks lock when the first game of the day tips off — all of them, at once. Your pick must be saved by the server before the deadline; pressing Save before it is not enough.',
     autoPickRule(autoPickBehavior, tournament),
     endgame,
   ]

@@ -1,3 +1,4 @@
+import { publicPlayerLabels } from './playerLabels'
 import 'server-only'
 import { survivedPeriodsByPlayer } from './survival'
 import type { StandingRow, TeamStat, Slate, Game } from '@/types'
@@ -19,6 +20,7 @@ export async function getDashboardData() {
     let allGames: any[] | null = null
     /* eslint-enable @typescript-eslint/no-explicit-any */
 
+    const contestPool = await getPoolConfig()
     {
       const { getDb } = await import('@/lib/testMode')
       const supabase = await getDb()
@@ -31,13 +33,14 @@ export async function getDashboardData() {
         supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name'),
       ])
       if (playersRes.error) throw playersRes.error
-      const seasonYear = seasonYearOf(weeks)
-      const seasonIds = weeks.filter((w) => w.season_year === seasonYear).map((w) => w.id)
+      const contestWeeks = weeks.filter(w => !contestPool.starts_on || (w as { slate_date?: string }).slate_date! >= contestPool.starts_on)
+      const seasonYear = seasonYearOf(contestWeeks)
+      const seasonIds = contestWeeks.filter((w) => w.season_year === seasonYear).map((w) => w.id)
       const [picks, games] = await Promise.all([
-        loadPicksForSlates(supabase, seasonIds, 'player_id, slate_id, team, seed'),
+        loadPicksForSlates(supabase, seasonIds, 'player_id, slate_id, team, seed, loss_excused'),
         loadGamesForSlates(supabase, seasonIds),
       ])
-      allWeeks = weeks
+      allWeeks = contestWeeks
       allPlayers = playersRes.data
       allPicks = picks
       allGames = games
@@ -45,6 +48,8 @@ export async function getDashboardData() {
 
     if (!allPlayers) return null
     const players = allPlayers.filter((p: { email: string }) => !p.email?.endsWith('@nflsurvivor.internal'))
+    const labels = publicPlayerLabels(players)
+    for (const player of players) player.full_name = labels.get(player.id) ?? player.full_name
     const realPlayerIds = new Set(players.map((p: { id: string }) => p.id))
 
     const totalPaid = players.filter((p: { paid: boolean }) => p.paid).length
@@ -57,7 +62,7 @@ export async function getDashboardData() {
 
     // The pool's own configuration decides how all of this is presented. It
     // is read once here and threaded down — no component re-derives the mode.
-    const pool = await getPoolConfig()
+    const pool = contestPool
     const mode: CompetitionMode = pool.competition_mode
 
     // Everything derived below is scoped to the season currently being played
@@ -182,7 +187,7 @@ export async function getDashboardData() {
     const standings: StandingRow[] = players.map(
       (p: { id: string; full_name: string; status: string; elimination_reason: string | null; elimination_slate: number | null }) => ({
         player_id: p.id,
-        full_name: p.full_name,
+        full_name: labels.get(p.id) ?? p.full_name,
         status: p.status as 'alive' | 'eliminated',
         slates_survived: weeksSurvivedByPlayer[p.id] || 0,
         seed_total: seedTotalByPlayer[p.id] || 0,

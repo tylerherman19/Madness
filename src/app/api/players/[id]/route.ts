@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid, escapeIlike } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
+import { adminSessionId } from '@/lib/session'
 import { serverError } from '@/lib/alerts'
 
 export async function PATCH(
@@ -56,6 +57,20 @@ export async function PATCH(
     updates.email = email
   }
 
+  const { data: previous, error: previousError } = await supabase.from('players')
+    .select('full_name, email, paid, status, elimination_slate, elimination_reason').eq('id', id).single()
+  if (previousError || !previous) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+  const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
+  if ('status' in updates && updates.status !== previous.status && !reason) {
+    return NextResponse.json({ error: 'A reason is required for a status change' }, { status: 400 })
+  }
+  if (updates.status === 'alive' && previous.status === 'eliminated') {
+    const { error } = await supabase.rpc('restore_player', { p_player_id: id, p_reason: reason, p_admin_session: await adminSessionId() })
+    if (error) return serverError('api/players/restore', error, 'Could not restore player')
+    revalidateContest()
+    return NextResponse.json({ ok: true })
+  }
+
   const { data: player, error } = await supabase
     .from('players')
     .update(updates)
@@ -71,10 +86,10 @@ export async function PATCH(
     player_id: id,
     player_name: player?.full_name ?? null,
     message: `Admin updated ${player?.full_name ?? 'player'}: ${changes}`,
-    details: updates,
+    details: { previous, changed: updates, reason: reason || null, admin_session: await adminSessionId() },
   })
 
-  revalidatePath('/')
+  revalidateContest()
   return NextResponse.json({ ok: true })
 }
 
@@ -111,6 +126,6 @@ export async function DELETE(
     details: player ? { email: player.email, status: player.status } : null,
   })
 
-  revalidatePath('/')
+  revalidateContest()
   return NextResponse.json({ ok: true })
 }

@@ -25,6 +25,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Database regression tests
+        run: npm run test:db
+
       - name: Lint
         run: npx eslint
 

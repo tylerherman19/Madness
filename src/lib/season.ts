@@ -1,5 +1,6 @@
 import 'server-only'
 import { getDb, getEffectiveNow } from './testMode'
+import { getPoolConfig } from './pool'
 import { slateDeadline } from './deadline'
 import type { Game } from '@/types'
 
@@ -31,7 +32,10 @@ export async function getSignupCutoff(): Promise<SignupCutoff | null> {
 
   const seasonYear: number = activeSlate.season_year
 
-  const { data: slates, error: slatesError } = await supabase.from('slates').select('*').eq('season_year', seasonYear)
+  const pool = await getPoolConfig(supabase, true)
+  let query = supabase.from('slates').select('*').eq('season_year', seasonYear)
+  if (pool.starts_on) query = query.gte('slate_date', pool.starts_on)
+  const { data: slates, error: slatesError } = await query
   if (slatesError) throw slatesError
   if (!slates?.length) return null
 

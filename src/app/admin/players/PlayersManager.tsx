@@ -148,23 +148,29 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   }
 
   async function toggleElimination(player: Player) {
-    const reason =
-      player.status === 'alive'
-        ? prompt('Reason for elimination (shown in recap):') || 'Admin correction'
-        : null
+    const answer = prompt(player.status === 'alive'
+      ? 'Reason for elimination (shown in recap):'
+      : 'Reason for restoring this player (prior losing picks will be excused):')
+    if (answer === null) return
+    const reason = answer.trim()
+    if (!reason) { setMessage('A reason is required. No change was made.'); return }
 
     const res = await fetch(`/api/players/${player.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         status: player.status === 'eliminated' ? 'alive' : 'eliminated',
-        elimination_reason: reason,
-        elimination_slate: activeWeekNumber,
+        elimination_reason: player.status === 'alive' ? reason : null,
+        reason,
+        elimination_slate: player.status === 'alive' ? activeWeekNumber : null,
       }),
     })
     if (res.ok) {
       setMessage(`${player.full_name} ${player.status === 'alive' ? 'eliminated' : 'restored'}`)
       router.refresh()
+    } else {
+      const result = await res.json()
+      setMessage(result.error || 'Could not update player')
     }
   }
 
@@ -389,7 +395,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       </div>
 
       {/* Mobile cards */}
-      <div className="sm:hidden space-y-3">
+      <div className="xl:hidden space-y-3">
         {filtered.length === 0 && query ? (
           <p className="text-sm" style={{ color: 'var(--muted)' }}>No players match &ldquo;{search}&rdquo;.</p>
         ) : null}
@@ -483,7 +489,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
       </div>
 
       {/* Players table */}
-      <div className="hidden sm:block card overflow-x-auto p-0">
+      <div className="hidden xl:block card overflow-x-auto p-0 admin-players-table">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--line)' }} className="text-left">
@@ -492,7 +498,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
               </th>
               <th className="px-4 py-3 eyebrow">Name</th>
               <th className="px-4 py-3 eyebrow">Status</th>
-              <th className="px-4 py-3 eyebrow">Wks</th>
+              <th className="px-4 py-3 eyebrow">Survived</th>
               <th className="px-4 py-3 eyebrow">This Slate</th>
               <th className="px-4 py-3 eyebrow">Paid</th>
               <th className="px-4 py-3 eyebrow">Email</th>
@@ -549,7 +555,8 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--muted)' }}>{p.email}</td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-2 flex-wrap">
+                    <details><summary className="cursor-pointer text-xs font-semibold">Manage</summary>
+                    <div className="flex gap-2 flex-wrap py-2">
                       <button
                         onClick={() => { setEditModal({ id: p.id, full_name: p.full_name, email: p.email }); setEditError('') }}
                         className="rounded border px-2 py-0.5 text-xs"
@@ -588,7 +595,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                       >
                         Delete
                       </button>
-                    </div>
+                    </div></details>
                   </td>
                 </tr>
               )

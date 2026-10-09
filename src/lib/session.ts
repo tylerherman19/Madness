@@ -1,5 +1,6 @@
 import 'server-only'
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import { supabase } from './supabase'
 import { getDb } from './testMode'
 import { cache } from 'react'
 import { SignJWT, jwtVerify } from 'jose'
@@ -32,7 +33,7 @@ export async function createSession(payload: SessionPayload): Promise<void> {
   const db = await getDb()
   const { data: player, error } = await db.from('players').select('pin_hash').eq('id', payload.player_id).single()
   if (error || !player) throw new Error('Cannot create session')
-  const token = await new SignJWT({ ...payload, test_mode, purpose: 'player', credential_version: credentialVersion(player.pin_hash) })
+  const token = await new SignJWT({ ...payload, test_mode, purpose: 'player', credential_version: credentialVersion(player.pin_hash) }).setJti(randomUUID())
     .setIssuer('madness').setAudience(environmentAudience()).setIssuedAt()
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime(expires)
@@ -50,7 +51,7 @@ export async function createSession(payload: SessionPayload): Promise<void> {
 
 export async function createAdminSession(): Promise<void> {
   const expires = new Date(Date.now() + 8 * 60 * 60 * 1000) // 8 hours
-  const token = await new SignJWT({ is_admin: true, purpose: 'admin' })
+  const token = await new SignJWT({ is_admin: true, purpose: 'admin' }).setJti(randomUUID())
     .setIssuer('madness').setAudience(environmentAudience()).setIssuedAt()
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime(expires)
@@ -75,6 +76,7 @@ export const getSession = cache(async (): Promise<SessionPayload | null> => {
     // Sessions are scoped to the environment they were created in — a sandbox
     // session is invisible in production and vice versa.
     if ((payload.test_mode === true) !== (await isTestMode())) return null
+    if (await isRevoked(token)) return null
     if (payload.purpose !== 'player' || typeof payload.player_id !== 'string' || typeof payload.credential_version !== 'string') return null
     const db = await getDb()
     const { data: player, error } = await db.from('players').select('pin_hash').eq('id', payload.player_id).maybeSingle()
@@ -96,6 +98,7 @@ export async function getAdminSession(): Promise<boolean> {
     const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'], issuer: 'madness', audience: environmentAudience() })
     // Player sessions are signed with the same secret, so a valid signature is
     // not enough — require the is_admin claim that only createAdminSession sets.
+    if (await isRevoked(token)) return false
     return payload.is_admin === true && payload.purpose === 'admin'
   } catch {
     return false
@@ -104,10 +107,36 @@ export async function getAdminSession(): Promise<boolean> {
 
 export async function deleteSession(): Promise<void> {
   const cookieStore = await cookies()
+  await revoke(cookieStore.get(SESSION_COOKIE)?.value)
   cookieStore.delete(SESSION_COOKIE)
 }
 
 export async function deleteAdminSession(): Promise<void> {
   const cookieStore = await cookies()
+  await revoke(cookieStore.get(ADMIN_COOKIE)?.value)
   cookieStore.delete(ADMIN_COOKIE)
+}
+
+function tokenHash(token: string): string { return createHash('sha256').update(token).digest('hex') }
+// A shared public registry prevents a sandbox toggle from resurrecting a revoked admin cookie.
+async function isRevoked(token: string): Promise<boolean> {
+  const { data, error } = await supabase.from('revoked_sessions').select('token_hash').eq('token_hash', tokenHash(token)).maybeSingle()
+  if (error) throw error
+  return Boolean(data)
+}
+async function revoke(token: string | undefined): Promise<void> {
+  if (!token) return
+  let expires: number | undefined
+  try {
+    const verified = await jwtVerify(token, getSecret(), { algorithms: ['HS256'], issuer: 'madness', audience: environmentAudience() })
+    expires = verified.payload.exp
+  } catch { return }
+  if (!expires) return
+  const { error } = await supabase.from('revoked_sessions').upsert({ token_hash: tokenHash(token), expires_at: new Date(expires * 1000).toISOString() })
+  if (error) throw error // Never claim a copied cookie was revoked if persistence failed.
+}
+export async function adminSessionId(): Promise<string | null> {
+  const token = (await cookies()).get(ADMIN_COOKIE)?.value
+  if (!token || !await getAdminSession()) return null
+  return tokenHash(token).slice(0, 16)
 }

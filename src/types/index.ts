@@ -72,6 +72,7 @@ export interface Pick {
   // Snapshotted at pick time — the endgame tiebreak sums the seeds a player
   // took, and a seed only means something on the day it was picked.
   seed: number | null
+  loss_excused?: boolean
   auto_assigned: boolean
   submitted_by_admin: boolean
   created_at: string
