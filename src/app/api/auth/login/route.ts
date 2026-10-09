@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const ip = await getIP()
     const accountKey = createHash('sha256').update(identity).digest('hex')
     const limits = await Promise.all([
-      checkRateLimit(`login-account:${accountKey}`, 10, 15 * 60),
+      checkRateLimit(`login-account-network:${accountKey}:${ip}`, 10, 15 * 60),
       checkRateLimit(`login-network:${ip}`, 1000, 15 * 60),
     ])
     if (limits.some(limit => !limit.allowed)) return NextResponse.json(

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
@@ -90,8 +90,7 @@ async function run(actor: 'system' | 'admin') {
       })
     }
 
-    await supabase.from('slates').update({ is_active: false }).eq('is_active', true)
-    const { error: activateErr } = await supabase.from('slates').update({ is_active: true }).eq('id', result.slateId)
+    const { error: activateErr } = await supabase.rpc('activate_slate', { p_slate_id: result.slateId })
     if (activateErr) return serverError('api/cron/auto-advance', activateErr, activateErr.message)
 
     const label = nextDate
@@ -102,7 +101,7 @@ async function run(actor: 'system' | 'admin') {
       details: { from_date: slate.slate_date, to_date: nextDate, games_synced: result.gamesSynced },
     })
 
-    revalidatePath('/')
+    revalidateContest()
     return NextResponse.json({
       ok: true,
       advanced_to: label,

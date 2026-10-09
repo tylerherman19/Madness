@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
 import { roundDisplay } from '@/lib/competition'
@@ -47,6 +47,7 @@ interface Props {
   sharedRound: boolean
   locked: boolean
   teamBrands: TeamBrandDirectory
+  serverNow: string
 }
 
 export default function PickForm({
@@ -56,10 +57,14 @@ export default function PickForm({
   savedPicks: initialPicks,
   requiredPicks,
   sharedRound,
-  locked,
+  locked: serverLocked,
+  serverNow,
   teamBrands,
 }: Props) {
   const router = useRouter()
+  const [clockLocked, setClockLocked] = useState(false)
+  const locked = serverLocked || clockLocked
+  const pending = useRef(false)
   const [picks, setPicks] = useState(initialPicks)
   const [selected, setSelected] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -77,13 +82,17 @@ export default function PickForm({
   const canAdd = picks.length < requiredPicks
   const actionAvailable = !locked && (canAdd || picks.some((pick) => pick.editable))
 
-  // Keep an open pick page current when the selected game becomes final.
-  // The server checks the result again before it shows the next game day.
   useEffect(() => {
-    if (!locked) return
-    const timer = window.setInterval(() => router.refresh(), 30_000)
-    return () => window.clearInterval(timer)
-  }, [locked, router])
+    const receivedAt = Date.now()
+    const check = () => {
+      const deadline = gameRows[0]?.deadline
+      if (deadline && new Date(serverNow).getTime() + Date.now() - receivedAt >= new Date(deadline).getTime()) setClockLocked(true)
+    }
+    check()
+    const clock = window.setInterval(check, 1000)
+    const refresh = window.setInterval(() => router.refresh(), 30_000)
+    return () => { window.clearInterval(clock); window.clearInterval(refresh) }
+  }, [gameRows, router, serverNow])
 
   const filters = [
     'All games',
@@ -104,7 +113,7 @@ export default function PickForm({
         )
         if (!matchesSearch) return false
         if (filter === 'Available') {
-          return !game.locked && sides.some((side) => !side.used && !selectedTeams.has(side.team))
+          return !locked && !game.locked && sides.some((side) => !side.used && !selectedTeams.has(side.team))
         }
         if (filter === 'Used teams') {
           return sides.some((side) => side.used || selectedTeams.has(side.team))
@@ -132,7 +141,7 @@ export default function PickForm({
   }
 
   function startEdit(pick: SavedPick) {
-    if (!pick.editable || submitting) return
+    if (locked || !pick.editable || submitting) return
     setEditingId(pick.id)
     setSelected(null)
     setConfirmed(false)
@@ -159,7 +168,8 @@ export default function PickForm({
   }
 
   async function submit() {
-    if (!selected || !confirmed || submitting) return
+    if (!selected || !confirmed || pending.current || locked) return
+    pending.current = true
     setSubmitting(true)
     setError('')
     try {
@@ -171,6 +181,7 @@ export default function PickForm({
       const result = await response.json()
       if (!response.ok) {
         setError(result.error || 'Could not save your pick. Try again.')
+        router.refresh()
         return
       }
       const saved = result.pick as { id: string; team: string; slate_id: string }
@@ -193,6 +204,7 @@ export default function PickForm({
     } catch {
       setError('Could not save your pick. Check your connection and try again.')
     } finally {
+      pending.current = false
       setSubmitting(false)
     }
   }
@@ -231,7 +243,7 @@ export default function PickForm({
               <Logo team={pick.team} brands={teamBrands} size={30} />
               <span><small>Pick {index + 1}</small><b>{name(pick.team)}</b></span>
               {pick.autoAssigned ? <em>Auto</em> : null}
-              {pick.editable ? (
+              {pick.editable && !locked ? (
                 <button type="button" onClick={() => startEdit(pick)} aria-pressed={editingId === pick.id}>
                   {editingId === pick.id ? 'Changing' : 'Change'}
                 </button>
@@ -243,7 +255,7 @@ export default function PickForm({
           {Array.from({ length: Math.max(0, requiredPicks - picks.length) }, (_, index) => (
             <div className={`${s.savedPick} ${s.savedPickEmpty}`} key={`open-${index}`}>
               <span className={s.emptyBall}><Ball /></span>
-              <span><small>Pick {picks.length + index + 1}</small><b>Open</b></span>
+              <span><small>Pick {picks.length + index + 1}</small><b>{locked ? 'Auto-pick pending' : 'Open'}</b></span>
             </div>
           ))}
         </div>
@@ -304,7 +316,7 @@ export default function PickForm({
                           ? `Used${side.usedOn ? ` · ${side.usedOn}` : ''}`
                           : savedHere
                             ? 'Saved'
-                            : game.locked
+                            : game.locked || locked
                               ? 'Locked'
                               : chosen
                                 ? `Pick ${nextPickNumber}`
@@ -335,7 +347,7 @@ export default function PickForm({
             <span>{picks.length} / {requiredPicks}</span>
           </div>
           <div className={s.selectedTeam} aria-live="polite">
-            {selected ? (
+            {selected && !locked ? (
               <>
                 <Logo team={selected} brands={teamBrands} size={66} />
                 <strong>{name(selected)}</strong>
@@ -372,7 +384,7 @@ export default function PickForm({
               </b>
             </div>
           </div>
-          {selected && selected !== editingPick?.team ? (
+          {!locked && selected && selected !== editingPick?.team ? (
             <label className={s.confirmation}>
               <input
                 type="checkbox"
@@ -386,10 +398,10 @@ export default function PickForm({
           {error ? <p role="alert" className={s.privacyNotice}>{error}</p> : null}
           <button
             className={s.primary}
-            disabled={!selected || selected === editingPick?.team || !confirmed || submitting || selectedRow?.locked}
+            disabled={locked || !selected || selected === editingPick?.team || !confirmed || submitting || selectedRow?.locked}
             onClick={submit}
           >
-            {submitting ? 'Saving…' : editingPick ? 'Save changed pick' : `Save pick ${nextPickNumber}`}
+            {locked ? 'Picks locked' : submitting ? 'Saving…' : editingPick ? 'Save changed pick' : `Save pick ${nextPickNumber}`}
             <Arrow />
           </button>
         </aside>

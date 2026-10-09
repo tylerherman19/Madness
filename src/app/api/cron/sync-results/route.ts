@@ -1,3 +1,5 @@
+import { getPoolConfig } from '@/lib/pool'
+import { revalidateContest } from '@/lib/revalidateContest'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
@@ -32,7 +34,8 @@ export async function POST() {
 async function run() {
   try {
     const supabase = await getDb()
-    const slates = await loadAll<Slate>(supabase, 'slates', '*')
+    const pool = await getPoolConfig(supabase, true)
+    const slates = (await loadAll<Slate>(supabase, 'slates', '*')).filter(day => !pool.starts_on || day.slate_date >= pool.starts_on)
     const active = slates.find(slate => slate.is_active)
     if (!active) return NextResponse.json({ ok: true, message: 'No active slate' })
     const now = await getEffectiveNow()
@@ -65,6 +68,7 @@ async function run() {
       grading.push({ slate_id: slate.id, ...await gradeSlatePicks(supabase, slate.id,
         slate.slate_number, games.filter(game => game.result !== 'pending')) })
     }
+    revalidateContest()
     return NextResponse.json({ ok: true, periods_synced: candidates.length, grading })
 
   } catch (err) {

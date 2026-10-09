@@ -293,3 +293,6 @@
   .sweatControls .pills::-webkit-scrollbar { display:none; }
   .sweatControls .pills button { min-height:42px; flex:0 0 auto; }
 }
+
+.selectionDesk .primary:disabled { opacity: .55; cursor: not-allowed; }
+.savedPickEmpty b { max-width: none; white-space: normal; }

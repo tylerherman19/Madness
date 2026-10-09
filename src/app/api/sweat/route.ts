@@ -1,3 +1,4 @@
+import { publicPlayerLabels } from '@/lib/playerLabels'
 import { NextResponse, after } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline, isPickRevealed } from '@/lib/deadline'
@@ -136,6 +137,9 @@ export async function GET() {
             .then((r) => r.events)
             .catch(() => null),
     ])
+
+    const labels = publicPlayerLabels((playersRes.data ?? []).filter(player => isDeliverable(player.email)))
+    for (const player of playersRes.data ?? []) player.full_name = labels.get(player.id) ?? player.full_name
 
     // Alive players sweat; players eliminated this slate stay on the board as OUT.
     const players = (playersRes.data ?? []).filter(

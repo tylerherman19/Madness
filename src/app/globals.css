@@ -409,3 +409,8 @@ body { background:var(--paper); color:var(--ink); font-family:var(--concept-text
 /* Keyboard users can jump past the navigation rail. */
 .skip-link { position:fixed; top:8px; left:8px; z-index:100; padding:10px 14px; border-radius:var(--radius-sm); background:var(--surface-inverse); color:var(--on-inverse); font-size:14px; font-weight:700; transform:translateY(-200%); }
 .skip-link:focus-visible { transform:none; }
+
+.admin-players-table th, .admin-players-table td { padding: 10px 12px; vertical-align: middle; }
+.admin-players-table td:last-child { width: 240px; }
+.admin-players-table td:last-child button { min-height: 28px; }
+.admin-players-table td:nth-child(7) { max-width: 180px; overflow-wrap: anywhere; }

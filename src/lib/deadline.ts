@@ -66,7 +66,8 @@ export function gameForTeam(team: string, games: Game[]): Game | undefined {
 
 // Early access to the next day requires a final win, not merely a game that
 // has tipped or a player row that has not yet been graded as eliminated.
-export function didPickWin(pick: { slate_id: string; team: string }, games: Game[]): boolean {
+export function didPickWin(pick: { slate_id: string; team: string; loss_excused?: boolean }, games: Game[]): boolean {
+  if (pick.loss_excused) return true
   const game = games.find((g) =>
     g.slate_id === pick.slate_id && (g.home_team === pick.team || g.away_team === pick.team)
   )

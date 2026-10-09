@@ -1,3 +1,4 @@
+import { revalidateContest } from './revalidateContest'
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game, Slate } from '@/types'
@@ -134,7 +135,7 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
     .select('id, slate_number, slate_date, locks_at')
     .eq('season_year', slate.season_year)
   if (slatesError) throw slatesError
-  const seasonSlates = seasonSlatesData ?? []
+  const seasonSlates = (seasonSlatesData ?? []).filter(slate => !pool.starts_on || slate.slate_date >= pool.starts_on)
   const seasonSlateIds = seasonSlates.map((row) => row.id)
 
   // Paged and season-scoped: a truncated read here would make players who
@@ -289,19 +290,7 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
         continue
       }
 
-      await logAudit(supabase, {
-        event_type: 'pick-auto-assigned',
-        actor: 'system',
-        player_id: player.id,
-        player_name: player.full_name,
-        message: `${player.full_name} missed the Slate ${slate.slate_number} deadline — auto-assigned ${autoTeams.join(', ')}`,
-        details: {
-          slate_number: slate.slate_number,
-          teams: autoTeams,
-          required_picks: requiredPicks,
-          auto_pick_behavior: pool.auto_pick_behavior,
-        },
-      })
+      // The database's atomic pick audit records each assignment once.
 
       // Awaited: fire-and-forget sends can be dropped when the serverless
       // function is frozen after responding. Failures are logged inside the
@@ -361,5 +350,6 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
       details: { skipped },
     })
   }
+  if (results.length) revalidateContest()
   return { ok: true, results, done }
 }

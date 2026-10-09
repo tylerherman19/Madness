@@ -2,106 +2,58 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
 import { formatCentralTime, slateDeadline } from '@/lib/deadline'
-import { sendReminderEmail, sleep, SEND_DELAY_MS } from '@/lib/email'
-import type { Game } from '@/types'
+import { getPoolConfig } from '@/lib/pool'
+import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
+import { loadAll, loadGamesForSlates } from '@/lib/seasonData'
+import type { Game, Slate } from '@/types'
 import { serverError } from '@/lib/alerts'
 
-// Sends are paced for Resend's ~2 req/sec limit — allow enough runtime for a
-// full-group reminder batch.
 export const maxDuration = 300
-
-// Only nag once the lock is actually close — a slate can go active days
-// before its first tip (the admin syncs ahead to get the site ready), and the
-// daily cron would otherwise fire every single day the pool is active
-// regardless of how far off the real deadline is. One day, since slates are
-// now one day apart.
 const REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000
-
 export async function GET(req: NextRequest) {
   const unauthorized = requireCron(req)
-  if (unauthorized) return unauthorized
-  return run()
+  return unauthorized ?? run()
 }
-
-// Admin-triggered run (the admin UI). POST rather than GET so a cross-site
-// link can't fire it with the admin's cookie — see requireCron.
 export async function POST() {
   const unauthorized = await requireAdmin()
-  if (unauthorized) return unauthorized
-  return run()
+  return unauthorized ?? run()
 }
-
 async function run() {
-  if (process.env.EMAILS_ENABLED !== 'true') return NextResponse.json({ ok: true, reminded: 0, suppressed: true })
   try {
-    const supabase = await getDb()
-    const { data: slate } = await supabase
-      .from('slates')
-      .select('*')
-      .eq('is_active', true)
-      .single()
-
-    if (!slate) return NextResponse.json({ ok: true, message: 'No active slate' })
-
-    const { data: games } = await supabase
-      .from('games')
-      .select('*')
-      .eq('slate_id', slate.id)
-
-    const deadline = slateDeadline(slate, (games || []) as Game[])
-    if (!deadline) return NextResponse.json({ ok: true, message: 'No deadline found' })
-
+    const db = await getDb()
+    const { data: slate, error } = await db.from('slates').select('*').eq('is_active', true).maybeSingle<Slate>()
+    if (error) throw error
+    if (!slate) return NextResponse.json({ ok: true, queued: 0, message: 'No active day' })
+    const { data: games, error: gamesError } = await db.from('games').select('*').eq('slate_id', slate.id)
+    if (gamesError) throw gamesError
+    const deadline = slateDeadline(slate, (games ?? []) as Game[])
     const now = await getEffectiveNow()
-    const msUntilDeadline = deadline.getTime() - now.getTime()
-    if (msUntilDeadline > REMINDER_WINDOW_MS) {
-      return NextResponse.json({
-        ok: true,
-        message: `Deadline is ${formatCentralTime(deadline)} — too far out to remind yet`,
+    if (!deadline || deadline <= now || deadline.getTime() - now.getTime() > REMINDER_WINDOW_MS) {
+      return NextResponse.json({ ok: true, queued: 0, message: 'Outside the pre-deadline reminder window' })
+    }
+    const pool = await getPoolConfig(db, true)
+    const { data: slates, error: slatesError } = await db.from('slates').select('*').eq('season_year', slate.season_year)
+    if (slatesError) throw slatesError
+    const contestSlates = (slates ?? []).filter(day => !pool.starts_on || day.slate_date >= pool.starts_on)
+    const allGames = await loadGamesForSlates(db, contestSlates.map(row => row.id))
+    const periods = buildPickPeriods(pool.competition_mode, contestSlates, allGames)
+    const period = periods.find(row => row.id === slate.id)
+    const sharedQuota = sharedRoundPickQuota(pool.competition_mode, pool.pick_frequency, period?.round ?? null)
+    const periodIds = sharedQuota ? periods.filter(row => row.round === period?.round).map(row => row.id) : [slate.id]
+    const players = await loadAll<{ id: string; email: string; status: string; full_name: string }>(db, 'players', 'id, email, status, full_name')
+    let queued = 0
+    // One RPC per 200 entries; Postgres checks eligibility and deadline at insert time.
+    // Durable, idempotent events replace a 0.6-second-per-recipient send loop.
+    for (let offset = 0; offset < players.length; offset += 200) {
+      if (await getEffectiveNow() >= deadline) break
+      const { data, error: queueError } = await db.rpc('queue_pick_reminders', {
+        p_slate_id: slate.id, p_player_ids: players.slice(offset, offset + 200).map(player => player.id),
+        p_period_ids: periodIds, p_quota: sharedQuota ?? 1,
+        p_deadline: deadline.toISOString(), p_deadline_label: formatCentralTime(deadline),
       })
+      if (queueError) throw queueError
+      queued += Number(data ?? 0)
     }
-
-    const deadlineStr = formatCentralTime(deadline)
-
-    // Find alive players without a pick this slate
-    const { data: alivePlayers } = await supabase
-      .from('players')
-      .select('id, full_name, email')
-      .eq('status', 'alive')
-
-    const { data: existingPicks } = await supabase
-      .from('picks')
-      .select('player_id')
-      .eq('slate_id', slate.id)
-
-    const playersWithPicks = new Set(
-      (existingPicks || []).map((p: { player_id: string }) => p.player_id)
-    )
-
-    const toRemind = (alivePlayers || []).filter(
-      (p: { id: string }) => !playersWithPicks.has(p.id)
-    )
-
-    let reminded = 0
-    const failures: string[] = []
-    for (const player of toRemind) {
-      if (!player.email) continue
-      const result = await sendReminderEmail(
-        player.email,
-        player.full_name,
-        slate.slate_number,
-        deadlineStr
-      )
-      if (result.ok) reminded++
-      else failures.push(player.full_name)
-      if (toRemind.length > 2) await sleep(SEND_DELAY_MS)
-    }
-
-    return NextResponse.json({
-      ok: true,
-      reminded,
-      failures: failures.length > 0 ? failures : undefined,
-    })
-  } catch (err) {
-    return serverError('api/cron/reminders', err)
-  }
+    return NextResponse.json({ ok: true, queued, reminded: 0, suppressed: true, message: 'Reminder events recorded. Email delivery is disabled.' })
+  } catch (error) { return serverError('api/cron/reminders', error) }
 }

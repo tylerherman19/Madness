@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
 
     const current = await getPoolConfig(supabase)
     const poolId = typeof body.pool_id === 'string' && isUuid(body.pool_id) ? body.pool_id : current.id
+    if (poolId !== current.id) return NextResponse.json({ error: 'The active contest changed. Refresh and try again.' }, { status: 409 })
     if (!poolId) {
       return NextResponse.json(
         {
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
     if (ruleKeys.some(key => key in patch && patch[key] !== current[key])) {
       const { count, error } = await supabase.from('picks').select('id', { count: 'exact', head: true })
       if (error) throw error
-      if (count) return NextResponse.json({ error: 'Rules are frozen after the first accepted pick. Contact support for a reviewed migration.' }, { status: 409 })
+      if (count) return NextResponse.json({ error: 'Rules are frozen for this contest after its first pick. To open March with fresh entries and unused teams, use Archive and start March Madness below.' }, { status: 409 })
     }
 
     const result = await updatePoolConfig(supabase, poolId, patch)
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest) {
       message: modeChanged
         ? `Admin switched competition format from ${MODE_LABEL[current.competition_mode as CompetitionMode]} to ${MODE_LABEL[patch.competition_mode as CompetitionMode]}`
         : `Admin updated pool configuration (${Object.keys(patch).join(', ')})`,
-      details: { pool_id: poolId, changed: patch, previous_mode: current.competition_mode },
+      details: { pool_id: poolId, changed: patch, previous: current },
     })
 
     // The mode reaches the cached marketing-side pages, so bust them all.

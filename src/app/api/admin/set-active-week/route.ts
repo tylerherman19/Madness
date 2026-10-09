@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
@@ -25,8 +25,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Slate not found' }, { status: 404 })
     }
 
-    await supabase.from('slates').update({ is_active: false }).gt('slate_number', 0)
-    const { error } = await supabase.from('slates').update({ is_active: true }).eq('id', slate_id)
+    const { error } = await supabase.rpc('activate_slate', { p_slate_id: slate_id })
     if (error) return serverError('api/admin/set-active-week', error, error.message)
 
     await logAudit(supabase, {
@@ -36,7 +35,7 @@ export async function POST(req: NextRequest) {
       details: { slate_id, slate_number: slate.slate_number, season_year: slate.season_year },
     })
 
-    revalidatePath('/')
+    revalidateContest()
     return NextResponse.json({ ok: true, slate_number: slate.slate_number, season_year: slate.season_year })
   } catch (err) {
     return serverError('api/admin/set-active-week', err)

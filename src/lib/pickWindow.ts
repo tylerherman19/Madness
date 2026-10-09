@@ -9,7 +9,7 @@ import { syncSlateFromEspn } from './espnSync'
 import { loadGamesForSlates } from './seasonData'
 import { isTestMode } from './testMode'
 
-type PlayerPick = Pick<StoredPick, 'id' | 'team' | 'slate_id' | 'auto_assigned'>
+type PlayerPick = Pick<StoredPick, 'id' | 'team' | 'slate_id' | 'auto_assigned' | 'loss_excused'>
 
 // This runs on every pick-page view and pick submission, so everything it
 // asks ESPN goes through Next's shared fetch cache: one scoreboard read per
@@ -47,13 +47,13 @@ export async function loadPickWindow(
 
   const [slatesRes, picksRes] = await Promise.all([
     db.from('slates').select('*').eq('season_year', activeSlate.season_year),
-    db.from('picks').select('id, team, slate_id, auto_assigned').eq('player_id', playerId),
+    db.from('picks').select('id, team, slate_id, auto_assigned, loss_excused').eq('player_id', playerId),
   ])
   if (slatesRes.error) throw slatesRes.error
   if (picksRes.error) throw picksRes.error
   const slates = slatesRes.data
   const picks = picksRes.data
-  let seasonSlates = (slates ?? []) as Slate[]
+  let seasonSlates = ((slates ?? []) as Slate[]).filter(slate => !pool.starts_on || slate.slate_date >= pool.starts_on)
   const playerPicks = (picks ?? []) as PlayerPick[]
   let games = await loadGamesForSlates(db, seasonSlates.map((slate) => slate.id))
   const activeGames = games.filter((game) => game.slate_id === activeSlate.id)
@@ -129,7 +129,7 @@ export async function loadPickWindow(
           db.from('slates').select('*').eq('season_year', activeSlate.season_year),
           db.from('games').select('*').eq('slate_id', synced.slateId),
         ])
-        seasonSlates = (freshSlates ?? seasonSlates) as Slate[]
+        seasonSlates = ((freshSlates ?? seasonSlates) as Slate[]).filter(slate => !pool.starts_on || slate.slate_date >= pool.starts_on)
         next = seasonSlates.find((slate) => slate.id === synced.slateId)
         nextGames = (freshGames ?? []) as Game[]
         games = [...games.filter((game) => game.slate_id !== synced.slateId), ...nextGames]
