@@ -93,11 +93,17 @@ PostgREST silently caps every response at 1,000 rows by default.
 
 | Job | When |
 | --- | --- |
-| Auto-assign missed picks | Minutes after the active day's first tip — triggered by the live ticker, sweat board and pick page (`src/lib/autoAssign.ts`). The 08:00 UTC cron is a backstop for a day nobody visits. |
-| Sync results + grade | 09:00 UTC |
-| Advance to the next game day | 6:00 AM Central (two UTC entries cover DST) |
+| Auto-assign missed picks | After the active day's first tip — triggered by the live ticker, sweat board and pick page (`src/lib/autoAssign.ts`). The 06:00 UTC cron (1 AM CDT / midnight CST) is a backstop for a day nobody visits. |
+| Sync results + grade | 07:00 UTC (2 AM CDT / 1 AM CST); overdue unfinished days remain eligible for reconciliation. |
+| Advance to the next game day | 3:00 AM Central (08:00/09:00 UTC entries plus a local-hour guard cover DST). Scheduled daily; skips days without games. |
 | Reminders | 15:00 UTC (no-op while email is off) |
 | Daily summary text | 13:00 UTC (~7–8 AM Central): last 24h of picks, eliminations, signups and failures |
+
+The overnight backstops run before either turnover entry so moving turnover
+earlier does not race the old slate's missed-pick assignment. These times
+are scheduled targets, subject to the hosting plan's execution precision.
+Turnover retains the existing last-tip guard; it does not require every game
+to be final. Player reminders are outbox-only even if email is enabled.
 
 ## Audit log and failure alerts
 

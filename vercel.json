@@ -2,19 +2,19 @@
   "crons": [
     {
       "path": "/api/cron/auto-assign",
-      "schedule": "0 8 * * *"
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/cron/sync-results",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/auto-advance",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/auto-advance",
       "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/auto-advance",
-      "schedule": "0 11 * * *"
-    },
-    {
-      "path": "/api/cron/auto-advance",
-      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/cron/reminders",

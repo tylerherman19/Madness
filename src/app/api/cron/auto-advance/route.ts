@@ -6,15 +6,15 @@ import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
 import { serverError } from '@/lib/alerts'
+import { isAdvanceWindow } from '@/lib/advanceSchedule'
 
 // How far ahead to look for the next day that actually has games. College
 // basketball has plenty of dark days mid-week, so advancing cannot just add
 // one to a slate number the way the NFL version incremented a week.
 const MAX_LOOKAHEAD_DAYS = 10
-const ADVANCE_HOUR_CENTRAL = 6
 
-// Vercel Cron fires at both possible UTC equivalents of 6:00 AM Central. The
-// guard below accepts only the run that is actually 6:00 AM after DST is
+// Vercel Cron fires at both possible UTC equivalents of 3:00 AM Central. The
+// guard below accepts only the run that is actually 3:00 AM after DST is
 // applied. It never advances on the clock alone: the active slate's last tip
 // also has to have happened first.
 //
@@ -35,16 +35,11 @@ export async function POST() {
 }
 
 async function run(actor: 'system' | 'admin') {
-  // Only the scheduled run is held to the 6 AM window; an admin advancing by
+  // Only the scheduled run is held to the 3 AM window; an admin advancing by
   // hand is a deliberate override.
   if (actor === 'system') {
-    const centralHour = Number(new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Chicago',
-      hour: '2-digit',
-      hourCycle: 'h23',
-    }).format(new Date()))
-    if (centralHour !== ADVANCE_HOUR_CENTRAL) {
-      return NextResponse.json({ ok: true, message: 'Outside the 6:00 AM Central advance window' })
+    if (!isAdvanceWindow(new Date())) {
+      return NextResponse.json({ ok: true, message: 'Outside the 3:00 AM Central advance window' })
     }
   }
 
