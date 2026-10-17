@@ -91,7 +91,7 @@ export async function fetchApRankings(revalidateSeconds = 3600): Promise<Record<
   try {
     const res = await fetch(
       RANKINGS_URL,
-      revalidateSeconds > 0 ? { next: { revalidate: revalidateSeconds } } : { cache: 'no-store' }
+      revalidateSeconds > 0 ? { next: { revalidate: revalidateSeconds }, signal: AbortSignal.timeout(8000) } : { cache: 'no-store', signal: AbortSignal.timeout(8000) }
     )
     if (!res.ok) return {}
     const data = (await res.json()) as { rankings?: EspnRankingPoll[] }
@@ -125,7 +125,7 @@ async function fetchGroup(
   try {
     const res = await fetch(
       url,
-      revalidateSeconds > 0 ? { next: { revalidate: revalidateSeconds } } : { cache: 'no-store' }
+      revalidateSeconds > 0 ? { next: { revalidate: revalidateSeconds }, signal: AbortSignal.timeout(8000) } : { cache: 'no-store', signal: AbortSignal.timeout(8000) }
     )
     if (!res.ok) return null
     const data = await res.json()

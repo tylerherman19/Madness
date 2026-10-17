@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { createHash } from 'node:crypto'
 import { reportFailure } from './alerts'
 import { supabase } from './supabase'
 
@@ -104,14 +105,14 @@ async function sendChecked(payload: {
 }): Promise<SendResult> {
   const { error } = await getResend().emails.send({ from: FROM_EMAIL, ...payload })
   if (error) {
-    console.error(`Email to ${payload.to} failed ("${payload.subject}"):`, error)
+    console.error('Transactional email rejected by provider')
     // Senders have no request-scoped client; sandbox test users carry
     // undeliverable addresses and never get this far, so this is production.
     await reportFailure(supabase, {
       kind: 'email-failed',
       source: 'email',
-      key: `email:${payload.to}:${payload.subject}`,
-      message: `Email to ${payload.to} failed: "${payload.subject}"`,
+      key: `email:${createHash('sha256').update(payload.to.toLowerCase()).digest('hex')}:${payload.subject}`,
+      message: `Transactional email failed: "${payload.subject}"`,
       error,
     })
     return { ok: false, error: error.message }

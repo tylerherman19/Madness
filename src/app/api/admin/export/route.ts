@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
       return new NextResponse(csv, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
+          'Cache-Control': 'private, no-store',
           'Content-Disposition': 'attachment; filename="survivor-players.csv"',
         },
       })
@@ -85,6 +86,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse(csv, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
+          'Cache-Control': 'private, no-store',
         'Content-Disposition': 'attachment; filename="survivor-picks.csv"',
       },
     })

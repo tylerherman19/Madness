@@ -6,6 +6,7 @@ import { getResend, FROM_EMAIL } from './email'
 import { supabase as productionDb } from './supabase'
 import { getDb } from './testMode'
 import type { FailureEventType } from './auditEvents'
+import { redactLog } from './logRedaction'
 
 // Failure reporting. Every failure lands in the audit log (so /admin/audit
 // shows what broke next to what people did) and, for production, texts the
@@ -36,10 +37,7 @@ export interface FailureReport {
 }
 
 export function describeError(err: unknown): string {
-  if (err instanceof Error) return err.message
-  if (err && typeof err === 'object' && 'message' in err) return String((err as { message: unknown }).message)
-  if (typeof err === 'string') return err
-  return err === undefined ? '' : JSON.stringify(err)
+ return redactLog(err)
 }
 
 // Best-effort, like logAudit: reporting a failure must never throw from
@@ -75,7 +73,7 @@ export async function reportFailure(db: SupabaseClient, report: FailureReport): 
       await sendAlertText(`${report.message}${errorText ? ` (${errorText})` : ''}`)
     }
   } catch (err) {
-    console.error('failure report failed:', err, report)
+    console.error('failure report failed:', describeError(err), report.source)
   }
 }
 
@@ -88,7 +86,7 @@ export async function serverError(
   publicMessage = 'Server error',
   status = 500
 ): Promise<NextResponse> {
-  console.error(`${source} error`, err)
+  console.error(`${source} error`, describeError(err))
   const db = await getDb().catch(() => productionDb)
   await reportFailure(db, {
     // A cron route failing means a scheduled job didn't do its work.

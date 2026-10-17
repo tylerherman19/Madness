@@ -1,108 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { revalidateContest } from '@/lib/revalidateContest'
+import { withOperation } from '@/lib/operations'
+import { centralClock, turnoverCaughtUp } from '@/lib/operationPolicy'
+import { isAdvanceWindow } from '@/lib/advanceSchedule'
+import { serverError } from '@/lib/alerts'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { requireAdmin, requireCron } from '@/lib/api'
-import { syncSlateFromEspn } from '@/lib/espnSync'
-import { logAudit } from '@/lib/audit'
-import type { Game } from '@/types'
-import { serverError } from '@/lib/alerts'
-import { isAdvanceWindow } from '@/lib/advanceSchedule'
-
-// How far ahead to look for the next day that actually has games. College
-// basketball has plenty of dark days mid-week, so advancing cannot just add
-// one to a slate number the way the NFL version incremented a week.
-const MAX_LOOKAHEAD_DAYS = 10
-
-// Vercel Cron fires at both possible UTC equivalents of 3:00 AM Central. The
-// guard below accepts only the run that is actually 3:00 AM after DST is
-// applied. It never advances on the clock alone: the active slate's last tip
-// also has to have happened first.
-//
-// Advancing means finding the next calendar day that has games and making it
-// active, skipping dark days.
+import { advanceSlate } from '@/lib/advanceSlate'
+export const maxDuration = 300
 export async function GET(req: NextRequest) {
-  const unauthorized = requireCron(req)
-  if (unauthorized) return unauthorized
-  return run('system')
+ const unauthorized = requireCron(req)
+ if (unauthorized) return unauthorized
+ const now = new Date()
+ const db = await getDb()
+ if (process.env.AUTOMATION_V2_ENABLED !== 'true' || !isAdvanceWindow(now)) return advanceSlate(db, now, 'system')
+ try {
+  const result = await withOperation(db, `turnover:${centralClock(now).date}`, async () => {
+   const response = await advanceSlate(db, now, 'system')
+   const body = await response.json()
+   if (!response.ok) throw new Error('Turnover failed')
+   return { done: turnoverCaughtUp(body, centralClock(now).date), value: body }
+  })
+  return NextResponse.json({ ok: true, ...result })
+ } catch (error) { return serverError('api/cron/auto-advance', error) }
 }
-
-// Admin-triggered run (the admin UI). POST rather than GET so a cross-site
-// link can't fire it with the admin's cookie — see requireCron.
 export async function POST() {
-  const unauthorized = await requireAdmin()
-  if (unauthorized) return unauthorized
-  return run('admin')
-}
-
-async function run(actor: 'system' | 'admin') {
-  // Only the scheduled run is held to the 3 AM window; an admin advancing by
-  // hand is a deliberate override.
-  if (actor === 'system') {
-    if (!isAdvanceWindow(new Date())) {
-      return NextResponse.json({ ok: true, message: 'Outside the 3:00 AM Central advance window' })
-    }
-  }
-
-  try {
-    const supabase = await getDb()
-    const { data: slate } = await supabase
-      .from('slates')
-      .select('id, slate_number, slate_date, season_year')
-      .eq('is_active', true)
-      .single()
-
-    if (!slate) return NextResponse.json({ ok: true, message: 'No active slate' })
-
-    const { data: currentGames } = await supabase.from('games').select('tip_time').eq('slate_id', slate.id)
-    const lastTip = ((currentGames || []) as Pick<Game, 'tip_time'>[])
-      .map((g) => new Date(g.tip_time).getTime())
-      .sort((a, b) => b - a)[0]
-    const now = await getEffectiveNow()
-    if (lastTip && now.getTime() < lastTip) {
-      return NextResponse.json({ ok: true, message: `Slate ${slate.slate_number}'s games haven't all tipped off yet — nothing to advance` })
-    }
-
-    // Walk forward day by day until one has games. Each probe is a real sync,
-    // so the day that wins is already populated when it goes active.
-    const from = new Date(`${slate.slate_date}T12:00:00Z`)
-    let result: Awaited<ReturnType<typeof syncSlateFromEspn>> | null = null
-    let nextDate: string | null = null
-    for (let i = 1; i <= MAX_LOOKAHEAD_DAYS; i++) {
-      const day = new Date(from.getTime() + i * 86_400_000)
-      const yyyymmdd = day.toISOString().slice(0, 10).replace(/-/g, '')
-      const attempt = await syncSlateFromEspn(supabase, yyyymmdd, slate.season_year)
-      if (attempt.ok && attempt.slateId && (attempt.gamesSynced ?? 0) > 0) {
-        result = attempt
-        nextDate = day.toISOString().slice(0, 10)
-        break
-      }
-    }
-
-    if (!result || !result.slateId || !nextDate) {
-      return NextResponse.json({
-        ok: true,
-        message: `No games found in the next ${MAX_LOOKAHEAD_DAYS} days — staying on Slate ${slate.slate_number}`,
-      })
-    }
-
-    const { error: activateErr } = await supabase.rpc('activate_slate', { p_slate_id: result.slateId })
-    if (activateErr) return serverError('api/cron/auto-advance', activateErr, activateErr.message)
-
-    const label = nextDate
-    await logAudit(supabase, {
-      event_type: 'slate-advanced',
-      actor,
-      message: `Pool advanced from ${slate.slate_date} to ${label} (${result.gamesSynced} games synced)`,
-      details: { from_date: slate.slate_date, to_date: nextDate, games_synced: result.gamesSynced },
-    })
-
-    revalidateContest()
-    return NextResponse.json({
-      ok: true,
-      advanced_to: label,
-      games_synced: result.gamesSynced,
-    })
-  } catch (err) {
-    return serverError('api/cron/auto-advance', err)
-  }
+ const unauthorized = await requireAdmin()
+ return unauthorized ?? advanceSlate(await getDb(), await getEffectiveNow(), 'admin')
 }

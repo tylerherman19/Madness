@@ -6,11 +6,11 @@ import { slateDeadline, autoAssignHighestSeed, autoAssignTeam, seedForTeam } fro
 import { getPoolConfig } from './pool'
 import { buildPickPeriods, isFinalDayOfRound, sharedRoundPickQuota } from './competition'
 import { fetchApRankings } from './espn'
-import { sendEliminationEmail, sendPickConfirmationEmail } from './email'
+import { withOperation } from './operations'
 import { logAudit } from './audit'
 import { reportFailure } from './alerts'
 import { selectAllIn } from './db'
-import { loadGamesForSlates, loadPicksForSlates } from './seasonData'
+import { loadAll, loadGamesForSlates, loadPicksForSlates } from './seasonData'
 
 // Filling in picks for players who missed the lock.
 //
@@ -40,6 +40,7 @@ export interface AutoAssignOutcome {
 // A claim older than this is treated as abandoned (the function that held it
 // died mid-run) and can be taken over.
 const CLAIM_LEASE_SECONDS = 10 * 60
+const ASSIGNMENT_BATCH_SIZE = 50
 
 type Claim = 'claimed' | 'held' | 'unsupported'
 
@@ -66,12 +67,13 @@ async function claimSlate(db: SupabaseClient, slateId: string): Promise<Claim> {
 // A thrown run also keeps its lease, for the same reason.
 async function finishClaim(db: SupabaseClient, slateId: string, outcome: AutoAssignOutcome): Promise<void> {
   if (outcome.ok && outcome.done) {
-    await db
-      .from('slates')
+    const { error } = await db.from('slates')
       .update({ auto_assign_completed_at: new Date().toISOString(), auto_assign_claimed_at: null })
       .eq('id', slateId)
+    if (error) throw error
   } else if (!outcome.results) {
-    await db.from('slates').update({ auto_assign_claimed_at: null }).eq('id', slateId)
+    const { error } = await db.from('slates').update({ auto_assign_claimed_at: null }).eq('id', slateId)
+    if (error) throw error
   }
 }
 
@@ -80,14 +82,37 @@ async function finishClaim(db: SupabaseClient, slateId: string, outcome: AutoAss
 // Before migration 021 there is nothing to claim, so it runs unguarded —
 // the pre-migration behaviour.
 export async function runAutoAssignNow(db: SupabaseClient, now: Date): Promise<AutoAssignOutcome> {
-  const { data: slate } = await db.from('slates').select('id').eq('is_active', true).maybeSingle()
+  const { data: slate, error } = await db.from('slates').select('id').eq('is_active', true).maybeSingle()
+  if (error) throw error
   if (!slate) return { ok: true, message: 'No active slate', done: false }
 
+  const durable = process.env.AUTOMATION_V2_ENABLED === 'true'
+  if (durable) {
+    const result = await withOperation(db, `assignment:${slate.id}`, async () => {
+      const { data: token, error } = await db.rpc('begin_assignment', { p_slate_id: slate.id })
+      if (error) throw error
+      if (!token) {
+        const { data: state, error: stateError } = await db.from('slates').select('auto_assign_completed_at').eq('id', slate.id).single()
+        if (stateError) throw stateError
+        if (!state.auto_assign_completed_at) throw new Error('Assignment claim is still held')
+        return { done: true, value: { ok: true, done: true } as AutoAssignOutcome }
+      }
+      const outcome = await runAutoAssign(db, now, token)
+      const { data: finished, error: finishError } = await db.rpc('finish_assignment', { p_slate_id: slate.id, p_token: token, p_done: outcome.ok && outcome.done })
+      if (finishError || !finished) throw finishError ?? new Error('Assignment lease expired')
+      if (!outcome.ok) throw new Error('Assignment batch failed')
+      return { done: outcome.done, value: outcome }
+    })
+    if (result.claimed) return result.value
+    const { data: state, error: stateError } = await db.from('slates').select('auto_assign_completed_at').eq('id', slate.id).single()
+    if (stateError) throw stateError
+    return { ok: true, done: Boolean(state.auto_assign_completed_at), message: 'Assignment complete, backing off, or claimed by another worker' }
+  }
   const claim = await claimSlate(db, slate.id)
   if (claim === 'held') {
     return { ok: true, message: 'Auto-assign is already running for this slate', done: false }
   }
-  if (claim === 'unsupported') return runAutoAssign(db, now)
+  if (claim === 'unsupported') throw new Error('Atomic assignment claim is unavailable')
 
   const outcome = await runAutoAssign(db, now)
   await finishClaim(db, slate.id, outcome)
@@ -106,8 +131,7 @@ export async function autoAssignIfDue(db: SupabaseClient, now: Date): Promise<vo
     if (error || !slate || slate.auto_assign_completed_at || !slate.locks_at) return
     if (now < new Date(slate.locks_at)) return
 
-    if ((await claimSlate(db, slate.id)) !== 'claimed') return
-    await finishClaim(db, slate.id, await runAutoAssign(db, now))
+    await runAutoAssignNow(db, now)
   } catch (err) {
     console.error('lazy auto-assign failed', err)
     await reportFailure(db, { kind: 'job-failed', source: 'auto-assign', message: 'Auto-assign failed after first tip', error: err })
@@ -120,15 +144,15 @@ export async function autoAssignIfDue(db: SupabaseClient, now: Date): Promise<vo
 //
 // The active pool configuration decides what a missed lock does: latest-game
 // assignment, tournament seed priority, immediate elimination, or no action.
-async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoAssignOutcome> {
-  const { data: slate } = await supabase
+async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string): Promise<AutoAssignOutcome> {
+  const { data: slate, error: slateError } = await supabase
     .from('slates')
     .select('*')
     .eq('is_active', true)
     .maybeSingle<Slate>()
 
+  if (slateError) throw slateError
   if (!slate) return { ok: true, message: 'No active slate', done: false }
-
   const pool = await getPoolConfig(supabase, true)
   const { data: seasonSlatesData, error: slatesError } = await supabase
     .from('slates')
@@ -174,11 +198,7 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
   }
 
   // Find alive players who have not completed this slate or round quota.
-  const { data: alivePlayers, error: playersError } = await supabase
-    .from('players')
-    .select('id, full_name, email')
-    .eq('status', 'alive')
-  if (playersError) throw playersError
+  const alivePlayers = (await loadAll<{id: string; full_name: string; email: string; status: string}>(supabase, 'players', 'id, full_name, email, status')).filter(row => row.status === 'alive')
 
   if (!alivePlayers || alivePlayers.length === 0) {
     return { ok: true, message: 'No alive players', done: true }
@@ -199,6 +219,8 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
     (player: { id: string }) => (periodPickCount.get(player.id) ?? 0) < requiredPicks
   )
 
+  if (pool.auto_pick_behavior === 'none' || playersWithoutPick.length === 0) return { ok: true, done: true }
+
   // Every team each of these players has ever used. The no-repeat index
   // (player_id, team) spans all history, not just this season, so the
   // assignment must avoid the same set or its insert would be rejected.
@@ -210,22 +232,27 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
 
   const useSeedPriority =
     pool.auto_pick_behavior === 'highest-seed' && pool.competition_mode === 'march-madness'
-  const apRanks = useSeedPriority ? await fetchApRankings() : {}
+  // Durable workers require the pre-lock snapshot. The existing scheduler
+  // retains its legacy behavior until the operations migration is activated.
+  const snapshot = (slate as Slate & { assignment_schedule?: Game[] }).assignment_schedule
+  if (token && !snapshot?.length) throw new Error('Frozen assignment schedule is unavailable; apply migration 022')
+  const assignmentGames = snapshot?.length ? snapshot : gamesData
+  const frozenRanks = (slate as Slate & { assignment_rankings?: Record<string, number> }).assignment_rankings
+  if (token && useSeedPriority && !frozenRanks) throw new Error('Pre-lock rankings unavailable; organizer review required')
+  const apRanks: Record<string, number> = frozenRanks ?? (useSeedPriority ? await fetchApRankings() : {})
+
 
   const results: { player: string; action: string }[] = []
 
-  for (const player of playersWithoutPick) {
-    if (pool.auto_pick_behavior === 'none') {
-      results.push({ player: player.full_name, action: 'left blank (auto-pick disabled)' })
-      continue
-    }
-
+  for (const player of playersWithoutPick.slice(0, token ? ASSIGNMENT_BATCH_SIZE : playersWithoutPick.length)) {
     const missing = requiredPicks - (periodPickCount.get(player.id) ?? 0)
     if (pool.auto_pick_behavior === 'eliminate') {
       const reason = sharedQuota
         ? `Missed the round quota — needed ${missing} more pick${missing === 1 ? '' : 's'}`
         : 'Missed the lock — pool rule eliminates entries without a pick'
-      const { error: eliminateError } = await supabase
+      const { error: eliminateError } = token
+        ? await supabase.rpc('apply_assignment', { p_slate_id: slate.id, p_token: token, p_player_id: player.id, p_period_ids: [...eligibleSlateIds], p_expected_count: periodPickCount.get(player.id) ?? 0, p_teams: [], p_reason: reason })
+        : await supabase
         .from('players')
         .update({
           status: 'eliminated',
@@ -248,9 +275,6 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
         details: { slate_number: slate.slate_number, cause: 'missed-deadline', auto_pick_behavior: 'eliminate' },
       })
 
-      if (player.email) {
-        await sendEliminationEmail(player.email, player.full_name, null, slate.slate_number)
-      }
 
       results.push({ player: player.full_name, action: 'eliminated (configured rule)' })
       continue
@@ -264,22 +288,24 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
     const autoTeams: string[] = []
     for (let index = 0; index < missing; index++) {
       const autoTeam = useSeedPriority
-        ? autoAssignHighestSeed(gamesData, [...usedTeams], [...usedSeeds], apRanks)
-        : autoAssignTeam(gamesData, [...usedTeams])
+        ? autoAssignHighestSeed(assignmentGames, [...usedTeams], [...usedSeeds], apRanks)
+        : autoAssignTeam(assignmentGames, [...usedTeams])
       if (!autoTeam) break
       autoTeams.push(autoTeam)
       usedTeams.add(autoTeam)
-      const seed = seedForTeam(autoTeam, gamesData)
+      const seed = seedForTeam(autoTeam, assignmentGames)
       if (seed !== null) usedSeeds.add(seed)
     }
 
     if (autoTeams.length === missing) {
-      const { error: insertError } = await supabase.from('picks').insert(
+      const { error: insertError } = token
+        ? await supabase.rpc('apply_assignment', { p_slate_id: slate.id, p_token: token, p_player_id: player.id, p_period_ids: [...eligibleSlateIds], p_expected_count: periodPickCount.get(player.id) ?? 0, p_teams: autoTeams.map(team => ({ team, seed: seedForTeam(team, assignmentGames) })) })
+        : await supabase.from('picks').insert(
         autoTeams.map((autoTeam) => ({
           player_id: player.id,
           slate_id: slate.id,
           team: autoTeam,
-          seed: seedForTeam(autoTeam, gamesData),
+          seed: seedForTeam(autoTeam, assignmentGames),
           auto_assigned: true,
           submitted_by_admin: false,
         }))
@@ -292,21 +318,15 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
 
       // The database's atomic pick audit records each assignment once.
 
-      // Awaited: fire-and-forget sends can be dropped when the serverless
-      // function is frozen after responding. Failures are logged inside the
-      // sender; the assignment itself already succeeded.
-      if (player.email) {
-        for (const autoTeam of autoTeams) {
-          await sendPickConfirmationEmail(player.email, player.full_name, autoTeam, slate.slate_number)
-        }
-      }
-
+      // Migration 022 records notification events independently of this worker.
       results.push({ player: player.full_name, action: `auto-assigned ${autoTeams.join(', ')}` })
     } else {
       const reason = sharedQuota
         ? `Missed the round quota — needed ${missing} more pick${missing === 1 ? '' : 's'}`
         : 'Missed the lock — every team on the slate was already used'
-      const { error: eliminateError } = await supabase
+      const { error: eliminateError } = token
+        ? await supabase.rpc('apply_assignment', { p_slate_id: slate.id, p_token: token, p_player_id: player.id, p_period_ids: [...eligibleSlateIds], p_expected_count: periodPickCount.get(player.id) ?? 0, p_teams: [], p_reason: reason })
+        : await supabase
         .from('players')
         .update({
           status: 'eliminated',
@@ -331,18 +351,16 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
         details: { slate_number: slate.slate_number, cause: 'missed-deadline' },
       })
 
-      if (player.email) {
-        await sendEliminationEmail(player.email, player.full_name, null, slate.slate_number)
-      }
 
       results.push({ player: player.full_name, action: 'eliminated (no auto-assign available)' })
     }
   }
 
-  // Anything skipped over a write error is retried by the next trigger.
+  // Keep successful player writes, but fail a partial batch so durable retries
+  // back off and eventually request review instead of reporting endless success.
   const skipped = results.filter((result) => result.action.startsWith('skipped:'))
-  const done = skipped.length === 0
-  if (!done) {
+  const done = skipped.length === 0 && playersWithoutPick.length <= (token ? ASSIGNMENT_BATCH_SIZE : playersWithoutPick.length)
+  if (skipped.length > 0) {
     await reportFailure(supabase, {
       kind: 'job-failed',
       source: 'auto-assign',
@@ -351,5 +369,5 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date): Promise<AutoA
     })
   }
   if (results.length) revalidateContest()
-  return { ok: true, results, done }
+  return { ok: skipped.length === 0, results, done }
 }

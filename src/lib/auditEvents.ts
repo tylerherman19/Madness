@@ -29,6 +29,8 @@ export const AUDIT_EVENT_TYPES: Record<string, string> = {
   'server-error': 'Server error',
   'email-failed': 'Email failed',
   'daily-summary': 'Daily summary',
+  'operation-retried': 'Operation retried',
+  'retention-applied': 'Retention applied',
 }
 
 // Failure events: reported through lib/alerts.ts, highlighted on the audit

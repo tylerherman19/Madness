@@ -93,17 +93,18 @@ PostgREST silently caps every response at 1,000 rows by default.
 
 | Job | When |
 | --- | --- |
-| Auto-assign missed picks | After the active day's first tip — triggered by the live ticker, sweat board and pick page (`src/lib/autoAssign.ts`). The 06:00 UTC cron (1 AM CDT / midnight CST) is a backstop for a day nobody visits. |
+| Auto-assign missed picks | After the active day's first tip — the enabled durable worker processes bounded batches without visitors. Page requests and the 06:00 UTC cron (1 AM CDT / midnight CST) remain backstops. |
 | Sync results + grade | 07:00 UTC (2 AM CDT / 1 AM CST); overdue unfinished days remain eligible for reconciliation. |
-| Advance to the next game day | 3:00 AM Central (08:00/09:00 UTC entries plus a local-hour guard cover DST). Scheduled daily; skips days without games. |
-| Reminders | 15:00 UTC (no-op while email is off) |
+| Advance to the next game day | Starts at 3:00 AM Central (08:00/09:00 UTC entries cover DST). The enabled worker retries delayed turnover later that day; skips days without games. |
+| Reminders | Enabled worker queues events in the 2-hour and 30-minute pre-lock windows. Separate delivery switches must be enabled to send. Legacy 15:00 UTC queue remains a fallback when v2 is off. |
 | Daily summary text | 13:00 UTC (~7–8 AM Central): last 24h of picks, eliminations, signups and failures |
 
 The overnight backstops run before either turnover entry so moving turnover
 earlier does not race the old slate's missed-pick assignment. These times
 are scheduled targets, subject to the hosting plan's execution precision.
-Turnover retains the existing last-tip guard; it does not require every game
-to be final. Player reminders are outbox-only even if email is enabled.
+Turnover requires final results, completed assignment and grading before
+transactional activation. Reminder and elimination delivery also requires
+`OUTBOX_DELIVERY_ENABLED=true`; this release leaves it off.
 
 ## Audit log and failure alerts
 
@@ -138,3 +139,15 @@ npm test         # node --test over src/lib/*.test.ts
 ## Launch and operations
 
 Legal/contact pages, social metadata, crawler files, and branded fallback screens ship with the app. See [deployment checks](docs/operations.md) for the primary domain, support contact, Vercel analytics enablement, read-only health monitoring, and data export/backup guidance.
+
+## Operational reliability
+
+See [the operational release guide](docs/automation-release.md) for the new worker,
+fenced assignment/retry state, signed delivery callbacks, notification preferences,
+encrypted backup/restore drill, retention policy and deployment prerequisites.
+Migration 024 and explicit feature activation are required before the durable
+worker or delivery queue runs. Existing daily backstops remain configured.
+
+Validation: `npm test`, `npm run test:db`, `npm run test:operations`,
+`npm run test:e2e`, `npm run lint`, `npm run build`. Browser fixtures use
+synthetic data on loopback ports; `npx playwright install chromium` is required.

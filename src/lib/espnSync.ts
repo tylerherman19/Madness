@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   fetchDayScoreboard,
+  fetchApRankings,
   eventCompetitors,
   parseRound,
   broadcastOf,
@@ -162,6 +163,14 @@ export async function syncSlateFromEspn(
     // included, placeholder tips excluded — rather than from this query's
     // rows, which for a spill-over bucket are a single late game.
     await refreshLockTime(supabase, slateId)
+    if (process.env.AUTOMATION_V2_ENABLED === 'true') {
+      const ranks = await fetchApRankings()
+      if (Object.keys(ranks).length > 0) {
+        const { error: rankError } = await supabase.from('slates').update({ assignment_rankings: ranks }).eq('id', slateId)
+          .or(`locks_at.is.null,locks_at.gt.${new Date().toISOString()}`)
+        if (rankError) throw rankError
+      }
+    }
   }
 
   await renumberSlates(supabase, seasonYear)
