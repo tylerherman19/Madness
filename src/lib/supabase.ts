@@ -14,6 +14,7 @@ function lazySupabase(schema: string): SupabaseClient {
         // Cast away the schema-name generic: both schemas expose identical tables
         client = createClient(url, key, {
           auth: { persistSession: false },
+          global: { fetch: (input, init) => fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) }) },
           db: { schema },
         }) as unknown as SupabaseClient
       }

@@ -14,6 +14,7 @@ const LINKS: [string, string][] = [
   ['/admin/recap', 'Recap'],
   ['/admin/history', 'History'],
   ['/admin/audit', 'Audit'],
+  ['/admin/operations', 'Operations'],
   ['/admin/email', 'Email'],
 ]
 

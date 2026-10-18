@@ -28,6 +28,18 @@ jobs:
       - name: Database regression tests
         run: npm run test:db
 
+      - name: Operational database and restore regressions
+        run: npm run test:operations
+
+      - name: Runtime dependency security
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser regression tests
+        run: npm run test:e2e
+
       - name: Lint
         run: npx eslint
 

@@ -9,7 +9,7 @@ import { syncSlateFromEspn } from './espnSync'
 import { loadGamesForSlates } from './seasonData'
 import { isTestMode } from './testMode'
 
-type PlayerPick = Pick<StoredPick, 'id' | 'team' | 'slate_id' | 'auto_assigned' | 'loss_excused'>
+type PlayerPick = Pick<StoredPick, 'id' | 'team' | 'slate_id' | 'auto_assigned' | 'loss_excused' | 'updated_at'>
 
 // This runs on every pick-page view and pick submission, so everything it
 // asks ESPN goes through Next's shared fetch cache: one scoreboard read per
@@ -47,7 +47,7 @@ export async function loadPickWindow(
 
   const [slatesRes, picksRes] = await Promise.all([
     db.from('slates').select('*').eq('season_year', activeSlate.season_year),
-    db.from('picks').select('id, team, slate_id, auto_assigned, loss_excused').eq('player_id', playerId),
+    db.from('picks').select('id, team, slate_id, auto_assigned, loss_excused, updated_at').eq('player_id', playerId),
   ])
   if (slatesRes.error) throw slatesRes.error
   if (picksRes.error) throw picksRes.error

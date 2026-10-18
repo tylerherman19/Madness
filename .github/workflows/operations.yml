@@ -1,0 +1,40 @@
+name: Operations monitor
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: madness-operations
+  cancel-in-progress: false
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check public application and database availability
+        run: curl --fail --silent --show-error --retry 2 --max-time 15 https://madness-cyan.vercel.app/api/health
+      - name: Check job freshness independently of player email
+        env:
+          MONITOR_SECRET: ${{ secrets.MONITOR_SECRET }}
+        run: |
+          if [ -z "$MONITOR_SECRET" ]; then
+            echo '::warning::Job-freshness monitor is not configured. Set MONITOR_SECRET in GitHub and Vercel.'
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 20 -H "Authorization: Bearer $MONITOR_SECRET" https://madness-cyan.vercel.app/api/operations/health
+  worker:
+    if: vars.AUTOMATION_V2_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Run durable work without site visitors
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET" || { echo 'Configure CRON_SECRET before enabling worker'; exit 1; }
+          for attempt in 1 2 3 4 5; do
+            curl --fail --silent --show-error --max-time 45 -H "Authorization: Bearer $CRON_SECRET" https://madness-cyan.vercel.app/api/cron/worker || exit 1
+            if [ "$attempt" != 5 ]; then sleep 60; fi
+          done

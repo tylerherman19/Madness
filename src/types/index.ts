@@ -65,6 +65,7 @@ export interface Game {
 }
 
 export interface Pick {
+  updated_at?: string
   id: string
   player_id: string
   slate_id: string

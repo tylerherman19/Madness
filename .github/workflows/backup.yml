@@ -1,0 +1,33 @@
+name: Encrypted backup and restore drill
+on:
+  schedule:
+    - cron: '30 10 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  backup:
+    if: vars.BACKUPS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Create encrypted consistent backup and verify restore
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          node scripts/backup.mjs work/backup.json.enc
+          node scripts/restore-check.mjs work/backup.json.enc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-madness-backup-${{ github.run_id }}
+          path: work/backup.json.enc
+          retention-days: 14
+          if-no-files-found: error

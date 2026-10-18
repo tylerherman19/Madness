@@ -7,9 +7,9 @@ const ADMIN_COOKIE = 'survivor_admin'
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  if (pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+  if (pathname.startsWith('/api/') && !pathname.startsWith('/api/webhooks/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     const origin = req.headers.get('origin')
-    if (origin && origin !== req.nextUrl.origin) {
+    if (origin && origin !== `${req.nextUrl.protocol}//${req.headers.get('host') ?? req.nextUrl.host}`) {
       return NextResponse.json({ error: 'Request origin is not allowed' }, { status: 403 })
     }
     const ip = req.headers.get('x-real-ip')?.trim() || req.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() || 'unknown'
