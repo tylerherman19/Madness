@@ -6,7 +6,7 @@ import { gradeSlatePicks } from '@/lib/grading'
 import { loadGamesForSlates, loadPicksForSlates, loadAll } from '@/lib/seasonData'
 import type { Slate } from '@/types'
 import { serverError } from '@/lib/alerts'
-import { orderRecoveryDates } from './operationPolicy'
+import { centralClock, orderRecoveryDates } from './operationPolicy'
 
 export async function syncResults(supabase: import('@supabase/supabase-js').SupabaseClient, now: Date) {
   try {
@@ -14,7 +14,8 @@ export async function syncResults(supabase: import('@supabase/supabase-js').Supa
     const slates = (await loadAll<Slate>(supabase, 'slates', '*')).filter(day => !pool.starts_on || day.slate_date >= pool.starts_on)
     const active = slates.find(slate => slate.is_active)
     if (!active) return NextResponse.json({ ok: true, message: 'No active slate' })
-    const overdue = slates.filter(slate => slate.season_year === active.season_year &&
+    const today = centralClock(now).date
+    const overdue = slates.filter(slate => slate.season_year === active.season_year && slate.slate_date <= today &&
       (slate.is_active || (slate.locks_at && new Date(slate.locks_at) <= now)))
     const ids = overdue.map(slate => slate.id)
     const [storedGames, picks] = await Promise.all([
@@ -35,7 +36,9 @@ export async function syncResults(supabase: import('@supabase/supabase-js').Supa
     const pending = orderRecoveryDates(overdue.filter(slate => !slate.is_active && pickedIds.has(slate.id) &&
       storedGames.some(game => game.slate_id === slate.id && game.result === 'pending'))
       , process.env.AUTOMATION_V2_ENABLED === 'true')
-    const candidates = [active, ...pending.slice(0, 3)]
+    // A future active day is valid before the season opens. Result polling
+    // must not turn an unpublished future scoreboard into a worker failure.
+    const candidates = [...(active.slate_date <= today ? [active] : []), ...pending.slice(0, 3)]
     let failed = 0
     for (const slate of candidates) {
       try {
