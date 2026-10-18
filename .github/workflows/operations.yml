@@ -27,14 +27,18 @@ jobs:
   worker:
     if: vars.AUTOMATION_V2_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 9
     steps:
       - name: Run durable work without site visitors
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           test -n "$CRON_SECRET" || { echo 'Configure CRON_SECRET before enabling worker'; exit 1; }
+          failed=0
           for attempt in 1 2 3 4 5; do
-            curl --fail --silent --show-error --max-time 45 -H "Authorization: Bearer $CRON_SECRET" https://madness-cyan.vercel.app/api/cron/worker || exit 1
+            if ! curl --fail --silent --show-error --max-time 45 -H "Authorization: Bearer $CRON_SECRET" https://madness-cyan.vercel.app/api/cron/worker; then
+              failed=1
+            fi
             if [ "$attempt" != 5 ]; then sleep 60; fi
           done
+          exit "$failed"
