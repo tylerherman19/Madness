@@ -8,10 +8,10 @@ export const socialImage = { url: '/opengraph-image', width: 1200, height: 630, 
 export function pageMetadata(title: string, description: string, path: string, index = true): Metadata {
   const url = new URL(path, siteUrl).toString()
   return {
-    title: { absolute: `${title} | Madness` }, description,
+    title: { absolute: `${title} | Pick and Pray` }, description,
     alternates: { canonical: url },
-    openGraph: { title: `${title} | Madness`, description, url, siteName: 'Madness', type: 'website', images: [socialImage] },
-    twitter: { card: 'summary_large_image', title: `${title} | Madness`, description, images: [socialImage] },
+    openGraph: { title: `${title} | Pick and Pray`, description, url, siteName: 'Pick and Pray', type: 'website', images: [socialImage] },
+    twitter: { card: 'summary_large_image', title: `${title} | Pick and Pray`, description, images: [socialImage] },
     ...(!index ? { robots: { index: false, follow: false } } : {}),
   }
 }

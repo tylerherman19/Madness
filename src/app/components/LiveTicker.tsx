@@ -1,9 +1,7 @@
 'use client'
-/* eslint-disable @next/next/no-img-element -- ESPN supplies tiny 20px scoreboard marks; the optimizer adds no value here. */
-
 import { useEffect, useRef, useState } from 'react'
 import type { LiveScoresResponse } from '@/app/api/live-scores/route'
-import s from './sports.module.css'
+import s from './pp.module.css'
 import { TickerSkeleton } from './PageSkeletons'
 
 // The ticker is one continuous velocity, never a stop-and-restart. Left alone it
@@ -26,7 +24,7 @@ type Drag = {
   lastAt: number
 }
 
-export default function LiveTicker({ label }: { slateNumber?: number | null; season?: number | null; label?: string | null }) {
+export default function LiveTicker({ label, names }: { slateNumber?: number | null; season?: number | null; label?: string | null; names?: Record<string, string> }) {
   const [data, setData] = useState<LiveScoresResponse | null>(null)
   const [paused, setPaused] = useState(false)
   const [settled, setSettled] = useState(false)
@@ -171,16 +169,31 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
     if (element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId)
   }
 
-  return (
-    <section className={s.ticker} aria-label="Live score scroll">
-      <div className={s.tickerLabel}>
-        <span>Scoreboard</span>
-        {hasLive && <small>Games in progress</small>}
-        <button type="button" disabled={reduceMotion} onClick={() => setPaused((value) => !value)}>
-          {reduceMotion ? 'Manual scroll' : paused ? 'Resume' : 'Pause'}
-        </button>
-      </div>
+  const name = (team: string) => names?.[team] ?? team
+  const status = (game: LiveScoresResponse['games'][number]) =>
+    game.state === 'pre'
+      ? game.timeTbd
+        ? 'TBD'
+        : new Date(game.kickoff).toLocaleString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' })
+      : game.state === 'post'
+        ? 'Final'
+        : game.statusText
+  const result = (game: LiveScoresResponse['games'][number], side: 'away' | 'home') => {
+    if (game.state !== 'post' || game.scoresKnown === false) return undefined
+    const mine = side === 'away' ? game.awayScore : game.homeScore
+    const theirs = side === 'away' ? game.homeScore : game.awayScore
+    return mine > theirs ? 'won' : 'lost'
+  }
 
+  return (
+    <section
+      className={s.ticker}
+      aria-label="Scores"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
       <div
         ref={viewport}
         className={s.tickerViewport}
@@ -227,35 +240,20 @@ export default function LiveTicker({ label }: { slateNumber?: number | null; sea
           {Array.from({ length: copyCount }, (_, copyIndex) => (
             <div
               ref={copyIndex === 0 ? sequence : undefined}
-              className={s.tickerSequence}
+              className={s.tickerSeq}
               key={copyIndex}
               aria-hidden={copyIndex > 0 || undefined}
             >
               {data.games.map((game) => (
                 <div className={s.tickerGame} key={`${copyIndex}-${game.id}`}>
-                  <span className={s.tickerStatus} style={game.state === 'in' ? { color: 'var(--danger)' } : undefined}>
-                    {game.state === 'pre'
-                      ? game.timeTbd
-                        ? 'Time TBD'
-                        : `${new Date(game.kickoff).toLocaleString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' })} CT`
-                      : game.statusText}
-                  </span>
+                  <span className={s.tickerStatus} data-state={game.state}>{status(game).toUpperCase()}</span>
                   {(['away', 'home'] as const).map((side) => (
-                    <div key={side}>
-                      <span className={s.logo} style={{ width: 20, height: 20 }}>
-                        {game[`${side}Logo` as 'awayLogo' | 'homeLogo'] && (
-                          <img src={game[`${side}Logo` as 'awayLogo' | 'homeLogo']!} width={20} height={20} alt="" />
-                        )}
-                      </span>
-                      <b>{side === 'away' ? game.awayTeam : game.homeTeam}</b>
-                      <strong>
-                        {game.state !== 'pre' && game.scoresKnown !== false
-                          ? side === 'away'
-                            ? game.awayScore
-                            : game.homeScore
-                          : '–'}
-                      </strong>
-                    </div>
+                    <span className={s.tickerTeam} data-result={result(game, side)} key={side}>
+                      {name(side === 'away' ? game.awayTeam : game.homeTeam)}
+                      {game.state !== 'pre' && game.scoresKnown !== false
+                        ? ` ${side === 'away' ? game.awayScore : game.homeScore}`
+                        : ''}
+                    </span>
                   ))}
                 </div>
               ))}

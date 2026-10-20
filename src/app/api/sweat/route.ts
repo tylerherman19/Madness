@@ -16,6 +16,7 @@ import {
 import type { Game } from '@/types'
 import { loadPicksForSlates } from '@/lib/seasonData'
 import { reportFailure } from '@/lib/alerts'
+import { conferenceGroup, getTeamConferences } from '@/lib/teams'
 
 export type SweatStatus =
   | 'won' // final, team won
@@ -32,6 +33,8 @@ export interface SweatPlayer {
   name: string
   team: string | null // null while hidden or no pick
   status: SweatStatus
+  // Given a team at lock because no pick was made. Only set once revealed.
+  auto?: boolean
 }
 
 export interface SweatGame {
@@ -51,6 +54,9 @@ export interface SweatGame {
   region: string | null
   homeSeed: number | null
   awaySeed: number | null
+  tv: string | null
+  // Region in the tournament, conference otherwise.
+  group: string | null
 }
 
 export interface SweatResponse {
@@ -62,6 +68,8 @@ export interface SweatResponse {
   periodLabel: string | null
   /** "Second Round", in tournament mode only. */
   roundLabel: string | null
+  /** The slate's lock instant: first tip. */
+  locksAt: string | null
   /** Entries still alive — the denominator for every "% of the field" figure. */
   aliveCount: number
   hasLiveGames: boolean
@@ -89,6 +97,7 @@ const EMPTY: SweatResponse = {
   mode: 'regular-season',
   periodLabel: null,
   roundLabel: null,
+  locksAt: null,
   aliveCount: 0,
   hasLiveGames: false,
   allRevealed: false,
@@ -124,7 +133,7 @@ export async function GET() {
         .from('players')
         .select('id, full_name, email, status, elimination_slate')
         .order('full_name'),
-      loadPicksForSlates<{ player_id: string; team: string }>(supabase, [slate.id], 'player_id, team').then(data => ({ data })),
+      loadPicksForSlates<{ player_id: string; team: string; auto_assigned: boolean | null }>(supabase, [slate.id], 'player_id, team, auto_assigned').then(data => ({ data })),
       supabase.from('games').select('*').eq('slate_id', slate.id),
       // Sandbox matchups are fabricated, so there's nothing to look up on the
       // real scoreboard — skip the network call and read sandbox.games (with
@@ -148,9 +157,11 @@ export async function GET() {
         (p.status === 'alive' || p.elimination_slate === slate.slate_number)
     )
     const picksByPlayer: Record<string, string[]> = {}
+    const autoPicks = new Set<string>()
     for (const pick of picksRes.data ?? []) {
       if (!picksByPlayer[pick.player_id]) picksByPlayer[pick.player_id] = []
       picksByPlayer[pick.player_id].push(pick.team)
+      if (pick.auto_assigned) autoPicks.add(`${pick.player_id}:${pick.team}`)
     }
 
     const dbGames = (dbGamesRes.data ?? []) as Game[]
@@ -160,9 +171,12 @@ export async function GET() {
     // the same two teams twice.
     const metaByPair = new Map<string, Game>()
     for (const g of dbGames) metaByPair.set(`${g.away_team}@${g.home_team}`, g)
+    const conferences = caps.showRegions || !dbGames.length ? {} : await getTeamConferences(supabase).catch(() => ({}))
     const bracketOf = (awayTeam: string, homeTeam: string) => {
       const g = metaByPair.get(`${awayTeam}@${homeTeam}`)
       return {
+        tv: g?.tv ?? null,
+        group: caps.showRegions ? g?.region ?? null : conferenceGroup(awayTeam, homeTeam, conferences),
         round: caps.showTournamentRounds ? roundDisplay(g?.round_label) : null,
         region: caps.showRegions ? g?.region ?? null : null,
         homeSeed: seedToShow(mode, g?.home_seed, g?.round_label),
@@ -228,6 +242,9 @@ export async function GET() {
       gameByTeam[g.awayTeam] = g
     }
 
+    const withAuto = (playerId: string, team: string, player: SweatPlayer): SweatPlayer =>
+      player.team && autoPicks.has(`${playerId}:${team}`) ? { ...player, auto: true } : player
+
     const summary = { safe: 0, winning: 0, losing: 0, out: 0, notStarted: 0, hidden: 0, pending: 0, noPick: 0 }
     const sweatPlayers: SweatPlayer[] = players.flatMap(
       (p: { id: string; full_name: string }) => {
@@ -241,7 +258,7 @@ export async function GET() {
           return [{ name: p.full_name, team: null, status: 'pending' as const }]
         }
 
-        return teams.map((team): SweatPlayer => {
+        return teams.map((team): SweatPlayer => withAuto(p.id, team, (() => {
           const game = gameByTeam[team]
           // Picks are revealed the moment the slate locks, which is the same
           // instant for everyone. ESPN reporting the game as started counts
@@ -280,7 +297,7 @@ export async function GET() {
             else summary.losing++ // tied counts as danger — a tie eliminates
           }
           return { name: p.full_name, team, status }
-        })
+        })()))
       }
     )
 
@@ -311,6 +328,7 @@ export async function GET() {
         mode,
         periodLabel: period?.label ?? null,
         roundLabel: period?.roundLabel ?? null,
+        locksAt: deadline?.toISOString() ?? null,
         aliveCount,
         hasLiveGames,
         allRevealed: deadlinePassed,

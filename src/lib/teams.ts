@@ -48,3 +48,22 @@ export async function getSlateTeams(db: SupabaseClient, slateId: string): Promis
   }
   return [...set].sort()
 }
+
+// Conference per team, for grouping regular-season games.
+export async function getTeamConferences(db: SupabaseClient): Promise<Record<string, string>> {
+  const data = await selectAll<{ abbr: string; conference: string | null }>((from, to) =>
+    db.from('teams').select('abbr, conference').order('abbr').range(from, to)
+  )
+  const map: Record<string, string> = {}
+  for (const t of data) if (t.conference) map[t.abbr] = t.conference
+  return map
+}
+
+// The label for a game's group in the regular season: the shared conference,
+// or "Non-conference" when the two teams come from different ones.
+export function conferenceGroup(away: string, home: string, conferences: Record<string, string>): string | null {
+  const a = conferences[away]
+  const h = conferences[home]
+  if (a && h) return a === h ? a : 'Non-conference'
+  return a ?? h ?? null
+}

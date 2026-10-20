@@ -493,7 +493,7 @@ export default function TestingPanel({
                   ['/login', 'Player Login'],
                   ['/pick', 'Submit Pick'],
                   ['/grid', 'Pick Grid'],
-                  ['/live', 'Sweat Board'],
+                  ['/sweat', 'Sweat Board'],
                   ['/admin/schedule', 'Schedule'],
                   ['/admin/results', 'Results'],
                   ['/admin/players', 'Players'],

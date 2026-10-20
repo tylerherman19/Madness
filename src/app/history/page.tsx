@@ -136,7 +136,7 @@ export default async function HistoryPage() {
 
   return (
     <div className="site-shell min-h-screen flex flex-col">
-      <SiteHeader mode={mode} account={session.full_name} />
+      <SiteHeader mode={mode} seasonYear={pool.season_year} account={session.full_name} />
 
       <main id="main" className="flex-1 mx-auto w-full max-w-4xl px-4 py-10">
         <h1 className="font-display text-5xl mb-8" style={{ color: 'var(--ink)' }}>Pick history</h1>

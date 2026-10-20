@@ -32,7 +32,7 @@ export default function GameCenter({ games, brands }: { games: Game[]; brands: T
             <TeamMark team={team} directory={brands} showName size={42}/>
             <strong className="matchup-score">{(live || final) && score != null ? score : final && game.result === `${side}_win` ? 'W' : '—'}</strong>
           </div>)}
-          <div className="matchup-bottom"><span>{game.venue || 'Game-day matchup'}</span><Link href={final || live ? '/live' : '/pick'} aria-label={`${final || live ? 'View' : 'Pick from'} ${game.away_team} versus ${game.home_team}`}>{final || live ? 'Game details' : 'Make a pick'}<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m8 5 5 5-5 5"/></svg></Link></div>
+          <div className="matchup-bottom"><span>{game.venue || 'Game-day matchup'}</span><Link href={final || live ? '/sweat' : '/pick'} aria-label={`${final || live ? 'View' : 'Pick from'} ${game.away_team} versus ${game.home_team}`}>{final || live ? 'Game details' : 'Make a pick'}<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m8 5 5 5-5 5"/></svg></Link></div>
         </article>
       })}
     </div>

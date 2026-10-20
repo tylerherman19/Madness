@@ -114,6 +114,8 @@ export interface StandingRow {
   pick_revealed: boolean
   elimination_reason: string | null
   elimination_slate?: number | null
+  // Eliminated entries only: the pick(s) on the day they went out.
+  losing_picks?: string[]
 }
 
 export interface TeamStat {

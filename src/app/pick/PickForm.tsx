@@ -1,16 +1,18 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
-import { roundDisplay } from '@/lib/competition'
-import { Logo, Arrow, Ball } from '@/app/components/Sports'
-import s from '@/app/components/sports.module.css'
+import { tipTime } from '@/lib/poolTheme'
+import LockCountdown from '@/app/components/LockCountdown'
+import s from '@/app/components/pp.module.css'
 
 export interface GameSide {
   team: string
   used: boolean
   usedOn: string | null
+  // Seed in the tournament, AP rank otherwise; null when there is none.
   seed: number | null
   rank: number | null
   record: string | null
@@ -22,6 +24,8 @@ export interface GameRow {
   timeTbd: boolean
   round: string | null
   region: string | null
+  // Region in the tournament, conference otherwise.
+  group: string | null
   venue: string | null
   tv: string | null
   away: GameSide
@@ -43,45 +47,61 @@ interface Props {
   slateId: string
   gameRows: GameRow[]
   usedTeams: string[]
+  usedList: { team: string; date: string }[]
   savedPicks: SavedPick[]
   requiredPicks: number
   sharedRound: boolean
   locked: boolean
   teamBrands: TeamBrandDirectory
   serverNow: string
+  dayLabel: string
+  dateLabel: string
+  titleLabel: string
+  tagName: string
 }
 
+// Pick states: Selected (chosen here, not saved), Submitted (saved, can still
+// change until lock), Locked (after first tip). The server enforces every rule
+// again on save; this form only presents them.
 export default function PickForm({
   slateId,
   gameRows,
-  usedTeams,
+  usedList,
   savedPicks: initialPicks,
   requiredPicks,
   sharedRound,
   locked: serverLocked,
   serverNow,
   teamBrands,
+  dayLabel,
+  dateLabel,
+  titleLabel,
+  tagName,
 }: Props) {
   const router = useRouter()
   const [clockLocked, setClockLocked] = useState(false)
   const locked = serverLocked || clockLocked
   const pending = useRef(false)
+  const grid = useRef<HTMLDivElement>(null)
   const [picks, setPicks] = useState(initialPicks)
   const [selected, setSelected] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [confirmed, setConfirmed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState('All games')
 
   const name = (team: string) => brandFor(team, teamBrands).shortName
-  const selectedRow = gameRows.find((game) => game.home.team === selected || game.away.team === selected)
-  const deadline = selectedRow?.deadline ?? gameRows[0]?.deadline
-  const selectedTeams = useMemo(() => new Set(picks.map((pick) => pick.team)), [picks])
+  const deadline = gameRows[0]?.deadline ?? null
+  const lockText = tipTime(deadline)
+  const savedTeams = useMemo(() => new Set(picks.map((pick) => pick.team)), [picks])
   const editingPick = picks.find((pick) => pick.id === editingId) ?? null
   const canAdd = picks.length < requiredPicks
   const actionAvailable = !locked && (canAdd || picks.some((pick) => pick.editable))
+  const games = useMemo(
+    () => gameRows.slice().sort((a, b) => Number(a.timeTbd) - Number(b.timeTbd) || new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()),
+    [gameRows]
+  )
+  const teams = games.flatMap((game) => [game.away, game.home])
+  const available = teams.filter((side) => !side.used)
 
   useEffect(() => {
     const receivedAt = Date.now()
@@ -95,89 +115,53 @@ export default function PickForm({
     return () => { window.clearInterval(clock); window.clearInterval(refresh) }
   }, [gameRows, router, serverNow])
 
-  const filters = [
-    'All games',
-    'Available',
-    ...(gameRows.some((game) => game.away.rank || game.home.rank || game.away.seed || game.home.seed)
-      ? ['Ranked']
-      : []),
-    ...(usedTeams.length || picks.length ? ['Used teams'] : []),
-  ]
-
-  const shown = (() => {
-    const loweredQuery = query.toLowerCase()
-    return gameRows
-      .filter((game) => {
-        const sides = [game.away, game.home]
-        const matchesSearch = sides.some((side) =>
-          `${name(side.team)} ${side.team}`.toLowerCase().includes(loweredQuery)
-        )
-        if (!matchesSearch) return false
-        if (filter === 'Available') {
-          return !locked && !game.locked && sides.some((side) => !side.used && !selectedTeams.has(side.team))
-        }
-        if (filter === 'Used teams') {
-          return sides.some((side) => side.used || selectedTeams.has(side.team))
-        }
-        if (filter === 'Ranked') {
-          return sides.some((side) => side.rank || side.seed)
-        }
-        return true
-      })
-      .sort(
-        (a, b) =>
-          Number(a.timeTbd) - Number(b.timeTbd) ||
-          new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
-      )
-  })()
-
-  function time(iso: string) {
-    return (
-      new Date(iso).toLocaleString('en-US', {
-        timeZone: 'America/Chicago',
-        hour: 'numeric',
-        minute: '2-digit',
-      }) + ' CT'
-    )
-  }
-
-  function startEdit(pick: SavedPick) {
-    if (locked || !pick.editable || submitting) return
-    setEditingId(pick.id)
-    setSelected(null)
-    setConfirmed(false)
-    setError('')
+  // The pick a new selection replaces: the one being changed, or the only
+  // editable one when every slot is already filled.
+  function targetPick(): SavedPick | null {
+    if (editingPick) return editingPick
+    if (canAdd) return null
+    const editable = picks.filter((pick) => pick.editable)
+    return editable.length === 1 ? editable[0] : null
   }
 
   function chooseTeam(team: string) {
     if (!actionAvailable || submitting) return
-    let target = editingId
+    const target = targetPick()
     if (!target && !canAdd) {
-      const editable = picks.filter((pick) => pick.editable)
-      if (editable.length !== 1) {
-        setError('Choose Change next to the pick you want to replace.')
-        return
-      }
-      target = editable[0].id
-      setEditingId(target)
+      setError('Choose Change next to the pick you want to replace.')
+      return
     }
-    const targetPick = picks.find((pick) => pick.id === target)
-    if (selectedTeams.has(team) && targetPick?.team !== team) return
+    if (target && !editingId) setEditingId(target.id)
+    if (savedTeams.has(team)) {
+      // Choosing the team that is already saved just cancels the change.
+      if (target?.team === team) setSelected(null)
+      return
+    }
     setSelected(team)
-    setConfirmed(false)
     setError('')
   }
 
+  function startChange(pick?: SavedPick) {
+    const target = pick ?? targetPick()
+    if (!target || locked || !target.editable) return
+    setEditingId(target.id)
+    setSelected(null)
+    setError('')
+    grid.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    grid.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
+  }
+
   async function submit() {
-    if (!selected || !confirmed || pending.current || locked) return
+    if (!selected || pending.current || locked) return
     pending.current = true
     setSubmitting(true)
     setError('')
+    const target = targetPick()
     try {
       const response = await fetch('/api/picks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slate_id: slateId, team: selected, pick_id: editingId, expected_version: picks.find(pick => pick.id === editingId)?.updatedAt }),
+        body: JSON.stringify({ slate_id: slateId, team: selected, pick_id: target?.id ?? null, expected_version: target?.updatedAt }),
       })
       const result = await response.json()
       if (!response.ok) {
@@ -195,13 +179,10 @@ export default function PickForm({
           autoAssigned: false,
           updatedAt: saved.updated_at,
         }
-        return editingId
-          ? current.map((pick) => (pick.id === editingId ? next : pick))
-          : [...current, next]
+        return target ? current.map((pick) => (pick.id === target.id ? next : pick)) : [...current, next]
       })
       setSelected(null)
       setEditingId(null)
-      setConfirmed(false)
       router.refresh()
     } catch {
       setError('Could not save your pick. Check your connection and try again.')
@@ -211,202 +192,183 @@ export default function PickForm({
     }
   }
 
-  const nextPickNumber = editingPick
-    ? Math.max(1, picks.findIndex((pick) => pick.id === editingPick.id) + 1)
-    : picks.length + 1
-  const heading = sharedRound
-    ? `${requiredPicks} picks. Use them across the round.`
-    : 'One team. Your daily pick.'
-  const helper = locked
-    ? picks.length > 0
-      ? `This game day is locked. Your ${picks.length === 1 ? 'pick is' : 'picks are'} final. If your team wins, your next pick opens when the game is final.`
-      : 'This game day is locked. Check back when results are final.'
-    : sharedRound
-      ? `Choose ${requiredPicks} different teams before the round ends. You can make both picks on the same game day.`
-      : null
+  const target = targetPick()
+  const replacing = selected ? target : null
+  const slotIndex = target ? picks.findIndex((pick) => pick.id === target.id) : picks.length
+  const shownTeam = selected ?? target?.team ?? (requiredPicks === 1 ? picks[0]?.team : null) ?? null
+  const shownPick = !selected ? picks.find((pick) => pick.team === shownTeam) ?? null : null
+  const submittedView = !!shownPick && !selected
+  const gameOf = (team: string | null) => games.find((game) => game.away.team === team || game.home.team === team)
+  const shownGame = gameOf(shownTeam)
+  const opponent = shownGame ? (shownGame.away.team === shownTeam ? shownGame.home.team : shownGame.away.team) : null
+  const cardLabel = requiredPicks > 1 ? `${dayLabel} · pick ${Math.min(slotIndex, requiredPicks - 1) + 1} of ${requiredPicks}` : `${dayLabel} pick`
+  const steps = [
+    { label: 'Selected', on: !!shownTeam },
+    { label: 'Submitted', on: submittedView },
+    { label: `Locked at ${lockText}`, on: locked && submittedView },
+  ]
+  const message = locked
+    ? picks.length
+      ? shownPick?.autoAssigned ? `Auto-assigned at ${lockText}.` : `Locked at ${lockText}.`
+      : 'Locked. No pick was submitted.'
+    : selected
+      ? 'Selected, not submitted yet.'
+      : submittedView
+        ? `Submitted. You can change it until ${lockText}.`
+        : `Choose a team. Picks lock at ${lockText}.`
+  const messageTone = !locked && selected ? s.amber : !submittedView && !locked ? s.gray : undefined
+  const dockState = locked
+    ? { text: 'Locked', tone: s.gray }
+    : selected
+      ? { text: 'Selected, not submitted', tone: s.amber }
+      : submittedView
+        ? { text: 'Submitted', tone: s.green }
+        : { text: 'No team selected', tone: s.gray }
+
+  function sideState(side: GameSide, game: GameRow): { state?: string; note: string } {
+    if (side.used) return { state: 'used', note: `Used${side.usedOn ? ` ${side.usedOn}` : ''}` }
+    if (selected === side.team) return { state: 'selected', note: 'Selected' }
+    if (savedTeams.has(side.team)) {
+      const being = replacing?.team === side.team
+      const index = picks.findIndex((pick) => pick.team === side.team)
+      if (!being) return { state: 'submitted', note: locked ? 'Locked' : requiredPicks > 1 ? `Pick ${index + 1}` : 'Submitted' }
+    }
+    if (locked || game.locked) return { state: 'locked', note: '' }
+    return { note: '' }
+  }
+
+  const primary = locked ? (
+    <Link className={`${s.cta} ${s.ctaQuiet}`} href="/sweat">Open sweat board</Link>
+  ) : selected ? (
+    <button type="button" className={s.cta} onClick={submit} disabled={submitting}>
+      {submitting ? 'Saving…' : `Submit ${name(selected)}`}
+    </button>
+  ) : submittedView && shownPick?.editable ? (
+    <button type="button" className={`${s.cta} ${s.ctaQuiet}`} onClick={() => startChange(shownPick)}>Change pick</button>
+  ) : (
+    <button type="button" className={s.cta} disabled>Choose a team</button>
+  )
 
   return (
-    <div className={s.root} style={{ minHeight: 0 }}>
-      <div className={s.pageHeading}>
+    <div className={s.withDock}>
+      <div className={s.pickHeader}>
         <div>
-          <h1>{heading}</h1>
-          {helper && <p>{helper}</p>}
+          <div className={s.kicker}>{dateLabel} · {titleLabel}</div>
+          <h1 className={s.title}>{locked ? 'Your pick' : 'Make your pick'}</h1>
         </div>
-      </div>
-
-      <div className={s.pickProgress} aria-label={`${picks.length} of ${requiredPicks} picks saved`}>
-        <div>
-          <strong>{sharedRound ? 'Round picks' : 'Your pick'}</strong>
-          <span>{picks.length} / {requiredPicks} saved</span>
-        </div>
-        <div className={s.savedPickList}>
-          {picks.map((pick, index) => (
-            <div className={s.savedPick} key={pick.id}>
-              <Logo team={pick.team} brands={teamBrands} size={30} />
-              <span><small>Pick {index + 1}</small><b>{name(pick.team)}</b></span>
-              {pick.autoAssigned ? <em>Auto</em> : null}
-              {pick.editable && !locked ? (
-                <button type="button" onClick={() => startEdit(pick)} aria-pressed={editingId === pick.id}>
-                  {editingId === pick.id ? 'Changing' : 'Change'}
-                </button>
-              ) : (
-                <em>Locked</em>
-              )}
-            </div>
-          ))}
-          {Array.from({ length: Math.max(0, requiredPicks - picks.length) }, (_, index) => (
-            <div className={`${s.savedPick} ${s.savedPickEmpty}`} key={`open-${index}`}>
-              <span className={s.emptyBall}><Ball /></span>
-              <span><small>Pick {picks.length + index + 1}</small><b>{locked ? 'Auto-pick pending' : 'Open'}</b></span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className={s.pickLayout}>
-        <section className={s.pickList}>
-          <div className={s.pickToolbar}>
-            <label className={s.search}>
-              <input
-                type="search"
-                aria-label="Find a team"
-                placeholder="Find a team"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
-            <span>{shown.length} games · All times CT</span>
+        {deadline && (
+          <div className={s.lockBox}>
+            <span>Locks at {lockText}</span>
+            <LockCountdown deadline={deadline} className={s.lockClock} soonClassName={s.clockSoon} />
           </div>
-          <div className={s.pickFilters} aria-label="Filter games">
-            {filters.map((item) => (
-              <button key={item} aria-pressed={filter === item} onClick={() => setFilter(item)}>
-                {item}
-              </button>
-            ))}
-          </div>
-          <div aria-label="Teams available to pick" className={s.selectionGames}>
-            {shown.map((game) => (
-              <article className={s.selectionGame} key={game.gameId}>
-                <div className={s.selectionMeta}>
-                  <b>{game.timeTbd ? 'Time TBD' : time(game.kickoff)}</b>
-                  <span>{game.tv}</span>
+        )}
+      </div>
+      <p className={s.availLine}><b>{available.length}</b> of {teams.length} teams available{sharedRound ? ` · ${requiredPicks} picks this round` : ''}</p>
+      <div className={s.mobileLock}>
+        <span>{available.length} of {teams.length} teams available</span>
+        {deadline && <span>Locks {lockText} · <b><LockCountdown deadline={deadline} /></b></span>}
+      </div>
+      {error && <p role="alert" className={s.alert}>{error}</p>}
+
+      <div className={s.split} style={{ marginTop: 24 }}>
+        <section aria-label="Today's games" ref={grid}>
+          <div className={s.sectionHead}><h2>Today’s games</h2><span>{games.length} games · {tagName} shown</span></div>
+          <div className={s.pickGrid} role="radiogroup" aria-label="Today's teams">
+            {games.map((game) => (
+              <div className={s.pickGame} key={game.gameId}>
+                <div className={s.pickMeta}>
+                  <span><b>{game.timeTbd ? 'TBD' : tipTime(game.kickoff)}</b>{game.tv ? ` · ${game.tv}` : ''}</span>
+                  <span>{game.group ?? ''}</span>
                 </div>
-                {game.round ? <p className={s.venue}>{roundDisplay(game.round)} {game.region}</p> : null}
-                {[game.away, game.home].map((side, index) => {
-                  const savedHere = selectedTeams.has(side.team)
-                  const chosen = selected === side.team
-                  const unavailable = side.used || (savedHere && editingPick?.team !== side.team)
+                {[game.away, game.home].map((side) => {
+                  const { state, note } = sideState(side, game)
+                  const disabled = side.used || game.locked || locked || submitting || !actionAvailable || (state === 'submitted')
                   return (
                     <button
                       key={side.team}
                       type="button"
-                      aria-pressed={chosen || savedHere}
-                      disabled={game.locked || unavailable || submitting || !actionAvailable}
-                      className={`${s.teamOption} ${chosen || savedHere ? s.teamSelected : ''}`}
+                      role="radio"
+                      aria-checked={selected === side.team || state === 'submitted'}
+                      className={s.teamBtn}
+                      data-state={state}
+                      disabled={disabled}
                       onClick={() => chooseTeam(side.team)}
                     >
-                      <Logo team={side.team} brands={teamBrands} size={40} />
-                      <span className={s.optionName}>
-                        <strong>
-                          {side.seed ? `(${side.seed}) ` : side.rank ? `#${side.rank} ` : ''}
-                          {name(side.team)}
-                        </strong>
-                        <small>{side.record}<span>{index === 0 ? 'Away' : 'Home'}</span></small>
-                      </span>
-                      <span className={s.optionState}>
-                        {side.used
-                          ? `Used${side.usedOn ? ` · ${side.usedOn}` : ''}`
-                          : savedHere
-                            ? 'Saved'
-                            : game.locked || locked
-                              ? 'Locked'
-                              : chosen
-                                ? `Pick ${nextPickNumber}`
-                                : ''}
-                      </span>
-                      <span className={s.radioMark} aria-hidden="true" />
+                      <span className={s.teamTag}>{side.seed ?? ''}</span>
+                      <span className={s.teamName}>{name(side.team)}</span>
+                      <span className={s.teamNote}>{note}</span>
                     </button>
                   )
                 })}
-                <p className={s.venue}>{game.venue ?? 'Venue to be announced'}</p>
-              </article>
+              </div>
             ))}
           </div>
-          {!shown.length ? (
-            <div className={s.empty}>
-              <h2>No matching games</h2>
-              <p>Try another team or filter.</p>
-              <button className={s.secondary} onClick={() => { setQuery(''); setFilter('All games') }}>
-                Reset filters
-              </button>
-            </div>
-          ) : null}
+          {games.length === 0 && <p className={s.empty}>No games on this pick day yet.</p>}
         </section>
 
-        <aside className={`${s.selectionDesk} ${selected ? s.deskActive : ''}`}>
-          <div className={s.deskHeading}>
-            <h2>{editingPick ? `Change pick ${nextPickNumber}` : `Pick ${nextPickNumber}`}</h2>
-            <span>{picks.length} / {requiredPicks}</span>
-          </div>
-          <div className={s.selectedTeam} aria-live="polite">
-            {selected && !locked ? (
-              <>
-                <Logo team={selected} brands={teamBrands} size={66} />
-                <strong>{name(selected)}</strong>
-                <span>Ready to confirm</span>
-              </>
-            ) : (
-              <>
-                <span className={s.emptyBall}><Ball /></span>
-                <strong>{locked ? 'Picks locked.' : canAdd ? 'The choice is yours.' : 'Your picks are saved.'}</strong>
-                <span>
-                  {locked
-                    ? 'This game day has tipped off.'
-                    : canAdd
-                      ? `Select team ${picks.length + 1} of ${requiredPicks}.`
-                      : 'Choose Change to replace an open pick.'}
-                </span>
-              </>
+        <aside className={s.aside} aria-label="Your pick">
+          <div className={s.pickPanel}>
+            <div className={s.asideHead}><h2>Your pick</h2><span className={s.green}>Alive</span></div>
+            {requiredPicks > 1 && (
+              <div className={s.slots}>
+                {Array.from({ length: requiredPicks }, (_, index) => {
+                  const pick = picks[index]
+                  return (
+                    <div className={s.slot} key={pick?.id ?? `open-${index}`} data-active={!locked && index === slotIndex}>
+                      <span className={s.gray}>Pick {index + 1}</span>
+                      <b>{pick ? name(pick.team) : locked ? 'Auto-pick pending' : 'Open'}</b>
+                      {pick?.autoAssigned && <span className={s.amber}>Auto</span>}
+                      {pick?.editable && !locked && (
+                        <button type="button" className={s.linkButton} onClick={() => startChange(pick)} aria-pressed={editingId === pick.id}>
+                          {editingId === pick.id ? 'Changing' : 'Change'}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             )}
-          </div>
-          <div className={s.deadline}>
-            <div>
-              <span>Locks at first tip</span>
-              <b>
-                {deadline
-                  ? new Date(deadline).toLocaleString('en-US', {
-                      timeZone: 'America/Chicago',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                      timeZoneName: 'short',
-                    })
-                  : 'Deadline pending'}
-              </b>
+            <div className={s.pickCard} data-submitted={submittedView}>
+              <div className={s.cardLabel}>{cardLabel}</div>
+              <div className={s.cardTeam}>{shownTeam ? name(shownTeam) : 'No team selected'}</div>
+              {shownGame && opponent && (
+                <div className={s.pickLine}>vs {name(opponent)} · {shownGame.timeTbd ? 'TBD' : tipTime(shownGame.kickoff)}{shownGame.tv ? ` · ${shownGame.tv}` : ''}</div>
+              )}
+              <div className={s.steps}>
+                {steps.map((step) => <span className={s.step} data-on={step.on} key={step.label}>{step.label}</span>)}
+              </div>
+              <div className={`${s.pickMsg} ${messageTone ?? ''}`} aria-live="polite">{message}</div>
             </div>
+            {primary}
           </div>
-          {!locked && selected && selected !== editingPick?.team ? (
-            <label className={s.confirmation}>
-              <input
-                type="checkbox"
-                checked={confirmed}
-                disabled={submitting}
-                onChange={(event) => setConfirmed(event.target.checked)}
-              />
-              <span>Confirm {name(selected)} as pick {nextPickNumber} of {requiredPicks}.</span>
-            </label>
-          ) : null}
-          {error ? <p role="alert" className={s.privacyNotice}>{error}</p> : null}
-          <button
-            className={s.primary}
-            disabled={locked || !selected || selected === editingPick?.team || !confirmed || submitting || selectedRow?.locked}
-            onClick={submit}
-          >
-            {locked ? 'Picks locked' : submitting ? 'Saving…' : editingPick ? 'Save changed pick' : `Save pick ${nextPickNumber}`}
-            <Arrow />
-          </button>
+
+          {usedList.length > 0 && (
+            <div className={s.sub}>
+              <h3>Already used</h3>
+              {usedList.map((row) => (
+                <div className={s.usedRow} key={row.team}><span>{name(row.team)}</span><span>{row.date}</span></div>
+              ))}
+            </div>
+          )}
+          <div className={s.sub}>
+            <h3>Available today</h3>
+            <p className={s.availList}>{available.length ? available.map((side) => name(side.team)).join(', ') : 'None'}</p>
+          </div>
         </aside>
+      </div>
+
+      <div className={s.dock}>
+        <span>
+          <small className={dockState.tone}>{dockState.text}</small>
+          <b>{shownTeam ? name(shownTeam) : 'Choose a team'}</b>
+        </span>
+        {locked ? (
+          <Link className={`${s.cta} ${s.ctaQuiet}`} href="/sweat">Sweat board</Link>
+        ) : selected ? (
+          <button type="button" className={s.cta} onClick={submit} disabled={submitting}>{submitting ? 'Saving…' : 'Submit'}</button>
+        ) : submittedView && shownPick?.editable ? (
+          <button type="button" className={`${s.cta} ${s.ctaQuiet}`} onClick={() => startChange(shownPick)}>Change</button>
+        ) : null}
       </div>
     </div>
   )

@@ -4,9 +4,9 @@ import { supportEmail } from '@/lib/site'
 export default function TrustFooter() {
   return <footer className="trust-footer">
     <div className="trust-footer-top">
-      <p><strong>MADNESS</strong><br />College Basketball Survivor</p>
+      <p><strong>Pick and Pray</strong><br />College Basketball Survivor</p>
       <nav aria-label="Footer">
-        <Link href="/standings#rules">Pool rules</Link>
+        <Link href="/rules">Pool rules</Link>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
         <Link href="/contact">Contact</Link>

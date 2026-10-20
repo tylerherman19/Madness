@@ -168,7 +168,7 @@ export default async function GridPage() {
 
   return (
     <div className="site-shell">
-      <ContestRefresh /><SiteHeader mode={mode} />
+      <ContestRefresh /><SiteHeader mode={mode} seasonYear={pool.season_year} />
 
       <main id="main" className="content-width py-9 sm:py-12">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

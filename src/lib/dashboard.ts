@@ -184,6 +184,22 @@ export async function getDashboardData() {
     const weeksSurvivedByPlayer = survivedPeriodsByPlayer(seasonPicks, allGames ?? [], periodScopes)
     const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks)
 
+    // The team that knocked each eliminated entry out: their pick on the day
+    // they were eliminated. That day is locked and graded, so it is public.
+    const slateNumberById = new Map<string, number>(seasonWeeks.map((w: { id: string; slate_number: number }) => [w.id, w.slate_number]))
+    const eliminationSlateByPlayer = new Map<string, number>(
+      players
+        .filter((p: { status: string; elimination_slate: number | null }) => p.status === 'eliminated' && p.elimination_slate != null)
+        .map((p: { id: string; elimination_slate: number }) => [p.id, p.elimination_slate])
+    )
+    const losingPicksByPlayer: Record<string, string[]> = {}
+    for (const pick of seasonPicks as { player_id: string; slate_id: string; team: string }[]) {
+      const out = eliminationSlateByPlayer.get(pick.player_id)
+      if (out != null && slateNumberById.get(pick.slate_id) === out) {
+        losingPicksByPlayer[pick.player_id] = [...(losingPicksByPlayer[pick.player_id] ?? []), pick.team]
+      }
+    }
+
     const standings: StandingRow[] = players.map(
       (p: { id: string; full_name: string; status: string; elimination_reason: string | null; elimination_slate: number | null }) => ({
         player_id: p.id,
@@ -197,6 +213,7 @@ export async function getDashboardData() {
         pick_revealed: !!revealedPicks[p.id],
         elimination_reason: p.elimination_reason,
         elimination_slate: p.elimination_slate,
+        losing_picks: losingPicksByPlayer[p.id] ?? [],
       })
     )
 

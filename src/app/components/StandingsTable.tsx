@@ -2,159 +2,134 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import type { StandingRow } from '@/types'
-import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
-import TeamChip from './TeamChip'
+import s from './pp.module.css'
 
-type SortMode = 'seeds' | 'alphabetical' | 'team'
-
-function byName(a: StandingRow, b: StandingRow): number {
-  return a.full_name.localeCompare(b.full_name, undefined, { sensitivity: 'base' })
+export interface AliveRow {
+  id: string
+  name: string
+  me: boolean
+  // Team(s) shown in the pick column: revealed picks, or your own.
+  pick: string | null
+  status: 'locked' | 'none' | 'submitted' | 'picked'
+  seedTotal: number
 }
 
+export interface OutRow {
+  id: string
+  name: string
+  out: string
+  losing: string | null
+  seedTotal: number
+}
+
+type SortMode = 'alphabetical' | 'team' | 'seeds'
+
+const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+
 export default function StandingsTable({
-  aliveRows,
-  elimRows,
-  periodLabel,
-  periodByNumber,
-  teamBrands,
-  signupsClosed,
+  alive,
+  out,
+  dayLabel,
+  hiddenUntil,
   showSeedTotal,
+  signupsClosed,
 }: {
-  aliveRows: StandingRow[]
-  elimRows: StandingRow[]
-  periodLabel: string | null
-  periodByNumber: Record<number, { shortLabel: string }>
-  teamBrands: TeamBrandDirectory
-  signupsClosed: boolean
+  alive: AliveRow[]
+  out: OutRow[]
+  dayLabel: string
+  hiddenUntil: string | null
   showSeedTotal: boolean
+  signupsClosed: boolean
 }) {
-  const [sortMode, setSortMode] = useState<SortMode>(showSeedTotal ? 'seeds' : 'alphabetical')
+  const [sort, setSort] = useState<SortMode>('alphabetical')
+  const [query, setQuery] = useState('')
 
-  const sortedAliveRows = useMemo(() => {
-    const rows = aliveRows.slice()
-    if (sortMode === 'seeds') {
-      return rows.sort((a, b) => b.seed_total - a.seed_total || byName(a, b))
+  const match = (row: { name: string }) => row.name.toLowerCase().includes(query.trim().toLowerCase())
+  const aliveRows = useMemo(() => {
+    const rows = alive.filter(match)
+    if (sort === 'seeds') return rows.sort((a, b) => b.seedTotal - a.seedTotal || byName(a, b))
+    if (sort === 'team') {
+      // Revealed teams first, grouped; then locked-in entries; then no pick.
+      const bucket = (row: AliveRow) => (row.pick && !row.me ? 0 : row.status === 'locked' || row.me ? 1 : 2)
+      return rows.sort((a, b) => bucket(a) - bucket(b) || (a.pick ?? '').localeCompare(b.pick ?? '') || byName(a, b))
     }
-    if (sortMode === 'alphabetical') return rows.sort(byName)
-    return rows.sort((a, b) => {
-      // The server strips unrevealed teams before this component receives the
-      // rows. pick_locked keeps submitted hidden picks ahead of missing picks.
-      const aBucket = a.current_pick ? 0 : a.pick_locked ? 1 : 2
-      const bBucket = b.current_pick ? 0 : b.pick_locked ? 1 : 2
-      if (aBucket !== bBucket) return aBucket - bBucket
-      if (a.current_pick && b.current_pick) {
-        const teamOrder = brandFor(a.current_pick, teamBrands).name.localeCompare(
-          brandFor(b.current_pick, teamBrands).name,
-          undefined,
-          { sensitivity: 'base' }
-        )
-        if (teamOrder !== 0) return teamOrder
-      }
-      return byName(a, b)
-    })
-  }, [aliveRows, sortMode, teamBrands])
-
-  const sortedElimRows = useMemo(
-    () => elimRows.slice().sort(showSeedTotal ? (a, b) => b.seed_total - a.seed_total || byName(a, b) : byName),
-    [elimRows, showSeedTotal]
+    return rows.sort((a, b) => Number(b.me) - Number(a.me) || byName(a, b))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alive, sort, query])
+  const outRows = useMemo(
+    () => out.filter(match).sort(sort === 'seeds' ? (a, b) => b.seedTotal - a.seedTotal || byName(a, b) : byName),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [out, sort, query]
   )
-  const isEmpty = aliveRows.length === 0 && elimRows.length === 0
+
+  const sorts: [SortMode, string][] = [['alphabetical', 'Alphabetical'], ['team', 'By team'], ...(showSeedTotal ? [['seeds', 'Seed total'] as [SortMode, string]] : [])]
+  const status = (row: AliveRow) =>
+    row.status === 'locked' ? { text: 'Locked in', tone: s.green }
+      : row.status === 'picked' ? { text: 'Locked in', tone: s.green }
+        : row.status === 'submitted' ? { text: 'Submitted', tone: s.green }
+          : { text: row.me ? 'Not submitted' : 'No pick yet', tone: s.amber }
+
+  if (alive.length === 0 && out.length === 0) {
+    return (
+      <div className={s.stSection}>
+        <p className={s.empty}>Entries appear here when players join.</p>
+        {!signupsClosed && <Link className={s.cta} href="/signup" style={{ width: 220 }}>Join the pool</Link>}
+      </div>
+    )
+  }
 
   return (
     <>
-      {!isEmpty && (
-        <div className="mb-3 flex justify-end" aria-label="Sort standings">
-          <div role="group" aria-label="Sort standings" className="inline-flex rounded-full p-1" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--line)' }}>
-            {([...(showSeedTotal ? ['seeds'] as const : []), 'alphabetical', 'team'] as SortMode[]).map((mode) => {
-              const active = sortMode === mode
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setSortMode(mode)}
-                  className="rounded-full px-3 py-1.5 text-xs font-bold"
-                  style={{ background: active ? 'var(--ink)' : 'transparent', color: active ? 'var(--on-inverse)' : 'var(--muted)' }}
-                >
-                  {mode === 'seeds' ? 'Seed total' : mode === 'alphabetical' ? 'Alphabetical' : 'Team'}
-                </button>
-              )
-            })}
-          </div>
+      <div className={s.toolbar}>
+        <div className={s.tabs} role="tablist" aria-label="Sort">
+          {sorts.map(([key, label]) => (
+            <button key={key} type="button" role="tab" aria-selected={sort === key} onClick={() => setSort(key)}>{label}</button>
+          ))}
         </div>
-      )}
-
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: 'var(--surface-sunken)' }}>
-              <th className="py-2.5 pl-4 text-left eyebrow w-full">Player</th>
-              <th className="py-2.5 px-4 text-left eyebrow hidden sm:table-cell whitespace-nowrap">Status</th>
-              {showSeedTotal && <th className="py-2.5 px-3 text-right eyebrow whitespace-nowrap">Seeds</th>}
-              <th className="py-2.5 pl-4 pr-4 text-left eyebrow whitespace-nowrap">{periodLabel ? `${periodLabel} Pick` : 'Pick'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isEmpty && (
-              <tr>
-                <td colSpan={showSeedTotal ? 4 : 3} className="p-8 text-center">
-                  <strong className="block mb-2">The field is open</strong>
-                  <p className="text-sm text-[var(--muted)] mb-4">Players will appear here when they join the pool.</p>
-                  {!signupsClosed && <Link href="/signup" className="btn-primary px-5">Join the pool</Link>}
-                </td>
-              </tr>
-            )}
-
-            {sortedAliveRows.length > 0 && (
-              <tr>
-                <td colSpan={showSeedTotal ? 4 : 3} className="pt-4 pb-1.5 pl-4">
-                  <span className="pill pill-alive"><span className="pill-dot" />{sortedAliveRows.length} Still Alive</span>
-                </td>
-              </tr>
-            )}
-            {sortedAliveRows.map((row) => (
-              <tr key={row.player_id} className="row-hover border-t" style={{ borderColor: 'var(--line)' }}>
-                <td className="py-3 pl-4 font-bold" style={{ color: 'var(--ink)' }}>{row.full_name}</td>
-                <td className="py-3 px-4 hidden sm:table-cell">
-                  <span className="pill pill-alive"><span className="pill-dot" />Alive</span>
-                </td>
-                {showSeedTotal && <td className="py-3 px-3 text-right font-bold tnum" style={{ color: 'var(--ink)' }}>{row.seed_total}</td>}
-                <td className="py-3 pl-4 pr-4">
-                  {row.current_picks.length > 0 ? (
-                    <span className="flex flex-wrap gap-1.5">{row.current_picks.map((team) => <TeamChip key={team} team={team} size={28} directory={teamBrands} />)}</span>
-                  ) : row.pick_locked ? (
-                    <span className="pill pill-alive"><span className="pill-dot" />Pick In</span>
-                  ) : (
-                    <span className="text-xs italic" style={{ color: 'var(--warning)' }}>no pick yet</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-
-            {sortedElimRows.length > 0 && (
-              <tr>
-                <td colSpan={showSeedTotal ? 4 : 3} className="pt-6 pb-1.5 pl-4">
-                  <span className="pill pill-out"><span className="pill-dot" />{sortedElimRows.length} Eliminated</span>
-                </td>
-              </tr>
-            )}
-            {sortedElimRows.map((row) => {
-              const eliminatedIn = row.elimination_slate
-              return (
-                <tr key={row.player_id} className="border-t" style={{ borderColor: 'var(--line)', background: 'var(--surface-sunken)' }}>
-                  <td className="py-2.5 pl-4 text-sm" style={{ color: 'var(--muted)', textDecoration: 'line-through' }}>{row.full_name}</td>
-                  <td className="py-2.5 px-4 hidden sm:table-cell">
-                    <span className="pill pill-out">Out{eliminatedIn ? ` · ${periodByNumber[eliminatedIn]?.shortLabel ?? `#${eliminatedIn}`}` : ''}</span>
-                  </td>
-                  {showSeedTotal && <td className="py-2.5 px-3 text-right font-bold tnum" style={{ color: 'var(--muted)' }}>{row.seed_total}</td>}
-                  <td className="py-2.5 pl-4 pr-4 text-xs" style={{ color: 'var(--muted)' }}>{row.elimination_reason ?? '—'}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        <label className={s.search}>
+          <span>Find an entry</span>
+          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={'Name'} />
+        </label>
       </div>
+
+      <section className={s.stSection} aria-label="Still alive">
+        <div className={s.stHead}><b className={s.green}>{alive.length}</b><span>still alive</span></div>
+        <div className={`${s.stRow} ${s.stLabels}`}><span>Entry</span><span>Status</span><span>{sort === 'seeds' ? 'Seed total' : `${dayLabel} pick`}</span></div>
+        {aliveRows.map((row) => {
+          const st = status(row)
+          return (
+            <div className={s.stRow} data-me={row.me} key={row.id}>
+              <span>{row.me ? 'You' : row.name}</span>
+              <span className={st.tone}>{st.text}</span>
+              {sort === 'seeds' ? (
+                <span>{row.seedTotal}</span>
+              ) : row.pick ? (
+                <span>{row.pick}{row.me && row.status === 'submitted' ? ' (submitted)' : ''}</span>
+              ) : row.status === 'locked' && hiddenUntil ? (
+                <span className={s.hidden}>Hidden until {hiddenUntil}</span>
+              ) : (
+                <span />
+              )}
+            </div>
+          )
+        })}
+        {aliveRows.length === 0 && <p className={s.empty}>No match.</p>}
+      </section>
+
+      {out.length > 0 && (
+        <section className={s.stSection} aria-label="Eliminated">
+          <div className={s.stHead}><b className={s.red}>{out.length}</b><span>eliminated</span></div>
+          <div className={`${s.stRow} ${s.stLabels}`}><span>Entry</span><span>Out</span><span>{sort === 'seeds' ? 'Seed total' : 'Losing pick'}</span></div>
+          {outRows.map((row) => (
+            <div className={`${s.stRow} ${s.stOut}`} key={row.id}>
+              <span>{row.name}</span>
+              <span>{row.out}</span>
+              {sort === 'seeds' ? <span>{row.seedTotal}</span> : <span className={s.red}>{row.losing ?? 'Out'}</span>}
+            </div>
+          ))}
+          {outRows.length === 0 && <p className={s.empty}>No match.</p>}
+        </section>
+      )}
     </>
   )
 }

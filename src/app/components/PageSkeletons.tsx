@@ -1,22 +1,17 @@
 import { Bone, SkeletonRegion, times } from './Skeleton'
-import s from './sports.module.css'
+import pp from './pp.module.css'
 
 // Route-level loading layouts. Each mirrors its page's real structure so the
 // page fills in place instead of jumping when data arrives.
 
 export function TickerSkeleton() {
   return (
-    <div className={s.ticker} aria-hidden="true">
-      <div className={s.tickerLabel}>
-        <Bone w={78} h={12} />
-        <Bone w={54} h={10} style={{ marginTop: 10 }} />
-      </div>
-      <div className="flex flex-1 gap-6 overflow-hidden px-4 py-4">
-        {times(6, (i) => (
-          <div key={i} className="flex w-36 shrink-0 flex-col gap-2">
-            <Bone w={58} h={9} />
-            <Bone w="100%" h={14} />
-            <Bone w="100%" h={14} />
+    <div className={pp.ticker} aria-hidden="true">
+      <div className={pp.tickerSeq}>
+        {times(8, (i) => (
+          <div key={i} className={pp.tickerGame}>
+            <Bone w={44} h={12} />
+            <Bone w={120} h={12} />
           </div>
         ))}
       </div>

@@ -12,17 +12,17 @@ import {
   capabilitiesFor,
   formatPeriodDateShort,
   sharedRoundPickQuota,
-  seedToShow,
   type CompetitionMode,
 } from '@/lib/competition'
 import type { Game } from '@/types'
 import PickForm, { type GameRow, type SavedPick } from './PickForm'
-import SiteHeader from '../components/SiteHeader'
+import PoolShell from '../components/PoolShell'
 import { slateDeadline } from '@/lib/deadline'
-import { fetchDayScoreboard } from '@/lib/espn'
 import Link from 'next/link'
 import { getTeamBrandDirectory, type TeamBrandDirectory } from '@/lib/teamBrand'
-import { Footer } from '../components/Sports'
+import { conferenceGroup, getTeamConferences } from '@/lib/teams'
+import { dayDate, pickDayTitle, teamTag, teamTagName, weekdayShort } from '@/lib/poolTheme'
+import s from '../components/pp.module.css'
 
 // Room for the auto-assign run this page may kick off after rendering.
 export const maxDuration = 60
@@ -38,7 +38,11 @@ type PickPageData =
       kind: 'ok'
       playerStatus: string
       periodLabel: string
+      dayLabel: string
+      dateLabel: string
+      titleLabel: string
       usedTeams: string[]
+      usedList: { team: string; date: string }[]
       gameRows: GameRow[]
       slateId: string
       savedPicks: SavedPick[]
@@ -98,37 +102,16 @@ async function loadPickData(
     const lockTime = slateDeadline(slate, gamesData)
     const locked = lockTime ? now >= lockTime : false
 
-    // Records come off the slate's own scoreboard payload rather than a
-    // league-wide teams call: ESPN's /teams endpoint ignores the conference
-    // filter, and only the teams playing today matter on this page.
-    const teamRecords: Record<string, string> = {}
-    try {
-      const { events } = await fetchDayScoreboard(String(slate.slate_date).replace(/-/g, ''), 3600)
-      for (const event of events) {
-        for (const c of event.competitions?.[0]?.competitors ?? []) {
-          const abbr = c.team?.abbreviation
-          const record = c.records?.[0]?.summary
-          if (abbr && record) teamRecords[abbr] = record
-        }
-      }
-    } catch { /* non-critical */ }
-
-    // `curatedRank` lands in home_seed/away_seed for every game. Inside the
-    // bracket it is a tournament seed; outside it, the AP poll position. Both
-    // are useful, and they are never presented as the same thing.
-    const pollRank = (team: string, g: Game): number | null => {
-      if (!caps.showPollRank || g.round_label) return null
-      const r = g.home_team === team ? g.home_seed : g.away_seed
-      return r != null && r >= 1 && r <= 25 ? r : null
-    }
+    const conferences = caps.showRegions ? {} : await getTeamConferences(supabase).catch(() => ({}))
+    const usedLabel = (date: string) => (caps.showTournamentRounds ? weekdayShort(date) : formatPeriodDateShort(date))
 
     const sideOf = (team: string, g: Game, seed: number | null) => ({
       team,
       used: usedTeams.includes(team),
-      usedOn: usedOn[team] ? formatPeriodDateShort(usedOn[team]).toUpperCase() : null,
-      seed: seedToShow(mode, seed, g.round_label),
-      rank: pollRank(team, g),
-      record: teamRecords[team] ?? null,
+      usedOn: usedOn[team] ? usedLabel(usedOn[team]) : null,
+      seed: teamTag(mode, seed, g.round_label),
+      rank: null,
+      record: null,
     })
 
     const gameRows: GameRow[] = gamesData.map((g) => ({
@@ -137,6 +120,7 @@ async function loadPickData(
       timeTbd: g.time_tbd,
       round: caps.showTournamentRounds ? g.round_label : null,
       region: caps.showRegions ? g.region : null,
+      group: caps.showRegions ? g.region : conferenceGroup(g.away_team, g.home_team, conferences),
       venue: g.venue,
       tv: g.tv,
       away: sideOf(g.away_team, g, g.away_seed),
@@ -173,11 +157,20 @@ async function loadPickData(
         updatedAt: pick.updated_at,
       }))
 
+    const dayNumber = Math.max(1, periods.findIndex((p) => p.id === slate.id) + 1)
+    const usedList = Object.entries(usedOn)
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([team, date]) => ({ team, date: date ? dayDate(date).replace(',', '') : '' }))
+
     return {
       kind: 'ok',
       playerStatus: player.status,
       periodLabel: period?.label ?? `Slate ${slate.slate_number}`,
+      dayLabel: `Day ${dayNumber}`,
+      dateLabel: dayDate(String(slate.slate_date)),
+      titleLabel: pickDayTitle(period?.round ?? null, String(slate.slate_date), dayNumber),
       usedTeams,
+      usedList,
       gameRows,
       slateId: slate.id,
       savedPicks,
@@ -193,7 +186,7 @@ async function loadPickData(
   }
 }
 
-export const metadata = pageMetadata('Make Your Pick', 'Sign in to choose your team for the current Madness survivor pick period.', '/pick', false)
+export const metadata = pageMetadata('Make Your Pick', 'Sign in to choose your team for the current Pick and Pray survivor pick day.', '/pick', false)
 
 export default async function PickPage() {
   const session = await getSession()
@@ -201,81 +194,51 @@ export default async function PickPage() {
 
   const pool = await getPoolConfig()
   const mode: CompetitionMode = pool.competition_mode
-  const caps = capabilitiesFor(mode)
 
   const data = await loadPickData(session.player_id, pool)
   if (data.kind === 'no-session') redirect('/login')
 
+  const brands = data.kind === 'ok' ? data.teamBrands : {}
+  const names = Object.fromEntries(Object.entries(brands).map(([abbr, brand]) => [abbr, brand.shortName]))
+  const shell = (children: React.ReactNode) => (
+    <PoolShell mode={mode} seasonYear={pool.season_year} account={session.full_name} names={names}>{children}</PoolShell>
+  )
+
   if (data.kind === 'failed') {
-    return (
-      <Shell session={session} mode={mode}>
-        <p className="text-center text-sm" style={{ color: 'var(--muted)' }}>Failed to load. Try refreshing.</p>
-      </Shell>
-    )
+    return shell(<><h1 className={s.title}>Make your pick</h1><p role="alert" className={s.notice}>Failed to load. Try refreshing.</p></>)
   }
 
   if (data.kind === 'no-slate') {
-    return (
-      <Shell session={session} mode={mode}>
-        <div className="text-center py-20">
-          <p className="font-display text-4xl" style={{ color: 'var(--ink)' }}>
-            {caps.showTournamentRounds ? 'NO ACTIVE ROUND' : 'NO ACTIVE GAME DAY'}
-          </p>
-          <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>The pool hasn&apos;t started yet — check back soon.</p>
-        </div>
-      </Shell>
-    )
+    return shell(<><h1 className={s.title}>Make your pick</h1><p className={s.notice}>No pick day is open yet. Check back soon.</p></>)
   }
 
   if (data.playerStatus === 'eliminated') {
-    return (
-      <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
-        <div className="border p-8 text-center" style={{ borderColor: 'var(--line)' }}>
-          <p className="font-display text-4xl" style={{ color: 'var(--danger)' }}>ELIMINATED</p>
-          <p className="text-sm mt-3" style={{ color: 'var(--muted)' }}>
-            You can still follow along on the{' '}
-            <Link href="/standings" className="underline" style={{ color: 'var(--ink)' }}>standings page</Link>.
-          </p>
-        </div>
-      </Shell>
+    return shell(
+      <>
+        <div className={s.kicker}>{data.dateLabel} · {data.titleLabel}</div>
+        <h1 className={s.title}>Your entry is out</h1>
+        <p className={s.notice}>You can still follow the pool on the <Link href="/sweat">sweat board</Link> and <Link href="/standings">standings</Link>.</p>
+      </>
     )
   }
 
-  return (
-    <Shell session={session} mode={mode} periodLabel={data.periodLabel}>
-      <PickForm
-        key={`${data.slateId}:${data.locked}:${data.savedPicks.map(p => `${p.id}/${p.team}/${p.autoAssigned}`).join(",")}`}
-        slateId={data.slateId}
-        gameRows={data.gameRows}
-        usedTeams={data.usedTeams}
-        savedPicks={data.savedPicks}
-        requiredPicks={data.requiredPicks}
-        sharedRound={data.sharedRound}
-        locked={data.locked}
-        serverNow={data.serverNow}
-        teamBrands={data.teamBrands}
-      />
-    </Shell>
-  )
-}
-
-function Shell({
-  children,
-  session,
-  mode,
-}: {
-  children: React.ReactNode
-  session: { full_name: string }
-  mode: CompetitionMode
-  periodLabel?: string
-}) {
-  return (
-    <div className="site-shell flex min-h-screen flex-col">
-      <SiteHeader mode={mode} account={session.full_name} />
-      <main id="main" className="content-width flex-1 py-8 sm:py-10">
-        {children}
-      </main>
-      <Footer />
-    </div>
+  return shell(
+    <PickForm
+      key={`${data.slateId}:${data.locked}:${data.savedPicks.map(p => `${p.id}/${p.team}/${p.autoAssigned}`).join(",")}`}
+      slateId={data.slateId}
+      gameRows={data.gameRows}
+      usedTeams={data.usedTeams}
+      usedList={data.usedList}
+      savedPicks={data.savedPicks}
+      requiredPicks={data.requiredPicks}
+      sharedRound={data.sharedRound}
+      locked={data.locked}
+      serverNow={data.serverNow}
+      teamBrands={data.teamBrands}
+      dayLabel={data.dayLabel}
+      dateLabel={data.dateLabel}
+      titleLabel={data.titleLabel}
+      tagName={teamTagName(mode)}
+    />
   )
 }

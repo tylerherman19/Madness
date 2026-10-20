@@ -1,38 +1,6 @@
-import { pageMetadata } from '@/lib/site'
-import SweatBoard from './SweatBoard'
-import SiteHeader from '@/app/components/SiteHeader'
-import { getPoolConfig } from '@/lib/pool'
-import { getTeamBrandDirectory } from '@/lib/teamBrand'
-import { Footer } from '@/app/components/Sports'
-import LiveTicker from '@/app/components/LiveTicker'
+import { permanentRedirect } from 'next/navigation'
 
-
-// The shell reads the pool's competition mode, so it can't be baked in at
-// build time and left there — a format switch has to reach this page. The
-// board itself is a client component polling /api/sweat, so a minute-stale
-// shell costs nothing.
-export const revalidate = 60
-
-export const metadata = pageMetadata('Live Board', 'Follow college basketball scores and the Madness survivor pool live board.', '/live', true)
-
-export default async function LivePage() {
-  // The sweat board runs year-round; the header just has to agree with the
-  // competition the pool is actually playing.
-  const [pool, teamBrands] = await Promise.all([
-    getPoolConfig(),
-    getTeamBrandDirectory(),
-  ])
-  const mode = pool.competition_mode
-
-  return (
-    <div className="site-shell">
-      <SiteHeader mode={mode} />
-      <LiveTicker />
-
-      <main id="main" className="content-width py-9 pb-16">
-        <SweatBoard teamBrands={teamBrands} autoPickBehavior={pool.auto_pick_behavior} />
-      </main>
-      <Footer />
-    </div>
-  )
+// The sweat board moved to /sweat; old links and bookmarks still land on it.
+export default function LivePage() {
+  permanentRedirect('/sweat')
 }

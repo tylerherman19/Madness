@@ -1,208 +1,97 @@
 import ContestRefresh from '@/app/components/ContestRefresh'
 import { pageMetadata } from '@/lib/site'
-import PoolRules from '../components/PoolRules'
-import Link from 'next/link'
-
 import { getPoolConfig } from '@/lib/pool'
-import {
-  capabilitiesFor,
-  autoPickRule,
-  copyFor,
-  formatPeriodDate,
-  type CompetitionMode,
-} from '@/lib/competition'
-import LiveTicker from '../components/LiveTicker'
-import SiteHeader from '../components/SiteHeader'
-import StandingsTable from '../components/StandingsTable'
-import TeamChip from '../components/TeamChip'
-import { Footer } from '../components/Sports'
-
-import {
-  BurnMap,
-  ExposureFigure,
-  Story,
-} from '../components/insights'
-
+import { capabilitiesFor } from '@/lib/competition'
 import { getDashboardData } from '@/lib/dashboard'
-export const revalidate = 60
+import { getSession } from '@/lib/session'
+import { getDb } from '@/lib/testMode'
+import { brandFor } from '@/lib/teamBrand'
+import { eventLabel, tipTime, weekdayDay } from '@/lib/poolTheme'
+import PoolShell from '../components/PoolShell'
+import StandingsTable, { type AliveRow, type OutRow } from '../components/StandingsTable'
+import s from '../components/pp.module.css'
 
-export const metadata = pageMetadata('Standings & Pool Rules', 'Follow the survivor standings and read the active Madness competition rules, deadlines, and tiebreakers.', '/standings', true)
+// Your own row is marked, so the page renders per request.
+export const dynamic = 'force-dynamic'
 
-export default async function DashboardPage() {
+export const metadata = pageMetadata('Standings', 'Who is still alive in the Pick and Pray survivor pool, and who is out.', '/standings', true)
+
+export default async function StandingsPage() {
   const { haveSignupsClosed } = await import('@/lib/season')
-  const [data, signupsClosed] = await Promise.all([getDashboardData(), haveSignupsClosed()])
-
-  const aliveRows = data?.standings.filter((r) => r.status === 'alive') ?? []
-  const elimRows = data?.standings.filter((r) => r.status === 'eliminated') ?? []
-  const clientAliveRows = aliveRows.map((row) => ({
-    ...row,
-    current_pick: row.pick_revealed ? row.current_pick : null,
-    current_picks: row.pick_revealed ? row.current_picks : [],
-  }))
-  const insights = data?.insights
-
-  // One read of the pool's format, threaded through the whole page. If the
-  // dashboard query failed we still need a mode to render the header with.
-  const mode: CompetitionMode = data?.mode ?? (await getPoolConfig()).competition_mode
-  const copy = copyFor(mode)
+  const [data, signupsClosed, session] = await Promise.all([getDashboardData(), haveSignupsClosed(), getSession()])
+  const pool = data?.pool ?? (await getPoolConfig())
+  const mode = pool.competition_mode
+  const brands = data?.teamBrands ?? {}
+  const name = (team: string) => brandFor(team, brands).shortName
+  const names = Object.fromEntries(Object.entries(brands).map(([abbr, brand]) => [abbr, brand.shortName]))
+  const periods = data?.periods ?? []
   const period = data?.currentPeriod ?? null
+  const dayNumber = period ? periods.findIndex((p) => p.id === period.id) + 1 : 0
+  const dayLabel = dayNumber ? `Day ${dayNumber}` : 'Today'
+  const periodByNumber = new Map(periods.map((p) => [p.number, p]))
 
-  const rules = buildRules(
-    mode,
-    copy,
-    data?.pool?.tiebreaker ?? 'seed-total',
-    data?.pool?.auto_pick_behavior ?? 'latest-game'
-  )
+  // Before lock everyone else's pick stays hidden; you always see your own.
+  let myTeams: string[] = []
+  if (session && data?.slate) {
+    const { data: picks } = await (await getDb())
+      .from('picks')
+      .select('team')
+      .eq('player_id', session.player_id)
+      .eq('slate_id', data.slate.id)
+    myTeams = (picks ?? []).map((pick: { team: string }) => pick.team)
+  }
+
+  const standings = data?.standings ?? []
+  const alive: AliveRow[] = standings
+    .filter((row) => row.status === 'alive')
+    .map((row) => {
+      const me = row.player_id === session?.player_id
+      const revealedTeams = row.pick_revealed ? row.current_picks : []
+      const teams = me ? myTeams : revealedTeams
+      return {
+        id: row.player_id,
+        name: row.full_name,
+        me,
+        pick: teams.length ? teams.map(name).join(', ') : null,
+        status: row.pick_revealed && teams.length ? 'picked' : me && teams.length ? 'submitted' : row.pick_locked ? 'locked' : 'none',
+        seedTotal: row.seed_total,
+      }
+    })
+  const out: OutRow[] = standings
+    .filter((row) => row.status === 'eliminated')
+    .map((row) => {
+      const outPeriod = row.elimination_slate != null ? periodByNumber.get(row.elimination_slate) : undefined
+      const losing = row.losing_picks?.length ? `Picked ${row.losing_picks.map(name).join(', ')}, lost` : row.elimination_reason
+      return {
+        id: row.player_id,
+        name: row.full_name,
+        out: outPeriod ? `Out ${weekdayDay(outPeriod.date)}` : 'Out',
+        losing: losing ?? null,
+        seedTotal: row.seed_total,
+      }
+    })
+
+  const hiddenUntil = data?.slate && !data.picksRevealed ? tipTime(data.firstTip ?? data.slate.locks_at) : null
+  const winner = data && pool.status === 'completed' && alive.length === 1 ? alive[0] : null
 
   return (
-    <div className="site-shell">
+    <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name} signupsClosed={signupsClosed} names={names} width="narrow">
       <ContestRefresh />
-      {/* Header */}
-      <SiteHeader signupsClosed={signupsClosed} mode={mode} />
-
-      {/* Live scores ticker — client component, polls independently of cached server render */}
-      <LiveTicker
-        slateNumber={data?.slate?.slate_number}
-        season={data?.slate?.season_year}
-        label={period?.roundLabel ?? (period ? formatPeriodDate(period.date) : null)}
-      />
-
-      {data && data.pool?.status === 'completed' && data.aliveCount === 1 && aliveRows.length === 1 && (
-        <div style={{ background: 'var(--ink)', borderBottom: '4px solid var(--success)' }}>
-          <div className="content-width py-10 text-center">
-            <p className="font-display text-7xl sm:text-8xl" style={{ color: 'var(--paper)' }}>{aliveRows[0].full_name.toUpperCase()}</p>
-            <p className="mt-3 eyebrow" style={{ color: 'var(--success)' }}>Winner Takes ${data.potSize}</p>
-          </div>
-        </div>
-      )}
-
+      <div className={s.kicker}>{eventLabel(mode, pool.season_year)}{dayNumber ? ` · through ${dayLabel}` : ''}</div>
+      <h1 className={s.title}>Standings</h1>
+      {winner && <div className={s.winner}><span className={s.cellLabel}>Winner</span><b>{winner.name}</b></div>}
       {!data ? (
-        <main id="main" className="content-width py-24 text-center">
-          <p className="font-display text-6xl" style={{ color: 'var(--ink)' }}>The court is being set</p>
-          <p className="mt-4 text-sm" style={{ color: 'var(--muted)' }}>The pool will appear here when the first game day is ready.</p>
-        </main>
+        <p className={s.notice}>Standings appear here when the first pick day is ready.</p>
       ) : (
-        <main id="main" className="content-width dashboard-content pb-4">
-          <div className="workspace-heading"><h1>Standings</h1><Link href="/grid" className="btn-secondary px-4">Full pick grid</Link></div>
-          {insights?.exposure && (
-            <section className="pt-10">
-              <ExposureFigure data={insights.exposure} />
-            </section>
-          )}
-
-          {/* ---- Standings ---- */}
-          <Section id="standings" className="pt-10">
-            <StandingsTable
-              aliveRows={clientAliveRows}
-              elimRows={elimRows}
-              periodLabel={data.currentPeriod?.shortLabel ?? null}
-              periodByNumber={data.periodByNumber}
-              teamBrands={data.teamBrands}
-              signupsClosed={signupsClosed}
-              showSeedTotal={capabilitiesFor(mode).showSeedTotal}
-            />
-          </Section>
-
-          {insights?.scarcity && (
-            <Story kicker="What's left on the board">
-              <BurnMap data={insights.scarcity} />
-            </Story>
-          )}
-
-          {/* Team ledger — how each team has actually treated the people who picked it */}
-          {data.teamStats.length > 0 && (
-            <Section title="Team ledger">
-              <div className="card overflow-hidden">
-                {/* Every cell carries its own horizontal padding: .eyebrow's 0.18em
-                    tracking makes these headers wide enough that with no gap they
-                    ran together into one "TEAM TIMES PICKED WIN RATE ELIMINATIONS"
-                    string on a phone. Short labels keep four tracked columns inside
-                    a 390px viewport, and the numeric columns are right-aligned so
-                    the figures sit under their own header instead of hugging the
-                    column to their left. */}
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr style={{ background: 'var(--surface-sunken)' }}>
-                      <th className="py-2.5 pl-4 pr-3 text-left eyebrow">Team</th>
-                      <th className="py-2.5 px-3 text-right eyebrow whitespace-nowrap">Picks</th>
-                      <th className="py-2.5 px-3 text-right eyebrow whitespace-nowrap">Win Rate</th>
-                      <th className="py-2.5 pl-3 pr-4 text-right eyebrow whitespace-nowrap">Outs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.teamStats.map((stat) => (
-                      <tr key={stat.team} className="row-hover border-t" style={{ borderColor: 'var(--line)' }}>
-                        <td className="py-2.5 pl-4 pr-3"><TeamChip team={stat.team} showName size={30} directory={data.teamBrands} /></td>
-                        <td className="py-2.5 px-3 text-right tnum" style={{ color: 'var(--ink)' }}>{stat.times_picked}</td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="w-16 rounded-full overflow-hidden hidden sm:block" style={{ background: 'var(--surface-sunken)', height: 6 }}>
-                              <div className="h-full rounded-full" style={{ width: `${stat.win_rate * 100}%`, background: stat.win_rate >= 0.6 ? 'var(--success)' : stat.win_rate >= 0.4 ? 'var(--ink)' : 'var(--danger)' }} />
-                            </div>
-                            <span className="font-semibold tnum" style={{ color: stat.win_rate >= 0.6 ? 'var(--success)' : stat.win_rate >= 0.4 ? 'var(--ink)' : 'var(--danger)' }}>
-                              {(stat.win_rate * 100).toFixed(0)}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 pl-3 pr-4 text-right tnum" style={{ color: 'var(--ink)' }}>{stat.eliminations_caused}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Section>
-          )}
-
-          {/* Rules */}
-          <Section id="rules" title="How It Works">
-            <PoolRules rules={rules} />
-          </Section>
-        </main>
+        <StandingsTable
+          alive={alive}
+          out={out}
+          dayLabel={dayLabel}
+          hiddenUntil={hiddenUntil}
+          showSeedTotal={capabilitiesFor(mode).showSeedTotal}
+          signupsClosed={signupsClosed}
+        />
       )}
-
-      <Footer />
-    </div>
+    </PoolShell>
   )
-}
-
-function Section({ id, title, children, className }: { id?: string; title?: string; children: React.ReactNode; className?: string }) {
-  return (
-    <section id={id} className={`pt-10 ${className ?? ''}`}>
-      {title && <div className="section-heading mb-3"><h2>{title}</h2></div>}
-      {children}
-    </section>
-  )
-}
-
-// House rules, phrased for the competition actually being played and for the
-// tiebreak the administrator configured. A regular-season pool never mentions
-// seeds; a tournament pool never claims "all season".
-function buildRules(
-  mode: CompetitionMode,
-  copy: ReturnType<typeof copyFor>,
-  tiebreaker: string,
-  autoPickBehavior: Parameters<typeof autoPickRule>[0]
-): string[] {
-  const tournament = capabilitiesFor(mode).showTournamentRounds
-
-  const endgame =
-    tiebreaker === 'most-survived'
-      ? 'Last one standing wins. If more than one survives, the entry that lasted longest takes it.'
-      : tiebreaker === 'none'
-      ? 'Last one standing wins. If more than one survives, they split the pot.'
-      : tournament
-      ? copy.endgameRule
-      : 'Last one standing wins.'
-
-  return [
-    'Pay $25 entry via Venmo to @griffinsell.',
-    tournament
-      ? 'Make the required picks for each tournament period. In the Elite Eight, make two total picks across the full round — not one forced pick each day.'
-      : 'Every day there are games, pick one team to win.',
-    copy.reuseRule,
-    "Your team wins, you survive. Loses and you're out.",
-    'Picks lock when the first game of the day tips off — all of them, at once. Your pick must be saved by the server before the deadline; pressing Save before it is not enough.',
-    autoPickRule(autoPickBehavior, tournament),
-    endgame,
-  ]
 }
