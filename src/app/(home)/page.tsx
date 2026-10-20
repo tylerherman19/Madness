@@ -15,6 +15,8 @@ import { dayDate, eventLabel, pickDayTitle, teamTag, tipTime, weekdayMonthDay } 
 import PoolShell from '../components/PoolShell'
 import LockCountdown from '../components/LockCountdown'
 import TeamLogo from '../components/TeamLogo'
+import StandingsTable from '../components/StandingsTable'
+import { buildStandingsRows } from '@/lib/standingsRows'
 import s from '../components/pp.module.css'
 
 // Signed-in players see their own entry here, so the page renders per request.
@@ -50,11 +52,13 @@ export default async function Today() {
   const todayPicks = myPicks.filter((p) => p.slateId === slate?.id)
   const used = new Set(myPicks.filter((p) => p.slateId !== slate?.id).map((p) => p.team))
   const mine = new Set(todayPicks.map((p) => p.team))
-  const periodById = new Map(periods.map((p) => [p.id, p]))
-  const run = myPicks
-    .filter((p) => p.slateId !== slate?.id)
-    .map((p) => ({ ...p, period: periodById.get(p.slateId) }))
-    .sort((a, b) => (a.period?.date ?? '').localeCompare(b.period?.date ?? ''))
+  const standingsRows = buildStandingsRows({
+    standings: data?.standings ?? [],
+    periods,
+    meId: session?.player_id,
+    myTeams: todayPicks.map((p) => p.team),
+    brands,
+  })
 
   const alive = data?.aliveCount ?? 0
   const total = data?.totalPlayers ?? 0
@@ -109,21 +113,24 @@ export default async function Today() {
         </div>
       </section>
 
-      {session && me && action && (
-        <section className={s.mobileEntry} aria-label="Your pick">
+      {session && me && action ? (
+        <section className={s.entryStrip} aria-label="Your pick">
           <span>
             <small className={entryState?.tone}>{pickLabel} · {entryState?.text}</small>
-            <b>{myTeamText}</b>
+            <span className={s.cardTeamRow}>
+              {todayPicks.length === 1 && <TeamLogo team={todayPicks[0].team} brands={brands} size={30} />}
+              <b className={s.cardTeam}>{myTeamText}</b>
+            </span>
           </span>
-          <Link href={action.href}>{action.label}</Link>
+          <Link className={s.cta} href={action.href}>{action.label}</Link>
         </section>
-      )}
-      {!session && (
-        <section className={s.mobileEntry} aria-label="Your entry">
-          <span><b>Your entry</b></span>
-          <Link href="/login">Log in</Link>
+      ) : !session ? (
+        <section className={s.entryStrip} aria-label="Your entry">
+          <span><b className={s.cardTeam}>Your entry</b>{!closed && <small className={s.gray}>Entry is $25 via Venmo to @griffinsell.</small>}</span>
+          {!closed && <Link className={`${s.cta} ${s.ctaQuiet}`} href="/signup">Join pool</Link>}
+          <Link className={s.cta} href="/login">Log in</Link>
         </section>
-      )}
+      ) : null}
 
       {timeline.length > 1 && (
         <section className={s.timeline} aria-label="Survival timeline">
@@ -168,55 +175,16 @@ export default async function Today() {
           {games.length === 0 && <p className={s.empty}>The next slate appears here when it is set.</p>}
         </section>
 
-        <aside className={s.aside} aria-label="Your entry">
-          <div className={s.asideHead}>
-            <h2>Your entry</h2>
-            {me && <span className={me.status === 'alive' ? s.green : s.red}>{me.status === 'alive' ? 'Alive' : 'Out'}</span>}
-          </div>
-          {session ? (
-            <div className={s.entryBlock}>
-              <div className={s.card}>
-                <div className={s.cardLabel}>{pickLabel}</div>
-                <div className={s.cardTeamRow}>
-                  {todayPicks.length === 1 && <TeamLogo team={todayPicks[0].team} brands={brands} size={34} />}
-                  <div className={s.cardTeam}>{myTeamText}</div>
-                </div>
-                {entryState && <div className={`${s.cardState} ${entryState.tone}`}>{entryState.text}</div>}
-              </div>
-              {action && <Link className={s.cta} href={action.href}>{action.label}</Link>}
-            </div>
-          ) : (
-            <div className={s.entryBlock}>
-              <div className={s.ctaRow}>
-                <Link className={s.cta} href="/login">Log in</Link>
-                {!closed && <Link className={`${s.cta} ${s.ctaQuiet}`} href="/signup">Join pool</Link>}
-              </div>
-              {!closed && <p className={`${s.small}`} style={{ marginTop: 10 }}>Entry is $25 via Venmo to @griffinsell.</p>}
-            </div>
-          )}
-
-          {run.length > 0 && (
-            <div className={s.sub}>
-              <h3>Your run</h3>
-              {run.map((pick) => (
-                <div className={s.runRow} key={`${pick.slateId}-${pick.team}`}>
-                  <span>{pick.period ? weekdayMonthDay(pick.period.date) : ''}</span>
-                  <b className={s.teamLine}><TeamLogo team={pick.team} brands={brands} size={18} />{name(pick.team)}</b>
-                  <span className={pick.result === 'won' ? s.green : pick.result === 'lost' ? s.red : s.gray}>
-                    {pick.result === 'won' ? 'Won' : pick.result === 'lost' ? 'Lost' : 'Pending'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {slate && (
-            <div className={s.sub}>
-              <h3>Pool picks</h3>
-              <p>{submitted} of {alive} submitted · revealed at {lockText}</p>
-              <div className={s.poolBar}><span style={{ width: `${alive ? (submitted / alive) * 100 : 0}%` }} /></div>
-            </div>
-          )}
+        <aside className={s.aside} aria-label="Standings">
+          <div className={s.asideHead}><h2>Standings</h2><Link className={s.linkButton} href="/standings">Full standings</Link></div>
+          <StandingsTable
+            compact
+            alive={standingsRows.alive}
+            out={standingsRows.out}
+            teamBrands={standingsRows.teamBrands}
+            dayLabel={period ? `Day ${dayNumber}` : 'Today'}
+            hiddenUntil={slate && !locked ? lockText : null}
+          />
         </aside>
       </div>
     </PoolShell>

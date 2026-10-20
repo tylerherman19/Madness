@@ -13,13 +13,13 @@ import {
   type PickPeriod,
 } from '@/lib/competition'
 import type { Slate, Game } from '@/types'
-import SiteHeader from '../components/SiteHeader'
-import { Footer } from '@/app/components/Sports'
-import TeamMark from '../components/TeamMark'
-import { getTeamBrandDirectory } from '@/lib/teamBrand'
+import PoolShell from '../components/PoolShell'
+import TeamLogo from '../components/TeamLogo'
+import s from '../components/pp.module.css'
+import { brandFor, getTeamBrandDirectory } from '@/lib/teamBrand'
 import { loadAll } from '@/lib/seasonData'
 
-export const metadata = pageMetadata('Your Pick History', 'Review your Madness survivor picks, results, and account alerts.', '/history', false)
+export const metadata = pageMetadata('Your Pick History', 'Review your Pick and Pray survivor picks, results, and account alerts.', '/history', false)
 
 export default async function HistoryPage() {
   const session = await getSession()
@@ -81,7 +81,7 @@ export default async function HistoryPage() {
         ? `${period.roundLabel} · Day ${period.dayInRound}`
         : period.roundLabel
     }
-    return formatPeriodDateShort(period.date).toUpperCase()
+    return formatPeriodDateShort(period.date)
   }
 
   const gamesByWeek: Record<string, Game[]> = {}
@@ -134,103 +134,59 @@ export default async function HistoryPage() {
     return theirSurvived < mySurvived || (theirSurvived === mySurvived && myStatus === 'alive')
   }).length
 
+  const names = Object.fromEntries(Object.entries(teamBrands).map(([abbr, brand]) => [abbr, brand.shortName]))
+  const stats = [
+    { label: 'Status', value: myStatus === 'alive' ? 'Alive' : 'Out', tone: myStatus === 'alive' ? s.green : s.red },
+    { label: 'Record', value: `${wins}–${losses}` },
+    ...(caps.showSeedTotal ? [{ label: 'Seed total', value: String(seedTotal) }] : []),
+    { label: 'Outlasted', value: `${outlasted} of ${others.length}` },
+  ]
+
   return (
-    <div className="site-shell min-h-screen flex flex-col">
-      <SiteHeader mode={mode} seasonYear={pool.season_year} account={session.full_name} />
+    <PoolShell mode={mode} seasonYear={pool.season_year} account={session.full_name} names={names} width="narrow">
+      <div className={s.kicker}>{session.full_name}</div>
+      <h1 className={s.title}>Pick history</h1>
 
-      <main id="main" className="flex-1 mx-auto w-full max-w-4xl px-4 py-10">
-        <h1 className="font-display text-5xl mb-8" style={{ color: 'var(--ink)' }}>Pick history</h1>
+      <section className={s.scoreboard} style={{ gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))` }} aria-label="Your season">
+        {stats.map((stat) => (
+          <div className={s.scoreCell} key={stat.label} style={{ display: 'block', borderLeft: stat.label === 'Status' ? 0 : undefined }}>
+            <div className={s.cellLabel}>{stat.label}</div>
+            <div className={`${s.cellValue} ${stat.tone ?? ''}`} style={stat.tone ? { color: stat.tone === s.green ? '#5FD08F' : '#FF6B5C' } : undefined}>{stat.value}</div>
+          </div>
+        ))}
+      </section>
 
-        {/* Season summary */}
-        <div className={`grid ${caps.showSeedTotal ? 'grid-cols-4' : 'grid-cols-3'} border mb-8`} style={{ borderColor: 'var(--line)', background: 'var(--surface)' }}>
-          <div className="py-4 px-4 text-center">
-            <p
-              className="font-display text-3xl leading-none"
-              style={{ color: myStatus === 'alive' ? 'var(--success)' : 'var(--danger)' }}
-            >
-            {myStatus === 'alive' ? 'Alive' : 'Out'}
-            </p>
-            <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Status</p>
-          </div>
-          <div className="py-4 px-4 text-center" style={{ borderLeft: '1px solid var(--line)' }}>
-            <p className="font-display text-3xl leading-none" style={{ color: 'var(--ink)' }}>
-              {wins}–{losses}
-            </p>
-            <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Record</p>
-          </div>
-          {caps.showSeedTotal && (
-            <div className="py-4 px-2 text-center" style={{ borderLeft: '1px solid var(--line)' }}>
-              <p className="font-display text-3xl leading-none" style={{ color: 'var(--ink)' }}>{seedTotal}</p>
-              <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Seed total</p>
-            </div>
-          )}
-          <div className="py-4 px-4 text-center" style={{ borderLeft: '1px solid var(--line)' }}>
-            <p className="font-display text-3xl leading-none" style={{ color: 'var(--ink)' }}>
-              {outlasted}/{others.length}
-            </p>
-            <p className="text-xs tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Outlasted</p>
-          </div>
-        </div>
-
+      <section className={s.stSection}>
+        <div className={s.sectionHead}><h2>Your picks</h2><span>{picks.length} picks</span></div>
         {picks.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>No picks yet this season.</p>
+          <p className={s.empty}>No picks yet this season.</p>
         ) : (
-          <div>
-            {picks.map((pick) => (
-              <div
-                key={pick.id}
-                className="flex items-center justify-between gap-4 py-3 border-b"
-                style={{ borderColor: 'var(--line)' }}
-              >
-                <div style={{ minWidth: 92, maxWidth: 170 }}>
-                  <p className="text-xs font-bold tracking-widest uppercase leading-tight" style={{ color: 'var(--muted)' }}>
-                    {historyLabel(pick.slate_id)}
-                  </p>
-                </div>
-                <div className="flex-1">
-                  <TeamMark team={pick.team} directory={teamBrands} size={40} showName />
-                </div>
-                <div className="text-right">
-                  {caps.showSeedTotal && pick.seed && <span className="block text-xs font-bold mb-1" style={{ color: 'var(--accent-strong)' }}>+{pick.seed} seed</span>}
-                  <span
-                    className="text-xs font-bold tracking-wider"
-                    style={{
-                      color: pick.outcome === 'won' ? 'var(--success)' : pick.outcome === 'lost' ? 'var(--danger)' : 'var(--muted)',
-                    }}
-                  >
-                    {pick.outcome === 'won' ? 'SURVIVED' : pick.outcome === 'lost' ? 'ELIMINATED' : 'PENDING'}
-                    {pick.auto_assigned ? ' (auto)' : ''}
-                  </span>
-                </div>
-              </div>
+          picks.map((pick) => (
+            <div className={s.historyRow} key={pick.id}>
+              <span className={s.gray}>{historyLabel(pick.slate_id)}</span>
+              <span className={s.teamLine}><TeamLogo team={pick.team} brands={teamBrands} size={28} /><b>{brandFor(pick.team, teamBrands).shortName}</b></span>
+              <span className={pick.outcome === 'won' ? s.green : pick.outcome === 'lost' ? s.red : s.gray}>
+                {pick.outcome === 'won' ? 'Won' : pick.outcome === 'lost' ? 'Lost' : 'Pending'}
+                {pick.auto_assigned ? ' · auto' : ''}
+                {caps.showSeedTotal && pick.seed ? ` · seed ${pick.seed}` : ''}
+              </span>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section className={s.stSection}>
+        <div className={s.sectionHead}><h2>Teams left</h2><span>{teamsRemaining.length} of {allTeams.length}</span></div>
+        {teamsRemaining.length === 0 ? (
+          <p className={s.empty}>You have used every team.</p>
+        ) : (
+          <div className={s.teamCloud}>
+            {teamsRemaining.map((team) => (
+              <span className={s.teamLine} key={team}><TeamLogo team={team} brands={teamBrands} size={18} />{brandFor(team, teamBrands).shortName}</span>
             ))}
           </div>
         )}
-
-        {/* Teams remaining */}
-        <div className="mt-10">
-          <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: 'var(--muted)' }}>
-            Teams Remaining ({teamsRemaining.length} of {allTeams.length})
-          </p>
-          {teamsRemaining.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>You&apos;ve used every team.</p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {teamsRemaining.map((t) => (
-                <span
-                  key={t}
-                  className="border px-2 py-1 font-mono text-xs font-bold"
-                  style={{ borderColor: 'var(--line)', color: 'var(--ink)', background: 'var(--surface)' }}
-                  title={t}
-                >
-                  <TeamMark team={t} directory={teamBrands} size={24} />
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </main>
-      <Footer />
-    </div>
+      </section>
+    </PoolShell>
   )
 }

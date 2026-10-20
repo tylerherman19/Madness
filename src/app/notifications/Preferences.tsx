@@ -1,5 +1,7 @@
- 'use client'
+'use client'
 import { useState } from 'react'
+import s from '@/app/components/pp.module.css'
+
 export default function Preferences({ enabled }: { enabled: boolean }) {
   const [checked, setChecked] = useState(enabled)
   const [busy, setBusy] = useState(false)
@@ -11,5 +13,15 @@ export default function Preferences({ enabled }: { enabled: boolean }) {
       setMessage(response.ok ? 'Saved.' : 'Could not save. Please try again.')
     } catch { setMessage('Could not save. Please try again.') } finally { setBusy(false) }
   }
-  return <div><label><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} /> Email me pick reminders and elimination notices</label><p>Password resets are handled separately.</p><button className="btn-primary" disabled={busy} onClick={save}>Save preferences</button><p role="status">{message}</p></div>
+  return (
+    <div className={s.authBody} style={{ maxWidth: 520 }}>
+      <label className={s.checkRow}>
+        <input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} />
+        <span>Email me pick reminders and elimination notices</span>
+      </label>
+      <p className={s.small} style={{ marginTop: 8 }}>Password resets are handled separately.</p>
+      <button type="button" className={s.cta} disabled={busy} onClick={save}>Save preferences</button>
+      <p role="status" className={s.small} style={{ marginTop: 8 }}>{message}</p>
+    </div>
+  )
 }

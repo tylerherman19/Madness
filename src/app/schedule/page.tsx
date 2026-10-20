@@ -1,5 +1,5 @@
 import { pageMetadata } from '@/lib/site'
-import SiteHeader from '@/app/components/SiteHeader'
+import PoolShell from '@/app/components/PoolShell'
 import { getDb } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
 import {
@@ -10,9 +10,6 @@ import {
 } from '@/lib/competition'
 import { getTeamBrandDirectory } from '@/lib/teamBrand'
 import ScheduleBoard from './ScheduleBoard'
-import LiveTicker from '@/app/components/LiveTicker'
-import { Footer } from '@/app/components/Sports'
-import s from '@/app/components/sports.module.css'
 import { fetchDayScoreboard, eventCompetitors, toEspnDate, isTimeTbd, parseRound } from '@/lib/espn'
 import { fetchNcaabOdds, matchOdds, type GameOdds } from '@/lib/odds'
 
@@ -198,11 +195,27 @@ function byTip(a: ScheduleGame, b: ScheduleGame): number {
   return new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
 }
 
-export const metadata = pageMetadata('Game Schedule', 'See the current college basketball schedule, game times, and informational odds for the Madness pool.', '/schedule', true)
+export const metadata = pageMetadata('Game Schedule', 'See the current college basketball schedule, game times, and informational odds for the Pick and Pray pool.', '/schedule', true)
 
-export default async function SchedulePage(){
- const pool=await getPoolConfig()
- const [{days},teamBrands,odds]=await Promise.all([getScheduleData(pool.competition_mode),getTeamBrandDirectory(),fetchNcaabOdds()])
- const enriched=days.map(day=>({...day,games:day.games.map(game=>({...game,odds:matchOdds(odds,[teamBrands[game.homeAbbr]?.name??'',teamBrands[game.homeAbbr]?.shortName??'',game.homeAbbr],[teamBrands[game.awayAbbr]?.name??'',teamBrands[game.awayAbbr]?.shortName??'',game.awayAbbr],game.kickoff)}))}))
- return <div className={s.root}><SiteHeader mode={pool.competition_mode} seasonYear={pool.season_year}/><LiveTicker/><main id="main" className={s.main}><ScheduleBoard days={enriched} brands={teamBrands}/></main><Footer/></div>
+export default async function SchedulePage() {
+  const pool = await getPoolConfig()
+  const [{ days }, teamBrands, odds] = await Promise.all([getScheduleData(pool.competition_mode), getTeamBrandDirectory(), fetchNcaabOdds()])
+  const enriched = days.map((day) => ({
+    ...day,
+    games: day.games.map((game) => ({
+      ...game,
+      odds: matchOdds(
+        odds,
+        [teamBrands[game.homeAbbr]?.name ?? '', teamBrands[game.homeAbbr]?.shortName ?? '', game.homeAbbr],
+        [teamBrands[game.awayAbbr]?.name ?? '', teamBrands[game.awayAbbr]?.shortName ?? '', game.awayAbbr],
+        game.kickoff
+      ),
+    })),
+  }))
+  const names = Object.fromEntries(Object.entries(teamBrands).map(([abbr, brand]) => [abbr, brand.shortName]))
+  return (
+    <PoolShell mode={pool.competition_mode} seasonYear={pool.season_year} names={names}>
+      <ScheduleBoard days={enriched} brands={teamBrands} tournament={capabilitiesFor(pool.competition_mode).showSeeds} />
+    </PoolShell>
+  )
 }

@@ -481,7 +481,10 @@
 .authBody :global(.btn-primary) { min-height: 50px; border: 0; border-radius: 6px; background: var(--pp-accent); color: #FFFFFF; font-family: inherit; font-size: 16px; font-weight: 700; }
 .authBody :global(.btn-primary):hover { background: var(--pp-accent); filter: brightness(1.06); }
 .authBody :global(.btn-secondary) { border-radius: 6px; font-family: inherit; }
-.authBody a { color: var(--pp-accent) !important; }
+.authBody a:not(:global(.btn-primary)) { color: var(--pp-accent) !important; }
+.authBody a:global(.btn-primary) { color: #FFFFFF !important; align-items: center; justify-content: center; text-decoration: none; }
+.authBody :global(.card) { padding: 0 !important; border: 0; background: transparent; box-shadow: none; }
+.authBody :global(.font-display) { font-family: var(--font-saira), 'Saira Condensed', sans-serif; font-weight: 800; letter-spacing: 0; }
 .authGuide { padding: 20px 24px 8px; border-radius: 6px; background: var(--pp-head); color: #FFFFFF; }
 .authGuide h2 { font-family: var(--font-saira), 'Saira Condensed', sans-serif; font-weight: 800; font-size: 26px; }
 .authGuide ol { margin: 12px 0 0; padding: 0; list-style: none; }
@@ -504,3 +507,77 @@
   .loadRow { grid-template-columns: 70px minmax(0, 1fr); }
   .loadRow > :nth-child(3) { display: none; }
 }
+
+/* Standings: team groups and the compact list on Today */
+.teamGroup { display: flex; align-items: center; gap: 8px; padding: 16px 0 6px; border-bottom: 1px solid var(--pp-rule); }
+.teamGroup b { font-size: 15px; font-weight: 700; }
+.teamGroup > span:last-child { font-size: 14px; color: var(--pp-gray); }
+.stCompact .toolbar { margin-top: 0; padding: 12px 0 0; }
+.stCompact .stSection { margin-top: 20px; }
+.stCompact .stHead b { font-size: 24px; }
+.stCompact .stHead span { font-size: 15px; }
+.stCompact .stRow { grid-template-columns: minmax(0, 1fr) auto; min-height: 40px; }
+.stCompact .stRow > span:first-child { font-size: 14px; }
+.stCompact .stRow > span:last-child { text-align: right; font-size: 13px; }
+.stCompact .stRow[data-me=true] { margin: 0 -8px; }
+.stCompact .teamGroup { padding-top: 12px; }
+.stCompact .teamGroup b { font-size: 14px; }
+/* Your pick strip on Today */
+.entryStrip { display: flex; align-items: center; gap: 16px; margin-top: 16px; padding: 14px 18px; border-radius: 6px; background: #FFFFFF; }
+.entryStrip > span { flex: 1; min-width: 0; }
+.entryStrip small { display: block; font-size: 13px; font-weight: 600; }
+.entryStrip .cardTeamRow { margin-top: 2px; }
+.entryStrip .cardTeam { font-size: 28px; }
+.entryStrip .cta { width: auto; margin: 0; padding: 0 24px; height: 46px; white-space: nowrap; }
+@media (max-width: 760px) {
+  .entryStrip { gap: 12px; margin-top: 12px; padding: 12px 14px; }
+  .entryStrip .cardTeam { font-size: 22px; }
+  .entryStrip .cta { height: 44px; padding: 0 14px; font-size: 15px; }
+}
+
+/* Pick grid */
+.gridWrap { margin-top: 24px; overflow-x: auto; border-top: 2px solid var(--pp-ink); }
+.gridTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.gridTable th, .gridTable td { padding: 7px 10px; border-bottom: 1px solid var(--pp-rule-soft); text-align: center; white-space: nowrap; }
+.gridTable thead th { padding: 10px; border-bottom: 1px solid var(--pp-rule); font-size: 12px; font-weight: 700; color: var(--pp-ink); vertical-align: bottom; }
+.gridTable thead small { display: block; font-weight: 400; color: var(--pp-gray); }
+.gridTable th:first-child { position: sticky; left: 0; z-index: 1; min-width: 150px; background: #F7F7F4; text-align: left; font-size: 14px; }
+.gridTable tbody th { font-weight: 700; }
+.gridTable tr[data-out=true] th { font-weight: 400; color: var(--pp-gray); }
+.gridTable td[data-result=won] { color: var(--pp-green); font-weight: 700; }
+.gridTable td[data-result=lost] { background: #FBEAE8; color: var(--pp-red); font-weight: 700; }
+.gridTable td .teamLine { gap: 5px; }
+.gridNone { color: var(--pp-faint); font-size: 12px; }
+.gridEmpty { padding: 28px !important; color: var(--pp-gray); }
+
+/* Schedule */
+.dayTabs { flex-wrap: nowrap; gap: 18px; min-width: 0; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.dayTabs button { flex: none; white-space: nowrap; }
+.search { white-space: nowrap; }
+.toolbar > .tabs { min-width: 0; }
+.scheduleRow .side { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-right: 16px; }
+.scheduleRow .sides { display: contents; }
+.sideScore { font-family: var(--font-saira), 'Saira Condensed', sans-serif; font-weight: 800; font-size: 22px; }
+.scheduleRow .group span { font-size: 12px; }
+@media (max-width: 760px) {
+  .scheduleRow .side { padding-right: 0; }
+  .scheduleRow .sides { display: block; }
+}
+
+/* Pick history */
+.historyRow { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 16px; align-items: center; min-height: 52px; border-bottom: 1px solid var(--pp-rule-soft); font-size: 14px; }
+.historyRow b { font-size: 16px; }
+.historyRow > span:last-child { font-weight: 600; text-align: right; }
+.teamCloud { display: flex; flex-wrap: wrap; gap: 10px 18px; padding-top: 14px; font-size: 14px; }
+@media (max-width: 760px) {
+  .historyRow { grid-template-columns: 90px minmax(0, 1fr) auto; gap: 10px; font-size: 13px; }
+}
+
+/* Alerts and info pages */
+.checkRow { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.checkRow input { width: 18px; height: 18px; accent-color: var(--pp-accent); }
+.infoBody { max-width: 68ch; margin-top: 20px; font-size: 16px; line-height: 1.6; color: var(--pp-body); }
+.infoBody h2 { margin: 28px 0 6px !important; font-size: 19px; font-weight: 700; color: var(--pp-ink); }
+.infoBody p, .infoBody ul { margin: 0 0 12px !important; }
+.infoBody ul { padding-left: 20px; list-style: disc; }
+.infoBody a { color: var(--pp-accent); font-weight: 600; }

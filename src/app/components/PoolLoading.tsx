@@ -7,7 +7,7 @@ import { useRememberedMode } from './PoolMode'
 import { Bone, SkeletonRegion, times } from './Skeleton'
 import s from './pp.module.css'
 
-type Variant = 'today' | 'pick' | 'sweat' | 'standings' | 'rules' | 'page'
+type Variant = 'today' | 'pick' | 'sweat' | 'standings' | 'rules' | 'list' | 'page'
 
 // Loading screens for the pool pages. Same frame and proportions as the real
 // pages, in the last mode the visitor saw, so nothing jumps or changes color
@@ -28,6 +28,7 @@ export default function PoolLoading({ variant = 'page' }: { variant?: Variant })
           {variant === 'sweat' && <SweatBody />}
           {variant === 'standings' && <ListBody rows={14} />}
           {variant === 'rules' && <ListBody rows={8} />}
+          {variant === 'list' && <ListBody rows={10} />}
           {variant === 'page' && <ListBody rows={6} />}
         </SkeletonRegion>
       </main>

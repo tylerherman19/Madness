@@ -7,15 +7,18 @@ import { getPoolConfig } from '@/lib/pool'
 import { buildPickPeriods, capabilitiesFor, type PickPeriod } from '@/lib/competition'
 import type { Game } from '@/types'
 import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from '@/lib/seasonData'
-import SiteHeader from '@/app/components/SiteHeader'
-import { Footer } from '@/app/components/Sports'
+import PoolShell from '@/app/components/PoolShell'
+import TeamLogo from '@/app/components/TeamLogo'
+import { brandFor, getTeamBrandDirectory } from '@/lib/teamBrand'
+import { eventLabel, roundShort, weekdayDay } from '@/lib/poolTheme'
+import s from '@/app/components/pp.module.css'
 
 // Cache the render for 60s (like the homepage) so 1k concurrent viewers are
 // served from the CDN instead of each triggering the full query set. Current-slate
 // picks stay hidden behind the reveal deadline regardless of cache freshness.
 export const revalidate = 60
 
-export const metadata = pageMetadata('Pick Grid', 'Explore the Madness survivor pick grid and revealed picks by game day.', '/grid', true)
+export const metadata = pageMetadata('Pick Grid', 'Explore the Pick and Pray survivor pick grid and revealed picks by game day.', '/grid', true)
 
 export default async function GridPage() {
   // Guard the fetch so a DB outage (or a build without env) degrades to the
@@ -166,134 +169,74 @@ export default async function GridPage() {
     return a.full_name.localeCompare(b.full_name)
   })
 
+  const teamBrands = await getTeamBrandDirectory()
+  const names = Object.fromEntries(Object.entries(teamBrands).map(([abbr, brand]) => [abbr, brand.shortName]))
+  const columnLabel = (slateId: string, index: number) => {
+    const period = periodById[slateId]
+    return (caps.showTournamentRounds && roundShort(period?.round)) || `Day ${index + 1}`
+  }
+
   return (
-    <div className="site-shell">
-      <ContestRefresh /><SiteHeader mode={mode} seasonYear={pool.season_year} />
-
-      <main id="main" className="content-width py-9 sm:py-12">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="font-display text-5xl leading-none" style={{ color: 'var(--ink)' }}>Pick grid</h1>
-            <p className="mt-2 text-sm" style={{ color: 'var(--muted)' }}>
-              {caps.showTournamentRounds ? 'Every round' : 'Every game day'} · ✓ won · ✗ lost · ? hidden until it locks
-            </p>
-          </div>
-          <a href="/api/grid/export" className="btn-primary shrink-0 px-4 py-2 text-center text-sm font-bold">
-            Export to Excel
-          </a>
+    <PoolShell mode={mode} seasonYear={pool.season_year} names={names}>
+      <ContestRefresh />
+      <div className={s.pickHeader}>
+        <div>
+          <div className={s.kicker}>{eventLabel(mode, pool.season_year)}</div>
+          <h1 className={s.title}>Pick grid</h1>
         </div>
+        <a href="/api/grid/export" className={`${s.cta} ${s.ctaQuiet}`} style={{ width: 'auto', padding: '0 20px', height: 44 }}>Export to Excel</a>
+      </div>
 
-        {slates.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>
-            No {caps.showTournamentRounds ? 'tournament rounds' : 'game days'} scheduled yet.
-          </p>
-        ) : (
-          <div>
-            <p id="grid-scroll-hint" className="mb-2 text-xs sm:hidden" style={{ color: 'var(--muted)' }}>
-              Swipe sideways to see every {caps.showTournamentRounds ? 'round' : 'game day'}.
-            </p>
-            <div className="card overflow-x-auto p-1" role="region" aria-label="Pool pick history" aria-describedby="grid-scroll-hint" tabIndex={0}>
-              <table className="text-sm" style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid var(--line)' }}>
-                  <th
-                    className="text-left py-2 pr-4"
-                    style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', minWidth: 140, position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 1 }}
-                  >
-                    Player
+      {slates.length === 0 ? (
+        <p className={s.notice}>No pick days scheduled yet.</p>
+      ) : (
+        <div className={s.gridWrap} role="region" aria-label="Every entry's picks by day" tabIndex={0}>
+          <table className={s.gridTable}>
+            <thead>
+              <tr>
+                <th scope="col">Entry</th>
+                {slates.map((w, index) => (
+                  <th scope="col" key={w.id}>
+                    {columnLabel(w.id, index)}
+                    <small>{periodById[w.id] ? weekdayDay(periodById[w.id].date) : ''}</small>
+                    {topPickByWeek[w.id] && <small>{brandFor(topPickByWeek[w.id]!.team, teamBrands).shortName} ×{topPickByWeek[w.id]!.count}</small>}
                   </th>
-                  {slates.map((w) => (
-                    <th
-                      key={w.id}
-                      className="py-2 px-1 text-center"
-                      style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', minWidth: 44 }}
-                    >
-                      <span className="block whitespace-nowrap">{periodById[w.id]?.shortLabel ?? `#${w.slate_number}`}</span>
-                      {topPickByWeek[w.id] && (
-                        <span className="block font-mono" style={{ fontSize: 9, fontWeight: 400, color: 'var(--muted)' }}>
-                          {topPickByWeek[w.id]!.team} ×{topPickByWeek[w.id]!.count}
-                        </span>
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {withStats.length === 0 && (
-                  <tr>
-                    <td colSpan={slates.length + 1} className="px-4 py-10 text-center" style={{ color: 'var(--muted)', fontSize: 12 }}>
-                      No entries yet. Players will appear here after they join the pool.
-                    </td>
-                  </tr>
-                )}
-                {withStats.map((player) => (
-                  <tr key={player.id} style={{ borderBottom: '1px solid var(--line)', background: player.status === 'eliminated' ? 'var(--surface-sunken)' : undefined }}>
-                    <td
-                      className="py-2 pr-4"
-                      style={{ position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 1 }}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                          style={{ background: player.status === 'alive' ? 'var(--success)' : 'var(--danger)' }}
-                        />
-                        <span className="font-medium" style={{ color: 'var(--ink)', whiteSpace: 'nowrap' }}>{player.full_name}</span>
-                      </div>
-                    </td>
-                    {slates.map((w) => {
-                      const teams = pickMap[player.id]?.[w.id] ?? []
-                      const hidden = teams.length > 0 && !isRevealed(w.id)
-
-                      if (!teams.length) {
-                        return (
-                          <td key={w.id} className="py-2 px-1 text-center" style={{ fontSize: 11, color: 'var(--muted)' }}>
-                            —
-                          </td>
-                        )
-                      }
-
-                      if (hidden) {
-                        return (
-                          <td key={w.id} className="py-2 px-1 text-center" style={{ fontSize: 11, color: 'var(--muted)' }}>
-                            ?
-                          </td>
-                        )
-                      }
-
-                      const outcomes = resultMap[player.id]?.[w.id] ?? []
-                      const outcome: Outcome = outcomes.includes('lost')
-                        ? 'lost'
-                        : outcomes.length > 0 && outcomes.every((result) => result === 'won')
-                          ? 'won'
-                          : 'pending'
-                      const cellStyle =
-                        outcome === 'won'
-                          ? { background: 'var(--success-tint)', color: 'var(--success)' }
-                          : outcome === 'lost'
-                          ? { background: 'var(--danger-tint)', color: 'var(--danger)' }
-                          : { background: 'var(--surface-sunken)', color: 'var(--muted)' }
-
-                      return (
-                        <td
-                          key={w.id}
-                          className="py-2 px-1 text-center font-mono font-bold"
-                          style={{ fontSize: 11, borderRadius: 2, ...cellStyle }}
-                        >
-                          {outcome !== 'pending' && <span aria-hidden="true">{outcome === 'won' ? '✓ ' : '✗ '}</span>}
-                          {teams.join(' / ')}
-                          {outcome !== 'pending' && <span className="sr-only">, {outcome}</span>}
-                        </td>
-                      )
-                    })}
-                  </tr>
                 ))}
-              </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </main>
-      <Footer />
-    </div>
+              </tr>
+            </thead>
+            <tbody>
+              {withStats.length === 0 && (
+                <tr><td colSpan={slates.length + 1} className={s.gridEmpty}>No entries yet.</td></tr>
+              )}
+              {withStats.map((player) => (
+                <tr key={player.id} data-out={player.status === 'eliminated'}>
+                  <th scope="row">{player.full_name}</th>
+                  {slates.map((w) => {
+                    const teams = pickMap[player.id]?.[w.id] ?? []
+                    if (!teams.length) return <td key={w.id} className={s.gridNone}>–</td>
+                    if (!isRevealed(w.id)) return <td key={w.id} className={s.gridNone}>Hidden</td>
+                    const outcomes = resultMap[player.id]?.[w.id] ?? []
+                    const outcome: Outcome = outcomes.includes('lost')
+                      ? 'lost'
+                      : outcomes.length > 0 && outcomes.every((result) => result === 'won')
+                        ? 'won'
+                        : 'pending'
+                    return (
+                      <td key={w.id} data-result={outcome}>
+                        {teams.map((team) => (
+                          <span className={s.teamLine} key={team}><TeamLogo team={team} brands={teamBrands} size={18} />{team}</span>
+                        ))}
+                        {outcome !== 'pending' && <span className="sr-only">, {outcome}</span>}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className={s.small} style={{ marginTop: 12 }}>Green won · red lost · picks stay hidden until each day locks.</p>
+    </PoolShell>
   )
 }
