@@ -6,15 +6,15 @@ import { usePathname } from 'next/navigation'
 import LogoutButton from './LogoutButton'
 import type { CompetitionMode } from '@/lib/competition'
 import { eventLabel, themeStyle } from '@/lib/poolTheme'
-import { usePoolMode } from './PoolMode'
+import { lastAccount, rememberAccount, rememberMode, usePoolMode, useRememberedMode } from './PoolMode'
 import s from './pp.module.css'
 
 const links = [
-  { href: '/', label: 'Today', shortLabel: 'Today' },
-  { href: '/pick', label: 'Pick', shortLabel: 'Pick' },
-  { href: '/sweat', label: 'Sweat board', shortLabel: 'Sweat' },
-  { href: '/standings', label: 'Standings', shortLabel: 'Standings' },
-  { href: '/rules', label: 'Rules', shortLabel: 'Rules' },
+  { href: '/', label: 'Today' },
+  { href: '/pick', label: 'Pick' },
+  { href: '/sweat', label: 'Sweat board' },
+  { href: '/standings', label: 'Standings' },
+  { href: '/rules', label: 'Rules' },
 ]
 
 function isCurrent(path: string, href: string): boolean {
@@ -54,14 +54,25 @@ export default function SiteHeader({
   account?: string
 }) {
   const scope = usePoolMode()
-  mode = mode ?? scope.mode
-  seasonYear = seasonYear ?? scope.seasonYear
+  const last = useRememberedMode()
+  const knownMode = mode ?? scope.mode
+  const knownYear = seasonYear ?? scope.seasonYear
+  // Loading screens know nothing yet; they borrow the last page's values.
+  const shownMode = knownMode ?? last.mode
+  const shownYear = knownMode ? knownYear : last.seasonYear
+  const shownAccount = knownMode ? account : account ?? lastAccount()
+  useEffect(() => {
+    if (!knownMode) return
+    rememberMode(knownMode, knownYear)
+    rememberAccount(account)
+  }, [knownMode, knownYear, account])
   const path = usePathname() ?? '/'
   const [open, setOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const initials = account ? account.split(' ').map((name) => name[0]).slice(0, 2).join('').toUpperCase() : null
-  const event = eventLabel(mode, seasonYear)
-  const theme = themeStyle(mode)
+  const initials = shownAccount ? shownAccount.split(' ').map((name) => name[0]).slice(0, 2).join('').toUpperCase() : null
+  const event = eventLabel(shownMode, shownYear)
+  const theme = themeStyle(shownMode)
 
   useEffect(() => {
     if (!open) return
@@ -75,6 +86,18 @@ export default function SiteHeader({
       document.removeEventListener('keydown', close)
     }
   }, [open])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenuOpen(false) }
+    document.addEventListener('keydown', close)
+    return () => document.removeEventListener('keydown', close)
+  }, [menuOpen])
+
+  // Phone menu: closes itself when any link in it is followed.
+  const closeOnLink = (event: React.MouseEvent) => {
+    if ((event.target as HTMLElement).closest('a')) setMenuOpen(false)
+  }
 
   return (
     <>
@@ -96,7 +119,7 @@ export default function SiteHeader({
             <button
               type="button"
               className={s.avatar}
-              aria-label={account ? `Account menu for ${account}` : 'Account menu'}
+              aria-label={shownAccount ? `Account menu for ${shownAccount}` : 'Account menu'}
               aria-expanded={open}
               aria-controls="account-menu"
               onClick={() => setOpen(!open)}
@@ -105,12 +128,12 @@ export default function SiteHeader({
             </button>
             {open && (
               <nav id="account-menu" className={s.menu} aria-label="Your entry" onClick={(event) => { if ((event.target as HTMLElement).closest('a')) setOpen(false) }}>
-                {account && <div className={s.menuName}>{account}</div>}
-                {account && <Link href="/history">Pick history</Link>}
+                {shownAccount && <div className={s.menuName}>{shownAccount}</div>}
+                {shownAccount && <Link href="/history">Pick history</Link>}
                 <Link href="/grid">Pick grid</Link>
                 <Link href="/schedule">Schedule</Link>
-                {account && <Link href="/notifications">Alerts</Link>}
-                {account ? (
+                {shownAccount && <Link href="/notifications">Alerts</Link>}
+                {shownAccount ? (
                   <LogoutButton />
                 ) : (
                   <>
@@ -121,17 +144,42 @@ export default function SiteHeader({
               </nav>
             )}
           </div>
+          <button
+            type="button"
+            className={s.menuButton}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={menuOpen}
+            aria-controls="site-menu"
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            <span /><span /><span />
+          </button>
         </div>
         <div className={s.mobileEvent}>{event}</div>
+        {menuOpen && (
+          <nav id="site-menu" className={s.siteMenu} aria-label="Menu" onClick={closeOnLink}>
+            {shownAccount && <div className={s.siteMenuName}>{shownAccount}</div>}
+            {links.map((link) => (
+              <Link key={link.href} href={link.href} aria-current={isCurrent(path, link.href) ? 'page' : undefined}>
+                {link.label}
+              </Link>
+            ))}
+            <span className={s.siteMenuRule} />
+            <Link href="/grid" aria-current={path === '/grid' ? 'page' : undefined}>Pick grid</Link>
+            <Link href="/schedule" aria-current={path === '/schedule' ? 'page' : undefined}>Schedule</Link>
+            {shownAccount && <Link href="/history" aria-current={path === '/history' ? 'page' : undefined}>Pick history</Link>}
+            {shownAccount && <Link href="/notifications" aria-current={path === '/notifications' ? 'page' : undefined}>Alerts</Link>}
+            {shownAccount ? (
+              <LogoutButton />
+            ) : (
+              <>
+                <Link href="/login">Log in</Link>
+                {!signupsClosed && <Link href="/signup">Join pool</Link>}
+              </>
+            )}
+          </nav>
+        )}
       </header>
-
-      <nav className={s.bottomNav} style={theme} aria-label="Sections">
-        {links.map((link) => (
-          <Link key={link.href} href={link.href} aria-current={isCurrent(path, link.href) ? 'page' : undefined}>
-            {link.shortLabel}
-          </Link>
-        ))}
-      </nav>
     </>
   )
 }

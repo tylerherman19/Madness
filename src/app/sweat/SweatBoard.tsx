@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { SweatGame, SweatResponse } from '@/app/api/sweat/route'
 import { tipTime } from '@/lib/poolTheme'
-import { LiveBoardSkeleton } from '@/app/components/PageSkeletons'
+import { SweatBoardSkeleton } from '@/app/components/PoolLoading'
 import TeamLogo from '@/app/components/TeamLogo'
 import type { TeamBrandDirectory } from '@/lib/teamBrand'
 import s from '@/app/components/pp.module.css'
@@ -130,7 +130,7 @@ export default function SweatBoard({
           <button type="button" className={s.linkButton} onClick={() => setRetry(retry + 1)}>Try again</button>
         </p>
       )}
-      {!data && !error && <LiveBoardSkeleton heading={false} />}
+      {!data && !error && <SweatBoardSkeleton />}
 
       {data && (
         <>
@@ -187,7 +187,7 @@ export default function SweatBoard({
 
           <div className={s.split} style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px', marginTop: 32 }}>
             <section aria-label="Games">
-              <div className={s.sweatCols}><span>Game</span><span>Team</span><span>Score</span><span>Pool picks</span><span>Stakes</span></div>
+              <div className={s.sweatCols}><span>Game</span><span>Team</span><span>Score</span><span>Pool<span className={s.longLabel}> picks</span></span><span>Stakes</span></div>
               {groups.map((group) => (
                 <div key={group.key}>
                   <div className={s.groupHead}><h2>{group.title} <span>{group.games.length}</span></h2><span>{group.sub}</span></div>

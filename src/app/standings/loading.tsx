@@ -1,11 +1,5 @@
-import SiteHeader from '@/app/components/SiteHeader'
-import { StandingsSkeleton } from '@/app/components/PageSkeletons'
+import PoolLoading from '@/app/components/PoolLoading'
 
 export default function Loading() {
-  return (
-    <div className="site-shell">
-      <SiteHeader />
-      <main id="main" className="content-width dashboard-content pb-4"><StandingsSkeleton /></main>
-    </div>
-  )
+  return <PoolLoading variant="standings" />
 }

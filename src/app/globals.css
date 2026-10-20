@@ -268,7 +268,7 @@ body { font-family:var(--concept-text),sans-serif; }
 .sweat-pickers summary { cursor:pointer; padding-block:6px; }
 .sweat-pickers p { padding:8px 0; line-height:1.9; }
 .site-shell footer:not([class]) { background:var(--surface); }
-@media(max-width:760px) { .site-shell { padding-bottom:90px; }.content-width { padding-inline:18px; } }
+@media(max-width:760px) { .site-shell { padding-bottom:24px; }.content-width { padding-inline:18px; } }
 /* Pick & Pray concept refresh */
 body{background:var(--paper);color:var(--ink);font-family:var(--font-geist),Arial,sans-serif}.site-shell{background:var(--paper)}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-sm)}
