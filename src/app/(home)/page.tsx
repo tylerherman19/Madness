@@ -16,6 +16,7 @@ import PoolShell from '../components/PoolShell'
 import LockCountdown from '../components/LockCountdown'
 import TeamLogo from '../components/TeamLogo'
 import StandingsTable from '../components/StandingsTable'
+import RulesSection from '../components/RulesSection'
 import { buildStandingsRows } from '@/lib/standingsRows'
 import s from '../components/pp.module.css'
 
@@ -187,6 +188,8 @@ export default async function Today() {
           />
         </aside>
       </div>
+
+      <RulesSection pool={pool} periods={periods} currentId={slate?.id ?? null} totalEntries={total} />
     </PoolShell>
   )
 }

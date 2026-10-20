@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unsubscribeFooter, unsubscribeHeaders } from '@/lib/unsubscribe'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
 import { getResend, esc, isDeliverable, FROM_EMAIL } from '@/lib/email'
@@ -39,11 +40,12 @@ export async function POST(req: NextRequest) {
     const supabase = await getDb()
     const { data: allPlayers, error } = await supabase
       .from('players')
-      .select('id, full_name, email, status')
+      .select('id, full_name, email, status, notifications_enabled')
     if (error) return serverError('api/admin/broadcast', error, error.message)
 
     // Internal test accounts have fake emails that would bounce
-    let recipients = (allPlayers || []).filter((p) => p.email && isDeliverable(p.email))
+    // Players who unsubscribed get no pool email, broadcasts included.
+    let recipients = (allPlayers || []).filter((p) => p.email && isDeliverable(p.email) && p.notifications_enabled !== false)
 
     if (audience === 'alive') {
       recipients = recipients.filter((p) => p.status === 'alive')
@@ -74,11 +76,13 @@ export async function POST(req: NextRequest) {
         from: FROM_EMAIL,
         to: player.email,
         subject: subject.trim(),
+        headers: unsubscribeHeaders(player.id),
         html: `
           <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
             <p>Hey ${esc(player.full_name)},</p>
             <p>${htmlBody}</p>
-            <p style="margin-top: 24px; color: #666; font-size: 14px;">— NFL Survivor Pool</p>
+            <p style="margin-top: 24px; color: #666; font-size: 14px;">— Pick and Pray</p>
+            ${unsubscribeFooter(player.id)}
           </div>
         `,
       })

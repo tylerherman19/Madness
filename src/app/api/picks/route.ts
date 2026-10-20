@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     // Check player is alive
     const { data: player } = await supabase
       .from('players')
-      .select('id, email, full_name, status')
+      .select('id, email, full_name, status, notifications_enabled')
       .eq('id', playerId)
       .single()
 
@@ -208,8 +208,8 @@ export async function POST(req: NextRequest) {
     // Awaited: fire-and-forget sends can be dropped when the serverless
     // function is frozen after responding. The pick is already saved, so a
     // failed send (logged inside the sender) doesn't fail the request.
-    if (player.email) {
-      await sendPickConfirmationEmail(player.email, player.full_name, team, slate.slate_number)
+    if (player.email && player.notifications_enabled !== false) {
+      await sendPickConfirmationEmail(player.id, player.email, player.full_name, team, slate.slate_number)
     }
 
     revalidateContest()

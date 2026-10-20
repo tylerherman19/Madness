@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { FROM_EMAIL, esc, sleep } from './email'
+import { unsubscribeFooter, unsubscribeHeaders } from './unsubscribe'
 
 type Event = { id: string; event_key: string; kind: string; lease_token: string; payload: { player_id?: string; slate_id?: string; deadline?: string; name?: string; slate_number?: number; reason?: string } }
 export async function deliverNotifications(db: SupabaseClient) {
@@ -49,12 +50,13 @@ export async function deliverNotifications(db: SupabaseClient) {
     }
     if (review) { await finish({ p_review: true, p_error: 'No longer eligible for delivery' }); continue }
     if (event.kind === 'reminder' && new Date(event.payload.deadline ?? '').getTime() <= Date.now()) { await finish({ p_review: true, p_error: 'Reminder deadline passed' }); continue }
-    const subject = event.kind === 'reminder' ? 'Madness: your pick deadline is approaching' : 'Madness: entry eliminated'
-    const message = event.kind === 'reminder' ? `Your pick is due before ${event.payload.deadline}. Open Madness to complete your picks.` : 'Your entry has been eliminated. Check your results in Madness.'
-    const url = new URL('/notifications', process.env.NEXT_PUBLIC_APP_URL ?? 'https://madness-cyan.vercel.app').toString()
+    const subject = event.kind === 'reminder' ? 'Pick and Pray: your pick deadline is approaching' : 'Pick and Pray: entry eliminated'
+    const message = event.kind === 'reminder' ? `Your pick is due before ${event.payload.deadline}. Open Pick and Pray to complete your picks.` : 'Your entry has been eliminated. Check your results in Pick and Pray.'
+    const url = new URL(event.kind === 'reminder' ? '/pick' : '/standings', process.env.NEXT_PUBLIC_APP_URL ?? 'https://madness-cyan.vercel.app').toString()
+    const playerId = event.payload.player_id!
     try {
-      const result = await client.emails.send({ from: FROM_EMAIL, to: player!.email, subject,
-        html: `<p>Hi ${esc(player!.full_name)},</p><p>${esc(message)}</p><p><a href="${esc(url)}">Manage notification preferences</a></p>` },
+      const result = await client.emails.send({ from: FROM_EMAIL, to: player!.email, subject, headers: unsubscribeHeaders(playerId),
+        html: `<p>Hi ${esc(player!.full_name)},</p><p>${esc(message)}</p><p><a href="${esc(url)}">${event.kind === 'reminder' ? 'Make your pick' : 'View standings'}</a></p>${unsubscribeFooter(playerId)}` },
         { idempotencyKey: `madness/${event.id}` })
       if (result.error || !result.data?.id) await finish({ p_error: 'Provider rejected delivery; review provider logs' })
       else { await finish({ p_provider_id: result.data.id }); sent++ }

@@ -14,7 +14,6 @@ const links = [
   { href: '/pick', label: 'Pick' },
   { href: '/sweat', label: 'Sweat board' },
   { href: '/standings', label: 'Standings' },
-  { href: '/rules', label: 'Rules' },
 ]
 
 function isCurrent(path: string, href: string): boolean {
@@ -129,10 +128,8 @@ export default function SiteHeader({
             {open && (
               <nav id="account-menu" className={s.menu} aria-label="Your entry" onClick={(event) => { if ((event.target as HTMLElement).closest('a')) setOpen(false) }}>
                 {shownAccount && <div className={s.menuName}>{shownAccount}</div>}
-                {shownAccount && <Link href="/history">Pick history</Link>}
                 <Link href="/grid">Pick grid</Link>
                 <Link href="/schedule">Schedule</Link>
-                {shownAccount && <Link href="/notifications">Alerts</Link>}
                 {shownAccount ? (
                   <LogoutButton />
                 ) : (
@@ -167,8 +164,6 @@ export default function SiteHeader({
             <span className={s.siteMenuRule} />
             <Link href="/grid" aria-current={path === '/grid' ? 'page' : undefined}>Pick grid</Link>
             <Link href="/schedule" aria-current={path === '/schedule' ? 'page' : undefined}>Schedule</Link>
-            {shownAccount && <Link href="/history" aria-current={path === '/history' ? 'page' : undefined}>Pick history</Link>}
-            {shownAccount && <Link href="/notifications" aria-current={path === '/notifications' ? 'page' : undefined}>Alerts</Link>}
             {shownAccount ? (
               <LogoutButton />
             ) : (

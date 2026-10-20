@@ -53,15 +53,22 @@ test('pick retry returns saved receipt, stale edits and another players pick are
  expect(attack.status()).toBe(400)
  await other.dispose()
 })
-test('notification preferences are scoped to the logged-in player and persist',async({page})=>{
- await page.request.post('/api/auth/login',{data:{email:'player+test@example.test',password:'FixturePass123!'}})
- await page.goto('/notifications')
- await expect(page.getByRole('checkbox')).toBeChecked()
- await page.getByRole('checkbox').uncheck()
- await page.getByRole('button',{name:'Save preferences'}).click()
- await expect(page.getByRole('status')).toHaveText('Saved.')
- await page.reload()
- await expect(page.getByRole('checkbox')).not.toBeChecked()
+test('signed unsubscribe link turns emails off and back on; forged links are refused',async({page,request})=>{
+ const player='00000000-0000-4000-8000-000000000002'
+ const token=createHmac('sha256','fixture-only-signing-secret-at-least-32-characters').update(`unsubscribe:${player}`).digest('base64url')
+ const enabled=async()=>(await (await request.get(`http://127.0.0.1:54329/players?id=eq.${player}`)).json())[0].notifications_enabled
+ expect((await request.post(`/api/unsubscribe?p=${player}&t=forged`)).status()).toBe(400)
+ expect((await request.post(`/api/unsubscribe?p=00000000-0000-4000-8000-000000000003&t=${token}`)).status()).toBe(400)
+ await page.goto(`/unsubscribe?p=${player}&t=${token}`)
+ expect(await enabled()).toBe(true)
+ await page.getByRole('button',{name:'Unsubscribe'}).click()
+ await expect(page.getByRole('status')).toHaveText(/You are unsubscribed/)
+ expect(await enabled()).toBe(false)
+ await page.getByRole('button',{name:'Resubscribe'}).click()
+ await expect(page.getByRole('status')).toHaveText(/subscribed again/)
+ expect(await enabled()).toBe(true)
+ expect((await request.post(`/api/unsubscribe?p=${player}&t=${token}`,{headers:{'Content-Type':'application/x-www-form-urlencoded'},data:'List-Unsubscribe=One-Click'})).ok()).toBeTruthy()
+ expect(await enabled()).toBe(false)
 })
 test('unauthenticated jobs, exports and forged email callbacks cannot mutate state',async({request})=>{
  for(const route of ['/api/cron/worker','/api/cron/auto-advance','/api/admin/export?type=players','/api/operations/health'])expect((await request.get(route)).status()).toBe(401)

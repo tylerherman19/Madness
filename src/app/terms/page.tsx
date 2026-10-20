@@ -6,7 +6,7 @@ export const metadata = pageMetadata('Terms of Use', 'Madness entry fees, surviv
 
 export default function TermsPage() {
   return <InfoPage title="Terms of Use">
-    <p>Effective October 4, 2026. By creating an account or participating in MADNESS, you agree to these terms and the <Link href="/rules">active pool rules</Link>.</p>
+    <p>Effective October 4, 2026. By creating an account or participating in MADNESS, you agree to these terms and the <Link href="/#rules">active pool rules</Link>.</p>
     <h2>Eligibility and local law</h2>
     <p>Participate only if you are legally eligible where you live and participate. You are responsible for checking applicable laws before joining or paying. Do not enter where this pool or its entry fee is prohibited. MADNESS does not provide legal advice.</p>
     <h2>Entry fee and payment</h2>

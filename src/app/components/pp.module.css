@@ -27,7 +27,7 @@
 
 /* ------------------------------------------------------------------ header */
 
-.header { position: relative; z-index: 50; background: var(--pp-head); color: #FFFFFF; font-family: var(--font-source), 'Source Sans 3', Arial, sans-serif; }
+.header { position: relative; z-index: 60; background: var(--pp-head); color: #FFFFFF; font-family: var(--font-source), 'Source Sans 3', Arial, sans-serif; }
 .headerInner { display: flex; align-items: center; gap: 28px; max-width: 1280px; height: 64px; margin: 0 auto; padding: 0 32px; box-sizing: border-box; }
 .brand { display: flex; align-items: center; gap: 10px; color: #FFFFFF; text-decoration: none; flex: none; }
 .brandName { font-family: var(--font-saira), 'Saira Condensed', sans-serif; font-weight: 800; font-size: 24px; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
@@ -581,3 +581,6 @@
 .infoBody p, .infoBody ul { margin: 0 0 12px !important; }
 .infoBody ul { padding-left: 20px; list-style: disc; }
 .infoBody a { color: var(--pp-accent); font-weight: 600; }
+
+.rulesSection { margin-top: 56px; scroll-margin-top: 16px; }
+.rulesSection .stepList { margin-top: 20px; }

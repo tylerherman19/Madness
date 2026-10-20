@@ -2,6 +2,7 @@ import { Resend } from 'resend'
 import { createHash } from 'node:crypto'
 import { reportFailure } from './alerts'
 import { supabase } from './supabase'
+import { unsubscribeFooter, unsubscribeHeaders } from './unsubscribe'
 
 let _resend: Resend | null = null
 
@@ -102,6 +103,7 @@ async function sendChecked(payload: {
   to: string
   subject: string
   html: string
+  headers?: Record<string, string>
 }): Promise<SendResult> {
   const { error } = await getResend().emails.send({ from: FROM_EMAIL, ...payload })
   if (error) {
@@ -121,6 +123,7 @@ async function sendChecked(payload: {
 }
 
 export async function sendPickConfirmationEmail(
+  playerId: string,
   email: string,
   fullName: string,
   teamAbbr: string,
@@ -131,6 +134,7 @@ export async function sendPickConfirmationEmail(
   return sendChecked({
     to: email,
     subject: `You're Rolling With ${teamName} — Slate ${slateNumber}`,
+    headers: unsubscribeHeaders(playerId),
     html: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
         ${LOGO_HEADER}
@@ -139,60 +143,7 @@ export async function sendPickConfirmationEmail(
         <a href="${APP_URL}" style="display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">View Standings</a>
         <p style="margin-top: 24px;">Best of luck,</p>
         <p>Griffin Sell</p>
-      </div>
-    `,
-  })
-}
-
-// `teamAbbr` is null for a missed-deadline elimination (no team was picked).
-export async function sendEliminationEmail(
-  email: string,
-  fullName: string,
-  teamAbbr: string | null,
-  slateNumber: number
-): Promise<SendResult> {
-  if (!isDeliverable(email)) return { ok: true }
-  const teamName = teamAbbr
-  const outcome = teamName
-    ? `Well&hellip; ${esc(teamName)} came up short.`
-    : `Well&hellip; you missed the deadline.`
-  return sendChecked({
-    to: email,
-    subject: `Tough One — You're Out Slate ${slateNumber}`,
-    html: `
-      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-        ${LOGO_HEADER}
-        <p>Hey ${esc(fullName)},</p>
-        <p>${outcome} You&rsquo;ve been eliminated from the pool. Feel free to stick around, follow the standings, and enjoy watching until a winner is crowned.</p>
-        <p>Thanks for playing this year. Will be running it back for March Madness, so stay tuned!</p>
-        <a href="${APP_URL}" style="display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">View Standings</a>
-        <p style="margin-top: 24px;">All the best,</p>
-        <p>Griffin Sell</p>
-      </div>
-    `,
-  })
-}
-
-export async function sendReminderEmail(
-  email: string,
-  fullName: string,
-  slateNumber: number,
-  deadlineStr: string
-): Promise<SendResult> {
-  if (!isDeliverable(email)) return { ok: true }
-  return sendChecked({
-    to: email,
-    subject: `Don't Sleep On This — Slate ${slateNumber} Pick Due Soon`,
-    html: `
-      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-        ${LOGO_HEADER}
-        <p>Hey ${esc(fullName)},</p>
-        <p>Still waiting on your pick...</p>
-        <p>Deadline: ${esc(deadlineStr)}</p>
-        <p>Get your pick in before then or you&rsquo;ll get auto-picked. Take two minutes and lock it in.</p>
-        <a href="${APP_URL}/pick" style="display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Submit My Pick</a>
-        <p style="margin-top: 24px;">Good luck,</p>
-        <p>Griffin Sell</p>
+        ${unsubscribeFooter(playerId)}
       </div>
     `,
   })
