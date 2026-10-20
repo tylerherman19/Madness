@@ -14,6 +14,7 @@ import { capabilitiesFor } from '@/lib/competition'
 import { dayDate, eventLabel, pickDayTitle, teamTag, tipTime, weekdayMonthDay } from '@/lib/poolTheme'
 import PoolShell from './components/PoolShell'
 import LockCountdown from './components/LockCountdown'
+import TeamLogo from './components/TeamLogo'
 import s from './components/pp.module.css'
 
 // Signed-in players see their own entry here, so the page renders per request.
@@ -155,7 +156,7 @@ export default async function Today() {
                   const tag = teamTag(mode, seed, game.round_label)
                   return (
                     <span className={s.side} data-note={note} key={team}>
-                      <span><span className={s.tag}>{tag ?? ''}</span>{name(team)}</span>
+                      <span className={s.teamLine}><span className={s.tag}>{tag ?? ''}</span><TeamLogo team={team} brands={brands} size={24} />{name(team)}</span>
                       {note && <span className={s.sideNote}>{note === 'mine' ? 'Your pick' : 'Used'}</span>}
                     </span>
                   )
@@ -176,7 +177,10 @@ export default async function Today() {
             <div className={s.entryBlock}>
               <div className={s.card}>
                 <div className={s.cardLabel}>{pickLabel}</div>
-                <div className={s.cardTeam}>{myTeamText}</div>
+                <div className={s.cardTeamRow}>
+                  {todayPicks.length === 1 && <TeamLogo team={todayPicks[0].team} brands={brands} size={34} />}
+                  <div className={s.cardTeam}>{myTeamText}</div>
+                </div>
                 {entryState && <div className={`${s.cardState} ${entryState.tone}`}>{entryState.text}</div>}
               </div>
               {action && <Link className={s.cta} href={action.href}>{action.label}</Link>}
@@ -197,7 +201,7 @@ export default async function Today() {
               {run.map((pick) => (
                 <div className={s.runRow} key={`${pick.slateId}-${pick.team}`}>
                   <span>{pick.period ? weekdayMonthDay(pick.period.date) : ''}</span>
-                  <b>{name(pick.team)}</b>
+                  <b className={s.teamLine}><TeamLogo team={pick.team} brands={brands} size={18} />{name(pick.team)}</b>
                   <span className={pick.result === 'won' ? s.green : pick.result === 'lost' ? s.red : s.gray}>
                     {pick.result === 'won' ? 'Won' : pick.result === 'lost' ? 'Lost' : 'Pending'}
                   </span>

@@ -10,6 +10,7 @@ export default function TrustFooter() {
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
         <Link href="/contact">Contact</Link>
+        <Link href="/admin">Admin</Link>
       </nav>
       <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
     </div>

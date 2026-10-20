@@ -40,6 +40,7 @@ export default async function SweatPage() {
     <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name} names={names}>
       <SweatBoard
         names={names}
+        teamBrands={brands}
         myTeams={myTeams}
         kicker={period ? `${dayDate(period.date)} · ${pickDayTitle(period.round, period.date, dayNumber)}` : ''}
       />

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { LiveScoresResponse } from '@/app/api/live-scores/route'
 import s from './pp.module.css'
+import TeamLogo from './TeamLogo'
 import { TickerSkeleton } from './PageSkeletons'
 
 // The ticker is one continuous velocity, never a stop-and-restart. Left alone it
@@ -249,6 +250,7 @@ export default function LiveTicker({ label, names }: { slateNumber?: number | nu
                   <span className={s.tickerStatus} data-state={game.state}>{status(game).toUpperCase()}</span>
                   {(['away', 'home'] as const).map((side) => (
                     <span className={s.tickerTeam} data-result={result(game, side)} key={side}>
+                      <TeamLogo team={side === 'away' ? game.awayTeam : game.homeTeam} src={side === 'away' ? game.awayLogo : game.homeLogo} size={18} />{' '}
                       {name(side === 'away' ? game.awayTeam : game.homeTeam)}
                       {game.state !== 'pre' && game.scoresKnown !== false
                         ? ` ${side === 'away' ? game.awayScore : game.homeScore}`

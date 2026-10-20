@@ -58,9 +58,10 @@
 .tickerStatus { padding: 1px 6px; border-radius: 3px; font-family: var(--font-saira), 'Saira Condensed', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: .05em; color: var(--pp-mut); }
 .tickerStatus[data-state=pre] { color: var(--pp-accent); }
 .tickerStatus[data-state=in] { background: #C62E2E; color: #FFFFFF; }
-.tickerTeam { font-weight: 600; color: var(--pp-ink); }
+.tickerTeam { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--pp-ink); }
 .tickerTeam[data-result=won] { font-weight: 700; }
 .tickerTeam[data-result=lost] { font-weight: 400; color: #9AA3AE; }
+.tickerTeam[data-result=lost] .logo { opacity: .55; }
 
 /* -------------------------------------------------------------------- page */
 
@@ -235,7 +236,7 @@
 .sgameMeta b { color: var(--pp-ink); }
 .sgameMeta > span { display: block; margin-top: 2px; }
 .clockLive { display: inline-block; padding: 1px 6px; border-radius: 3px; background: var(--pp-red); color: #FFFFFF; font-weight: 700; white-space: nowrap; }
-.sTeam { grid-column: 2; display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.sTeam { grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sTeam > span:first-child { width: 18px; flex: none; font-size: 13px; color: var(--pp-faint); text-align: right; }
 .sTeam > span:last-child { font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sScore { grid-column: 3; text-align: right; font-family: var(--font-saira), 'Saira Condensed', sans-serif; font-weight: 800; font-size: 26px; line-height: 1; }
@@ -246,7 +247,7 @@
 .loser { color: #A3A8AE; }
 .sNamesRow { padding: 2px 0 12px; }
 .sNames { grid-column: 2 / span 4; padding-left: 26px; font-size: 13px; line-height: 1.55; color: #4B5563; }
-.distRow { display: grid; grid-template-columns: 104px minmax(0, 1fr) 24px; gap: 10px; align-items: center; padding: 6px 0; font-size: 14px; }
+.distRow { display: grid; grid-template-columns: 128px minmax(0, 1fr) 24px; gap: 10px; align-items: center; padding: 6px 0; font-size: 14px; }
 .distRow > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .distTrack { height: 8px; background: var(--pp-rule-soft); }
 .distTrack span { display: block; height: 8px; background: #9AA0A6; }
@@ -442,4 +443,43 @@
 
 @media (prefers-reduced-motion: reduce) {
   .liveDot { animation: none; }
+}
+
+/* ------------------------------------------------------------- team marks */
+
+.logo { display: inline-flex; flex: none; align-items: center; justify-content: center; overflow: hidden; vertical-align: middle; }
+.logo img { width: 100%; height: 100%; object-fit: contain; }
+.logo b { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; border-radius: 50%; background: var(--team); color: #FFFFFF; font-weight: 700; letter-spacing: 0; }
+.teamLine { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.teamLine .tag { margin-right: 0; min-width: 14px; text-align: right; }
+/* Marks on dark surfaces sit on a white disc so dark logos stay visible. */
+.teamBtn[data-state=selected] .logo, .teamBtn[data-state=submitted] .logo,
+.pickCard[data-submitted=true] .logo, .youMain .logo { padding: 2px; border-radius: 50%; background: #FFFFFF; box-sizing: border-box; }
+.cardTeamRow { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.cardTeamRow .cardTeam { margin-top: 0; }
+
+/* -------------------------------------------------------------- sign in */
+
+.authGrid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 40px; align-items: start; }
+.authForm { max-width: 480px; }
+.authLede { margin-top: 10px !important; font-size: 15px; line-height: 1.5; color: #4B5563; }
+.authBody { margin-top: 24px; padding: 24px; border-radius: 6px; background: #FFFFFF; }
+.authBody label { color: var(--pp-ink) !important; font-size: 14px !important; }
+.authBody :global(.field) { min-height: 44px; border: 1px solid #C9CDC4; border-radius: 4px; background: #FFFFFF; color: var(--pp-ink); font-size: 15px; box-shadow: none; }
+.authBody :global(.field):focus { border-color: var(--pp-accent); outline: 2px solid var(--pp-accent); outline-offset: 0; }
+.authBody :global(.btn-primary) { min-height: 50px; border: 0; border-radius: 6px; background: var(--pp-accent); color: #FFFFFF; font-family: inherit; font-size: 16px; font-weight: 700; }
+.authBody :global(.btn-primary):hover { background: var(--pp-accent); filter: brightness(1.06); }
+.authBody :global(.btn-secondary) { border-radius: 6px; font-family: inherit; }
+.authBody a { color: var(--pp-accent) !important; }
+.authGuide { padding: 20px 24px 8px; border-radius: 6px; background: var(--pp-head); color: #FFFFFF; }
+.authGuide h2 { font-family: var(--font-saira), 'Saira Condensed', sans-serif; font-weight: 800; font-size: 26px; }
+.authGuide ol { margin: 12px 0 0; padding: 0; list-style: none; }
+.authGuide li { padding: 12px 0; border-top: 1px solid rgba(255,255,255,.14); }
+.authGuide small { display: block; font-size: 12px; color: rgba(255,255,255,.6); }
+.authGuide b { display: block; font-family: var(--font-saira), 'Saira Condensed', sans-serif; font-weight: 800; font-size: 22px; color: var(--pp-accent2); }
+.authGuide span { display: block; font-size: 14px; line-height: 1.45; color: rgba(255,255,255,.8); }
+@media (max-width: 760px) {
+  .authGrid { display: block; }
+  .authBody { margin-top: 16px; padding: 18px 16px; }
+  .authGuide { margin-top: 24px; }
 }

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import type { SweatGame, SweatResponse } from '@/app/api/sweat/route'
 import { tipTime } from '@/lib/poolTheme'
 import { LiveBoardSkeleton } from '@/app/components/PageSkeletons'
+import TeamLogo from '@/app/components/TeamLogo'
+import type { TeamBrandDirectory } from '@/lib/teamBrand'
 import s from '@/app/components/pp.module.css'
 
 type Side = 'away' | 'home'
@@ -36,10 +38,12 @@ function clockOf(game: SweatGame): string {
 
 export default function SweatBoard({
   names,
+  teamBrands,
   myTeams,
   kicker,
 }: {
   names: Record<string, string>
+  teamBrands: TeamBrandDirectory
   myTeams: string[] | null
   kicker: string
 }) {
@@ -140,6 +144,7 @@ export default function SweatBoard({
                 </div>
               ) : myTeam ? (
                 <>
+                  <TeamLogo team={myTeam} brands={teamBrands} size={48} />
                   <div style={{ minWidth: 0 }}>
                     <div className={s.cellLabel}>You · {myStanding ? YOU_LABEL[myStanding] : 'To play'}</div>
                     <div className={s.youTeam}>{myTeams.map(name).join(', ')}</div>
@@ -217,7 +222,7 @@ export default function SweatBoard({
                             const tone = side.standing === 'trail' || side.standing === 'out' ? s.red : side.standing === 'safe' || side.standing === 'lead' ? s.green : undefined
                             return [
                               <span key={`t-${side.side}`} className={`${s.sTeam} ${lost ? s.loser : ''}`} style={{ gridRow: index + 1 }}>
-                                <span>{side.seed ?? ''}</span><span>{name(side.team)}</span>
+                                <span>{side.seed ?? ''}</span><TeamLogo team={side.team} brands={teamBrands} size={22} /><span>{name(side.team)}</span>
                               </span>,
                               <span key={`s-${side.side}`} className={`${s.sScore} ${lost ? s.loser : ''}`} style={{ gridRow: index + 1 }}>
                                 {game.state === 'pre' ? '' : side.score}
@@ -256,7 +261,7 @@ export default function SweatBoard({
                 <div style={{ marginTop: 12 }}>
                   {dist.map(([team, n]) => (
                     <div className={s.distRow} data-mine={myTeams?.includes(team) ?? false} key={team}>
-                      <span>{name(team)}</span>
+                      <span className={s.teamLine}><TeamLogo team={team} brands={teamBrands} size={18} /><span>{name(team)}</span></span>
                       <span className={s.distTrack}><span style={{ width: `${(n / distMax) * 100}%` }} /></span>
                       <span>{n}</span>
                     </div>

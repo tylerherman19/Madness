@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
 import { tipTime } from '@/lib/poolTheme'
 import LockCountdown from '@/app/components/LockCountdown'
+import TeamLogo from '@/app/components/TeamLogo'
 import s from '@/app/components/pp.module.css'
 
 export interface GameSide {
@@ -295,6 +296,7 @@ export default function PickForm({
                       onClick={() => chooseTeam(side.team)}
                     >
                       <span className={s.teamTag}>{side.seed ?? ''}</span>
+                      <TeamLogo team={side.team} brands={teamBrands} size={26} />
                       <span className={s.teamName}>{name(side.team)}</span>
                       <span className={s.teamNote}>{note}</span>
                     </button>
@@ -330,7 +332,10 @@ export default function PickForm({
             )}
             <div className={s.pickCard} data-submitted={submittedView}>
               <div className={s.cardLabel}>{cardLabel}</div>
-              <div className={s.cardTeam}>{shownTeam ? name(shownTeam) : 'No team selected'}</div>
+              <div className={s.cardTeamRow}>
+                {shownTeam && <TeamLogo team={shownTeam} brands={teamBrands} size={38} />}
+                <div className={s.cardTeam}>{shownTeam ? name(shownTeam) : 'No team selected'}</div>
+              </div>
               {shownGame && opponent && (
                 <div className={s.pickLine}>vs {name(opponent)} · {shownGame.timeTbd ? 'TBD' : tipTime(shownGame.kickoff)}{shownGame.tv ? ` · ${shownGame.tv}` : ''}</div>
               )}
@@ -346,7 +351,7 @@ export default function PickForm({
             <div className={s.sub}>
               <h3>Already used</h3>
               {usedList.map((row) => (
-                <div className={s.usedRow} key={row.team}><span>{name(row.team)}</span><span>{row.date}</span></div>
+                <div className={s.usedRow} key={row.team}><span className={s.teamLine}><TeamLogo team={row.team} brands={teamBrands} size={18} /><span>{name(row.team)}</span></span><span>{row.date}</span></div>
               ))}
             </div>
           )}

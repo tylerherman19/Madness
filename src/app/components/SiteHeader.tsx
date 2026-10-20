@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import LogoutButton from './LogoutButton'
 import type { CompetitionMode } from '@/lib/competition'
 import { eventLabel, themeStyle } from '@/lib/poolTheme'
+import { usePoolMode } from './PoolMode'
 import s from './pp.module.css'
 
 const links = [
@@ -52,6 +53,9 @@ export default function SiteHeader({
   seasonYear?: number | null
   account?: string
 }) {
+  const scope = usePoolMode()
+  mode = mode ?? scope.mode
+  seasonYear = seasonYear ?? scope.seasonYear
   const path = usePathname() ?? '/'
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
