@@ -52,7 +52,7 @@ export async function deliverNotifications(db: SupabaseClient) {
     if (event.kind === 'reminder' && new Date(event.payload.deadline ?? '').getTime() <= Date.now()) { await finish({ p_review: true, p_error: 'Reminder deadline passed' }); continue }
     const subject = event.kind === 'reminder' ? 'Pick and Pray: your pick deadline is approaching' : 'Pick and Pray: entry eliminated'
     const message = event.kind === 'reminder' ? `Your pick is due before ${event.payload.deadline}. Open Pick and Pray to complete your picks.` : 'Your entry has been eliminated. Check your results in Pick and Pray.'
-    const url = new URL(event.kind === 'reminder' ? '/pick' : '/standings', process.env.NEXT_PUBLIC_APP_URL ?? 'https://madness-cyan.vercel.app').toString()
+    const url = new URL(event.kind === 'reminder' ? '/pick' : '/#standings', process.env.NEXT_PUBLIC_APP_URL ?? 'https://madness-cyan.vercel.app').toString()
     const playerId = event.payload.player_id!
     try {
       const result = await client.emails.send({ from: FROM_EMAIL, to: player!.email, subject, headers: unsubscribeHeaders(playerId),

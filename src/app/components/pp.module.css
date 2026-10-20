@@ -31,7 +31,12 @@
 .headerInner { display: flex; align-items: center; gap: 28px; max-width: 1280px; height: 64px; margin: 0 auto; padding: 0 32px; box-sizing: border-box; }
 .brand { display: flex; align-items: center; gap: 10px; color: #FFFFFF; text-decoration: none; flex: none; }
 .brandName { font-family: var(--font-saira), 'Saira Condensed', sans-serif; font-weight: 800; font-size: 24px; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
-.nav { display: flex; gap: 24px; font-size: 15px; font-weight: 600; }
+.nav { display: flex; align-items: center; gap: 24px; margin-left: auto; font-size: 15px; font-weight: 600; }
+.nav button { padding: 21px 0; border: 0; background: none; color: rgba(255,255,255,.65) !important; font: inherit !important; font-size: 15px !important; font-weight: 600 !important; letter-spacing: 0 !important; text-transform: none !important; cursor: pointer; }
+.nav button:hover { color: #FFFFFF !important; }
+.submitPick { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 6px; background: var(--pp-accent); color: #FFFFFF; font-size: 15px; font-weight: 700; text-decoration: none; white-space: nowrap; flex: none; }
+.submitPick:hover { filter: brightness(1.08); }
+.submitPick[aria-current=page] { box-shadow: inset 0 0 0 2px rgba(255,255,255,.55); }
 .nav a { padding: 21px 0; color: rgba(255,255,255,.65); text-decoration: none; white-space: nowrap; }
 .nav a:hover { color: #FFFFFF; }
 .nav a[aria-current=page] { color: #FFFFFF; box-shadow: inset 0 -3px 0 #FFFFFF; }
@@ -329,6 +334,8 @@
 @media (max-width: 760px) {
   .headerInner { justify-content: space-between; height: 56px; padding: 0 16px; }
   .nav, .event, .account { display: none; }
+  .submitPick { height: 36px; margin-left: auto; padding: 0 12px; font-size: 14px; }
+  .headerInner { gap: 12px; }
   .brandName { font-size: 21px; }
   .brand svg { width: 26px; height: 26px; }
   .mobileEvent { display: block; padding: 0 16px 10px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.75); }
@@ -582,5 +589,9 @@
 .infoBody ul { padding-left: 20px; list-style: disc; }
 .infoBody a { color: var(--pp-accent); font-weight: 600; }
 
-.rulesSection { margin-top: 56px; scroll-margin-top: 16px; }
+.rulesSection { margin-top: 48px; scroll-margin-top: 16px; }
+.rulesSection .ruleList { max-width: 760px; }
 .rulesSection .stepList { margin-top: 20px; }
+
+.homeSection { margin-top: 40px; scroll-margin-top: 16px; }
+.homeSection .stSection:first-of-type { margin-top: 20px; }

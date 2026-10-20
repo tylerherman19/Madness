@@ -21,7 +21,7 @@ export default function LogoutButton() {
   }
   return (
     <><button disabled={busy} onClick={handleLogout} className="text-xs tracking-widest uppercase transition-colors" style={{ color: 'var(--muted)' }}>
-      Log Out
+      Log out
     </button>{error && <span role="alert" className="text-xs">{error}</span>}</>
   )
 }

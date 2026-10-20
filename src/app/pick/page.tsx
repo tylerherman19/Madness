@@ -217,7 +217,7 @@ export default async function PickPage() {
       <>
         <div className={s.kicker}>{data.dateLabel} · {data.titleLabel}</div>
         <h1 className={s.title}>Your entry is out</h1>
-        <p className={s.notice}>You can still follow the pool on the <Link href="/sweat">sweat board</Link> and <Link href="/standings">standings</Link>.</p>
+        <p className={s.notice}>You can still follow the pool on the <Link href="/sweat">sweat board</Link> and <Link href="/#standings">standings</Link>.</p>
       </>
     )
   }

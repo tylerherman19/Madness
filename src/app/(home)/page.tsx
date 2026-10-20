@@ -13,6 +13,7 @@ import { brandFor } from '@/lib/teamBrand'
 import { capabilitiesFor } from '@/lib/competition'
 import { dayDate, eventLabel, pickDayTitle, teamTag, tipTime, weekdayMonthDay } from '@/lib/poolTheme'
 import PoolShell from '../components/PoolShell'
+import ContestRefresh from '../components/ContestRefresh'
 import LockCountdown from '../components/LockCountdown'
 import TeamLogo from '../components/TeamLogo'
 import StandingsTable from '../components/StandingsTable'
@@ -89,13 +90,16 @@ export default async function Today() {
   const action = !session
     ? null
     : me?.status === 'eliminated'
-      ? { href: '/standings', label: 'View standings' }
+      ? { href: '/#standings', label: 'View standings' }
       : locked || !slate
         ? { href: '/sweat', label: 'Open sweat board' }
         : { href: '/pick', label: todayPicks.length ? 'Change your pick' : 'Make your pick' }
 
+  const winner = pool.status === 'completed' && standingsRows.alive.length === 1 ? standingsRows.alive[0] : null
+
   return (
     <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name} signupsClosed={closed} names={names}>
+      <ContestRefresh />
       <div className={s.kicker}>{period ? `${dayDate(period.date)} · ` : ''}{eventLabel(mode, pool.season_year)}</div>
       <h1 className={s.title}>{period ? pickDayTitle(period.round, period.date, dayNumber) : 'No games scheduled'}</h1>
       {!data && <p role="status" className={s.notice}>Pool data is unavailable. Refresh to try again.</p>}
@@ -152,8 +156,7 @@ export default async function Today() {
         </section>
       )}
 
-      <div className={s.split}>
-        <section aria-label="Today's schedule">
+      <section className={s.homeSection} aria-label="Today's schedule">
           <div className={s.sectionHead}><h2>{data?.slateIsToday || !period ? 'Today’s games' : `${weekdayMonthDay(period.date)} games`}</h2><span>{games.length} games</span></div>
           {games.map((game) => (
             <div className={s.gameRow} key={game.id}>
@@ -174,22 +177,23 @@ export default async function Today() {
             </div>
           ))}
           {games.length === 0 && <p className={s.empty}>The next slate appears here when it is set.</p>}
-        </section>
+      </section>
 
-        <aside className={s.aside} aria-label="Standings">
-          <div className={s.asideHead}><h2>Standings</h2><Link className={s.linkButton} href="/standings">Full standings</Link></div>
-          <StandingsTable
-            compact
-            alive={standingsRows.alive}
-            out={standingsRows.out}
-            teamBrands={standingsRows.teamBrands}
-            dayLabel={period ? `Day ${dayNumber}` : 'Today'}
-            hiddenUntil={slate && !locked ? lockText : null}
-          />
-        </aside>
-      </div>
+      <section id="standings" className={s.homeSection} aria-label="Standings">
+        <div className={s.sectionHead}><h2>Standings</h2><span>{period ? `Through day ${dayNumber}` : ''}</span></div>
+        {winner && <div className={s.winner}><span className={s.cellLabel}>Winner</span><b>{winner.name}</b></div>}
+        <StandingsTable
+          alive={standingsRows.alive}
+          out={standingsRows.out}
+          teamBrands={standingsRows.teamBrands}
+          dayLabel={period ? `Day ${dayNumber}` : 'Today'}
+          hiddenUntil={slate && !locked ? lockText : null}
+          showSeedTotal={capabilitiesFor(mode).showSeedTotal}
+          signupsClosed={closed}
+        />
+      </section>
 
-      <RulesSection pool={pool} periods={periods} currentId={slate?.id ?? null} totalEntries={total} />
+      <RulesSection pool={pool} />
     </PoolShell>
   )
 }

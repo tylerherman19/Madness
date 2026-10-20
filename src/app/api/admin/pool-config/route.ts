@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
     })
 
     // The mode reaches the cached marketing-side pages, so bust them all.
-    for (const path of ['/', '/grid', '/schedule', '/sweat', '/standings', '/pick']) {
+    for (const path of ['/', '/grid', '/schedule', '/sweat', '/pick']) {
       revalidatePath(path)
     }
 

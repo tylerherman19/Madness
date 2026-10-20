@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     })
 
     revalidatePath('/')
-    revalidatePath('/standings')
+    revalidatePath('/')
     revalidatePath('/admin/players')
     return NextResponse.json({ ok: true, playerId: player.id })
   } catch (err) {

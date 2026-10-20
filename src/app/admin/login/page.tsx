@@ -68,7 +68,7 @@ export default function AdminLoginPage() {
           </button>
         </form>
         <Link
-          href="/standings"
+          href="/#standings"
           className="mt-6 inline-block text-sm font-bold"
           style={{ color: 'var(--muted)' }}
         >

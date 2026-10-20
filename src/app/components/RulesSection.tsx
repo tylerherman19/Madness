@@ -1,6 +1,4 @@
-import { capabilitiesFor, type PickPeriod, type PoolConfig } from '@/lib/competition'
-import { buildTimeline } from '@/lib/timeline'
-import { teamTagName } from '@/lib/poolTheme'
+import { capabilitiesFor, type PoolConfig } from '@/lib/competition'
 import s from './pp.module.css'
 
 // The house rules, phrased from the pool's stored configuration so they always
@@ -11,8 +9,8 @@ function rulesFor(pool: PoolConfig): { title: string; text: string }[] {
     tournament && pool.pick_frequency === 'tournament-round'
       ? 'Each round has a set number of picks. Spend them across that round’s days.'
       : tournament
-        ? 'Every pick day, each entry picks exactly one team. In the Elite Eight, make two picks across the round.'
-        : 'Every pick day, each entry picks exactly one team.'
+        ? 'Every pick day, each entry picks one team. In the Elite Eight, make two picks across the round.'
+        : 'Every pick day, each entry picks one team.'
   const reuse =
     pool.team_reuse_rule === 'unlimited'
       ? 'You can use the same team more than once.'
@@ -36,6 +34,7 @@ function rulesFor(pool: PoolConfig): { title: string; text: string }[] {
         ? 'The final surviving entry wins. If more than one survives, the entry that lasted longest wins.'
         : 'The final surviving entry wins. If everyone left loses on the same day, they share the win.'
   return [
+    { title: 'Entry fee', text: '$25 per entry. Pay by Venmo to @griffinsell.' },
     { title: 'One pick a day', text: onePick },
     { title: 'Win and advance', text: 'If your team wins, you survive and pick again on the next pick day.' },
     { title: 'Lose and you’re out', text: 'If your team loses, your entry is eliminated for the rest of the pool.' },
@@ -47,117 +46,21 @@ function rulesFor(pool: PoolConfig): { title: string; text: string }[] {
   ]
 }
 
-const STEPS = [
-  { label: 'Pick', text: 'Choose one team playing that day.' },
-  { label: 'Lock', text: 'Picks lock at the first tip.' },
-  { label: 'Reveal', text: 'Everyone’s picks appear on the sweat board.' },
-  { label: 'Win', text: 'Your team wins. You play the next day.', tone: 'green' },
-  { label: 'Lose', text: 'Your team loses. Your entry is out.', tone: 'red' },
-]
 
 // The pool rules, shown at the bottom of the Today page.
-export default function RulesSection({
-  pool,
-  periods,
-  currentId,
-  totalEntries,
-}: {
-  pool: PoolConfig
-  periods: PickPeriod[]
-  currentId: string | null
-  totalEntries: number
-}) {
-  const mode = pool.competition_mode
-  const tournament = capabilitiesFor(mode).showTournamentRounds
-  const days = buildTimeline({
-    periods,
-    currentId,
-    totalEntries: 0,
-    aliveCount: 0,
-    eliminatedBySlate: new Map(),
-    tournament,
-    maxColumns: tournament ? 16 : 12,
-  }).filter((day) => day.key !== 'start')
-  const totalDays = tournament ? days.length : periods.length
+export default function RulesSection({ pool }: { pool: PoolConfig }) {
   const rules = rulesFor(pool)
-  const facts = [
-    { label: 'Format', value: tournament ? 'March Madness' : 'Regular season' },
-    ...(totalDays ? [{ label: 'Pick days', value: String(totalDays) }] : []),
-    { label: 'Entries', value: String(totalEntries) },
-    { label: 'Picks lock', value: pool.pick_deadline_rule === 'per-game' ? 'At each game’s tip' : 'First tip each day' },
-    { label: 'Picks revealed', value: 'At lock' },
-    { label: 'Team labels', value: teamTagName(mode) === 'seed' ? 'Seed' : 'AP rank' },
-    {
-      label: 'Missed pick',
-      value:
-        pool.auto_pick_behavior === 'eliminate' ? 'Entry is out'
-          : pool.auto_pick_behavior === 'none' ? 'No pick recorded'
-            : pool.auto_pick_behavior === 'highest-seed' && tournament ? 'Highest unused seed'
-              : 'Unused team from the last game',
-    },
-    { label: 'Entry', value: '$25 via Venmo to @griffinsell' },
-  ]
-
   return (
     <section id="rules" className={s.rulesSection} aria-label="Rules">
       <div className={s.sectionHead}><h2>Rules</h2></div>
-
-      <ol className={s.stepList} aria-label="Every pick day">
-        {STEPS.map((step, index) => (
-          <li key={step.label}>
-            <small>Step {index + 1}</small>
-            <b className={step.tone === 'green' ? s.green : step.tone === 'red' ? s.red : undefined}>{step.label}</b>
-            <span>{step.text}</span>
+      <ol className={s.ruleList}>
+        {rules.map((rule, index) => (
+          <li key={rule.title}>
+            <span>{index + 1}</span>
+            <div><h2>{rule.title}</h2><p>{rule.text}</p></div>
           </li>
         ))}
       </ol>
-
-      <div className={s.rulesGrid}>
-        <article>
-          <h2 className={s.rulesHeading}>The rules</h2>
-          <ol className={s.ruleList}>
-            {rules.map((rule, index) => (
-              <li key={rule.title}>
-                <span>{index + 1}</span>
-                <div><h2>{rule.title}</h2><p>{rule.text}</p></div>
-              </li>
-            ))}
-          </ol>
-
-          {days.length > 0 && (
-            <section className={s.dayBlock}>
-              <h2>Pick days</h2>
-              <div className={s.days}>
-                {days.map((day) => (
-                  <div className={s.day} data-today={day.state === 'today'} key={day.key}>{day.label}<span>{day.date}</span></div>
-                ))}
-              </div>
-              <ul className={s.notes}>
-                {tournament ? (
-                  <>
-                    <li>Every day with tournament games is a pick day, through the title game.</li>
-                    <li>Seeds are shown next to each team.</li>
-                  </>
-                ) : (
-                  <>
-                    <li>Every day with games on the pool schedule is a pick day.</li>
-                    <li>AP top-25 ranks are shown next to each team.</li>
-                  </>
-                )}
-              </ul>
-            </section>
-          )}
-        </article>
-
-        <aside className={`${s.aside} ${s.facts}`} aria-label="This pool">
-          <h2>This pool</h2>
-          <dl>
-            {facts.map((fact) => (
-              <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>
-            ))}
-          </dl>
-        </aside>
-      </div>
     </section>
   )
 }
