@@ -11,7 +11,8 @@
     "test:db": "node scripts/test-memo-integrity.mjs",
     "test:tournament": "node scripts/test-tournament.mjs && node scripts/test-delivery.mjs",
     "test:operations": "node scripts/test-operations.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:legacy": "FIXTURE_LEGACY_SCHEMA=true TOURNAMENT_RELIABILITY_TEST_MODE=false playwright test --grep 'signup|failed login|reset link|pick retry|signed unsubscribe|unauthenticated jobs|signed email callbacks|deadline crossing|lost pick response'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

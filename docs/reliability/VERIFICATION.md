@@ -17,6 +17,10 @@ Environment: local macOS, Node 24.11.1; source branch `codex/tournament-reliabil
 | Production build | `next build --webpack` passed with network access for the repository's existing Google Fonts. Sandboxed font fetch failed; a sandboxed Turbopack invocation stalled and was stopped. |
 | Runtime advisories | Current `npm audit --omit=dev` returned zero vulnerabilities. No forced dependency upgrade applied. |
 
+## App-first rollout compatibility
+
+The new feature remains gated until schema activation. The compatibility browser suite runs separately against migrations 001–024, including lost-response reconciliation, to protect existing production pick acceptance during an application-first merge. Vercel production metadata confirmed the new feature flag is absent and outbox delivery is false; sensitive DB connection values remain unreadable.
+
 ## Remaining release gates
 
 - Applied production migrations, privileges, project identity and effective environment switches have not been verified against the deployed database.

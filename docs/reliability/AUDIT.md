@@ -36,3 +36,7 @@ Verified: current source, repository access, local migration execution, isolated
 Not verified: which migrations are currently applied in the deployed database; its row cap, policies and extension settings; current Vercel environment values; active paid Resend configuration or domain; actual hosted throughput. The currently open Supabase organization/project was inspected but not established as the deployed Madness database. No SQL was executed there and no account setting was changed.
 
 Existing legacy picks remain available; revision history begins with this migration. Earlier versions are not fabricated. Existing contest rules receive a baseline version when picks exist, without pretending that historical rules were recorded previously.
+
+## Safe application-first merge
+
+Production environment metadata confirmed the existing operations worker is enabled and outbox delivery is false. Vercel treats the DB connection and email master values as sensitive and does not return them. The deployed DB identity/schema remains unverified. `TOURNAMENT_RELIABILITY_ENABLED` is absent in production. Until it is enabled after migrations 025–027, picks retain the existing authenticated acceptance path, with provider calls removed. The new transactional receipt path is tested with the feature enabled in isolation. Newly applied schema triggers can record intent before the feature is enabled. This avoids breaking accepted picks on an application-first rollout; it does not claim the new backend is active before migration.

@@ -6,10 +6,10 @@ import {createHash} from 'node:crypto'
 import bcrypt from 'bcryptjs'
 const db=new PGlite()
 await db.exec('create role anon;create role authenticated;create role service_role;create role authenticator;')
-for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort())await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
+for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&(process.env.FIXTURE_LEGACY_SCHEMA!=='true'||f<'025_')).sort())await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
 const hash=await bcrypt.hash('FixturePass123!',4)
 async function seed(){
- await db.exec(`set session_replication_role=replica;delete from public.notification_attempts;delete from public.provider_events;delete from public.campaign_recipients;delete from public.email_campaigns;delete from public.pick_revisions;delete from public.pick_requests;delete from public.rule_versions;delete from public.integrity_checks;delete from public.incidents;delete from public.operation_runs;delete from public.picks;delete from public.players;delete from public.games;delete from public.slates;delete from public.revoked_sessions;delete from public.audit_log;delete from public.notification_outbox;set session_replication_role=origin;
+ await db.exec(`set session_replication_role=replica;${process.env.FIXTURE_LEGACY_SCHEMA==='true'?'':`delete from public.notification_attempts;delete from public.provider_events;delete from public.campaign_recipients;delete from public.email_campaigns;delete from public.pick_revisions;delete from public.pick_requests;delete from public.rule_versions;delete from public.integrity_checks;delete from public.incidents;delete from public.operation_runs;`}delete from public.picks;delete from public.players;delete from public.games;delete from public.slates;delete from public.revoked_sessions;delete from public.audit_log;delete from public.notification_outbox;set session_replication_role=origin;
  update public.pools set season_year=2099,competition_mode='regular-season',pick_frequency='every-game-day',starts_on=null,auto_pick_behavior='latest-game';
  insert into public.slates(id,slate_number,slate_date,season_year,is_active,locks_at)values('00000000-0000-4000-8000-000000000001',1,'2099-01-01',2099,true,'2099-01-01T18:00:00Z');
  insert into public.games(slate_id,espn_event_id,home_team,away_team,tip_time,result,status_state)values('00000000-0000-4000-8000-000000000001','fixture','A','B','2099-01-01T18:00:00Z','pending','pre');`)

@@ -43,6 +43,9 @@ jobs:
       - name: Browser regression tests
         run: npm run test:e2e
 
+      - name: Pre-migration compatibility browser tests
+        run: npm run test:e2e:legacy
+
       - name: Lint
         run: npx eslint
 

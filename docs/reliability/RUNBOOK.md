@@ -1,6 +1,6 @@
 # Rollout, activation and recovery
 
-Production has not been changed. Keep `EMAILS_ENABLED=false`, `OUTBOX_DELIVERY_ENABLED=false`, `PASSWORD_RESET_EMAILS_ENABLED=false` and database mode `record-only` throughout implementation and initial staging. Never put real player credentials or real recipient lists in load fixtures.
+Initial implementation did not change production. The subsequent merge authorization permits the reviewed application merge; database and email activation remain separate. Keep `EMAILS_ENABLED=false`, `OUTBOX_DELIVERY_ENABLED=false`, `PASSWORD_RESET_EMAILS_ENABLED=false` and database mode `record-only` throughout implementation and initial staging. Never put real player credentials or real recipient lists in load fixtures.
 
 ## Rollout order
 
@@ -9,7 +9,7 @@ Production has not been changed. Keep `EMAILS_ENABLED=false`, `OUTBOX_DELIVERY_E
 3. Apply only additive 025, 026, 027 to an isolated copy with matching prerequisites. Run `npm ci`, typecheck, unit tests, `test:db`, `test:operations`, `test:tournament`, browser tests and the real PostgreSQL concurrency suite. Existing legacy tests deliberately cover the pre-025 schema; the new suite executes the entire chain.
 4. Configure a separate hosted staging database and preview environment. Set `PREVIEW_DATABASE_CONFIRMED=true` only after confirming isolation. Preview DB access otherwise fails closed. Keep email switches false.
 5. Run the staged load scenarios below; record actual plan, region, limits, latency and errors. Verify policy/RPC exposure as anonymous/authenticated roles. Check record-only campaign/assignment completion and restore the resulting snapshot.
-6. Obtain separate authorization before production migration, merge/deploy or worker activation. Apply 025–027 together during a quiet window, then deploy the matching application with email still off. Do not delete old queued work or reset/seed contest data.
+6. Production migrations and worker/email activation require their operating authorization. The application can be merged first with `TOURNAMENT_RELIABILITY_ENABLED` absent/false: normal picks use the existing acceptance path, with provider calls removed, until schema verification and activation. Apply 025–027 together during a quiet window, then deploy the matching application with email still off. Do not delete old queued work or reset/seed contest data.
 7. Set `AUTOMATION_V2_ENABLED=true` and `TOURNAMENT_RELIABILITY_ENABLED=true` only after new schema readiness. Enable the new scheduler and verify each workload's actual progress. The two flags also control the GitHub fallback job via repository variables; keep deployment and repository values consistent.
 8. Prefer the reviewed Supabase Cron/pg_net/Vault template in `scheduler.sql` for regular invocation. Configure extensions, Vault secrets and endpoint authentication explicitly. The template is intentionally not a migration. Monitor pg_net responses and workload success independently. GitHub remains an independent monitor/fallback, with no precise cadence promise.
 9. Verify operations health immediately and through a full simulated tournament day. A healthy HTTP endpoint does not prove assignments, grading, campaigns or reminders completed.

@@ -60,6 +60,7 @@ export default async function SystemView({
   const heading = (
     <>
       <h1>{views[view]}</h1>
+      {process.env.TOURNAMENT_RELIABILITY_ENABLED!=='true'&&<p>New tournament operations are awaiting schema verification and activation. Player picks continue through the existing acceptance path. Email sending remains controlled by the master switch.</p>}
       <p>Observed {stamp(new Date().toISOString())}. All times are Central.</p>
     </>
   )

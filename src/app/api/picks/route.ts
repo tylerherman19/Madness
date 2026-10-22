@@ -1,3 +1,4 @@
+import {legacyPickPost} from '@/lib/legacyPickRoute'
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
@@ -15,6 +16,7 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { serverError } from '@/lib/alerts'
 
 export async function POST(req: NextRequest) {
+  if(process.env.TOURNAMENT_RELIABILITY_ENABLED!=='true')return legacyPickPost(req)
   try {
     const body = await req.json()
     const { slate_id, team, pick_id, expected_version, player_id_override, submitted_by_admin, request_id, reason } = body
@@ -195,6 +197,13 @@ export async function GET(req: NextRequest) {
  const requestId=req.nextUrl.searchParams.get('request_id')
  if(!requestId || !isUuid(requestId)) return NextResponse.json({error:'Invalid request ID'},{status:400})
  const db=await getDb()
+ if(process.env.TOURNAMENT_RELIABILITY_ENABLED!=='true'){
+  const slate=req.nextUrl.searchParams.get('slate_id'),team=req.nextUrl.searchParams.get('team')
+  if(!slate||!isUuid(slate)||!team||team.length>80)return NextResponse.json({error:'Selection context required for legacy reconciliation'},{status:400})
+  const {data,error}=await db.from('picks').select('id,team,slate_id,updated_at').eq('player_id',session.player_id).eq('slate_id',slate).eq('team',team).maybeSingle()
+  if(error)return serverError('api/picks/reconcile',error)
+  return NextResponse.json({found:!!data,pick:data},{headers:{'Cache-Control':'private, no-store'}})
+ }
  const {data,error}=await db.from('pick_requests').select('receipt').eq('player_id',session.player_id).eq('request_id',requestId).maybeSingle()
  if(error) return serverError('api/picks/reconcile',error)
  return NextResponse.json({found:!!data,...data?.receipt},{headers:{'Cache-Control':'private, no-store'}})

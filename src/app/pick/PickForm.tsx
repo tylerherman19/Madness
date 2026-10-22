@@ -159,7 +159,7 @@ export default function PickForm({
     if(!requestId.current)return
     setUncertain(true)
     try {
-      const check=await fetch(`/api/picks?request_id=${requestId.current}`,{cache:'no-store'})
+      const check=await fetch(`/api/picks?request_id=${requestId.current}&slate_id=${encodeURIComponent(slateId)}&team=${encodeURIComponent(selected??'')}`,{cache:'no-store'})
       if(!check.ok)throw new Error('Reconciliation unavailable')
       const receipt=await check.json()
       if(receipt.found){
