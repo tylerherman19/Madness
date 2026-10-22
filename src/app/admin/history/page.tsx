@@ -1,3 +1,4 @@
+import { allRows } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
@@ -40,7 +41,7 @@ export default async function AdminHistoryPage() {
       .then((data) => ({ data: data.sort((a, b) => a.tip_time.localeCompare(b.tip_time)) })),
     loadAll<{ slate_id: string; team: string; auto_assigned: boolean }>(supabase, 'picks', 'slate_id, team, auto_assigned')
       .then((data) => ({ data })),
-    supabase.from('players').select('full_name, email, status, elimination_slate, elimination_reason'),
+    allRows(supabase.from('players').select('full_name, email, status, elimination_slate, elimination_reason')),
   ])
 
   const weekRows: WeekRow[] = slates || []

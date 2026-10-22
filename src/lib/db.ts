@@ -48,3 +48,10 @@ export async function selectAllIn<T>(
   )
   return batches.flat()
 }
+
+// Preserve the typed {data,error} shape for existing page loaders while paging.
+export async function allRows<T>(query:{order(column:string):{range(from:number,to:number):PromiseLike<{data:T[]|null;error:PostgrestError|null}>}}) {
+ const ordered=query.order('id')
+ const data=await selectAll<T>((from,to)=>ordered.range(from,to))
+ return {data,error:null}
+}

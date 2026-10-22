@@ -6,7 +6,7 @@ import {encryptBackup,decryptBackup} from './backup.mjs'
 import {restoreCheck} from './restore-check.mjs'
 const db=new PGlite()
 await db.exec('create role anon;create role authenticated;create role service_role;create role authenticator;')
-for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort()) await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
+for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql') && f < '025_').sort()) await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
 await db.exec(await readFile('supabase/migrations/024_operations.sql','utf8'))
 const scalar=async(sql,params=[])=>Object.values((await db.query(sql,params)).rows[0])[0]
 const fails=async(sql,pattern)=>assert.rejects(db.exec(sql),pattern)

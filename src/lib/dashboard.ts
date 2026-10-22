@@ -1,3 +1,4 @@
+import { allRows } from '@/lib/db'
 import { publicPlayerLabels } from './playerLabels'
 import 'server-only'
 import { survivedPeriodsByPlayer } from './survival'
@@ -20,6 +21,8 @@ export async function getDashboardData() {
     let allGames: any[] | null = null
     /* eslint-enable @typescript-eslint/no-explicit-any */
 
+    const {getEffectiveNow}=await import('./testMode')
+    const privacyNow=await getEffectiveNow()
     const contestPool = await getPoolConfig()
     {
       const { getDb } = await import('@/lib/testMode')
@@ -30,7 +33,7 @@ export async function getDashboardData() {
       // 1,000-row response cap (see lib/db.ts).
       const [weeks, playersRes] = await Promise.all([
         loadAll<{ id: string; season_year: number; is_active: boolean }>(supabase, 'slates', '*'),
-        supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name'),
+        allRows(supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name')),
       ])
       if (playersRes.error) throw playersRes.error
       const contestWeeks = weeks.filter(w => !contestPool.starts_on || (w as { slate_date?: string }).slate_date! >= contestPool.starts_on)
@@ -182,7 +185,8 @@ export async function getDashboardData() {
       return [period.id, { key: quota ? period.round! : period.id, quota: quota ?? 1 }]
     }))
     const weeksSurvivedByPlayer = survivedPeriodsByPlayer(seasonPicks, allGames ?? [], periodScopes)
-    const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks)
+    const visibleSlateIds=new Set(seasonWeeks.filter((day: Slate)=>isPickRevealed(day,(allGames??[]).filter((g:Game)=>g.slate_id===day.id),privacyNow)).map((day:Slate)=>day.id))
+    const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks.filter((p:{slate_id:string})=>visibleSlateIds.has(p.slate_id)))
 
     // The team that knocked each eliminated entry out: their pick on the day
     // they were eliminated. That day is locked and graded, so it is public.
@@ -207,8 +211,8 @@ export async function getDashboardData() {
         status: p.status as 'alive' | 'eliminated',
         slates_survived: weeksSurvivedByPlayer[p.id] || 0,
         seed_total: seedTotalByPlayer[p.id] || 0,
-        current_pick: currentPicks[p.id]?.[0] || null,
-        current_picks: currentPicks[p.id] || [],
+        current_pick: revealedPicks[p.id] ? currentPicks[p.id]?.[0] || null : null,
+        current_picks: revealedPicks[p.id] ? currentPicks[p.id] || [] : [],
         pick_locked: (currentPicks[p.id]?.length ?? 0) > 0,
         pick_revealed: !!revealedPicks[p.id],
         elimination_reason: p.elimination_reason,
@@ -225,7 +229,7 @@ export async function getDashboardData() {
     })
 
     // Filter picks to exclude current slate for team stats
-    const allPicksWithTeam = seasonPicks.filter((p: { slate_id: string }) => !slate || p.slate_id !== slate.id)
+    const allPicksWithTeam = seasonPicks.filter((p: { slate_id: string }) => visibleSlateIds.has(p.slate_id))
 
     const teamMap: Record<string, { times_picked: number; wins: number; eliminations: number }> = {}
     if (allPicksWithTeam) {
@@ -263,7 +267,7 @@ export async function getDashboardData() {
     // the current slate.
     const insights = computeInsights({
       players,
-      picks: seasonPicks,
+      picks: seasonPicks.filter((p:{slate_id:string})=>visibleSlateIds.has(p.slate_id)),
       currentSlate: slate,
       revealedCurrentPicks: revealedPicks,
       potSize,

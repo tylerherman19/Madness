@@ -114,5 +114,6 @@ export async function gradeSlatePicks(
     }
   }
 
+  if(process.env.TOURNAMENT_RELIABILITY_ENABLED==='true'&&completedGames.length){const {error}=await db.rpc('mark_results_graded',{p_games:completedGames.map(g=>({id:g.id,result:g.result}))});if(error)throw error}
   return { eliminated, advanced: [...advanced.values()] }
 }

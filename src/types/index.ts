@@ -38,6 +38,8 @@ export interface Team {
 }
 
 export interface Game {
+  graded_at?: string | null
+  result_version?: number
   id: string
   slate_id: string
   espn_event_id: string
@@ -65,6 +67,7 @@ export interface Game {
 }
 
 export interface Pick {
+  version?: number
   updated_at?: string
   id: string
   player_id: string

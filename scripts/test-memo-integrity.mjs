@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const db = new PGlite();
 await db.exec('create role anon; create role authenticated; create role service_role; create role authenticator;');
-for (const file of (await fs.readdir('supabase/migrations')).filter(f => f.endsWith('.sql')).sort()) await db.exec(await fs.readFile(`supabase/migrations/${file}`, 'utf8'));
+for (const file of (await fs.readdir('supabase/migrations')).filter(f => f.endsWith('.sql') && f < '025_').sort()) await db.exec(await fs.readFile(`supabase/migrations/${file}`, 'utf8'));
 const sql = text => db.exec(text);
 const scalar = async text => Object.values((await db.query(text)).rows[0])[0];
 const fails = async (text, match) => { await assert.rejects(sql(text), match); };

@@ -1,3 +1,4 @@
+import { allRows } from '@/lib/db'
 import { publicPlayerLabels } from '@/lib/playerLabels'
 import { NextResponse, after } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
@@ -129,10 +130,10 @@ export async function GET() {
     }
 
     const [playersRes, picksRes, dbGamesRes, events] = await Promise.all([
-      supabase
+      allRows(supabase
         .from('players')
         .select('id, full_name, email, status, elimination_slate')
-        .order('full_name'),
+        .order('full_name')),
       loadPicksForSlates<{ player_id: string; team: string; auto_assigned: boolean | null }>(supabase, [slate.id], 'player_id, team, auto_assigned').then(data => ({ data })),
       supabase.from('games').select('*').eq('slate_id', slate.id),
       // Sandbox matchups are fabricated, so there's nothing to look up on the

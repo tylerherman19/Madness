@@ -74,7 +74,7 @@ async function run(db: SupabaseClient, actor: 'system' | 'admin') {
     const failureText = failures === 0 ? 'No failures.' : `FAILURES: ${failures} (${sources.slice(0, 3).join(', ')})`
     const text = `Madness ${date}: ${activity}. ${alive.count ?? 0} alive. ${failureText}`
 
-    const delivery = await sendAlertText(text)
+    const delivery = await sendAlertText(text,db)
     await logAudit(db, {
       event_type: 'daily-summary',
       actor,

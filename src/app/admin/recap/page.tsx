@@ -1,3 +1,4 @@
+import { allRows } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
@@ -24,8 +25,8 @@ export default async function RecapPage() {
   if (activeSlate) {
     const [{ data: games }, { data: players }, { data: picks }] = await Promise.all([
       supabase.from('games').select('*').eq('slate_id', activeSlate.id).order('tip_time'),
-      supabase.from('players').select('*'),
-      supabase.from('picks').select('*, players(full_name)').eq('slate_id', activeSlate.id),
+      allRows(supabase.from('players').select('*')),
+      allRows(supabase.from('picks').select('*, players(full_name)').eq('slate_id', activeSlate.id)),
     ])
 
     const { generateRecap } = await import('@/lib/recap')

@@ -5,7 +5,7 @@ export default function ContestRefresh() {
   const router = useRouter()
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') router.refresh() }
-    const timer = window.setInterval(refresh, 30_000)
+    const timer = window.setInterval(()=>{if(!document.hidden)refresh()}, 30_000+Math.floor(Math.random()*5000))
     window.addEventListener('focus', refresh)
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh) }
   }, [router])

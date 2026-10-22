@@ -89,6 +89,8 @@ export default function PickForm({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [uncertain,setUncertain]=useState(false)
+  const requestId=useRef<string | null>(null)
 
   const name = (team: string) => brandFor(team, teamBrands).shortName
   const deadline = gameRows[0]?.deadline ?? null
@@ -112,7 +114,7 @@ export default function PickForm({
     }
     check()
     const clock = window.setInterval(check, 1000)
-    const refresh = window.setInterval(() => router.refresh(), 30_000)
+    const refresh = window.setInterval(() => { if(!document.hidden) router.refresh() }, 30_000 + Math.floor(Math.random()*5000))
     return () => { window.clearInterval(clock); window.clearInterval(refresh) }
   }, [gameRows, router, serverNow])
 
@@ -126,7 +128,7 @@ export default function PickForm({
   }
 
   function chooseTeam(team: string) {
-    if (!actionAvailable || submitting) return
+    if (!actionAvailable || submitting || uncertain) return
     const target = targetPick()
     if (!target && !canAdd) {
       setError('Choose Change next to the pick you want to replace.')
@@ -138,18 +140,36 @@ export default function PickForm({
       if (target?.team === team) setSelected(null)
       return
     }
+    requestId.current=null
     setSelected(team)
     setError('')
   }
 
   function startChange(pick?: SavedPick) {
     const target = pick ?? targetPick()
-    if (!target || locked || !target.editable) return
+    if (!target || locked || !target.editable || uncertain) return
     setEditingId(target.id)
     setSelected(null)
     setError('')
     grid.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     grid.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
+  }
+
+  async function checkReceipt() {
+    if(!requestId.current)return
+    setUncertain(true)
+    try {
+      const check=await fetch(`/api/picks?request_id=${requestId.current}&slate_id=${encodeURIComponent(slateId)}&team=${encodeURIComponent(selected??'')}`,{cache:'no-store'})
+      if(!check.ok)throw new Error('Reconciliation unavailable')
+      const receipt=await check.json()
+      if(receipt.found){
+        const saved=receipt.pick
+        setPicks(current=>{const next={id:saved.id,team:saved.team,slateId:saved.slate_id,editable:!locked,autoAssigned:false,updatedAt:saved.updated_at};return current.some(p=>p.id===saved.id)?current.map(p=>p.id===saved.id?next:p):[...current,next]})
+        setSelected(null);setEditingId(null);requestId.current=null;setUncertain(false)
+        setError('Your pick was saved. The original response was lost.')
+        router.refresh()
+      }else setError('No receipt found yet. Check again or retry the same selection using its original request ID.')
+    }catch{setError('Outcome still unknown. Check saved pick before making another selection.')}
   }
 
   async function submit() {
@@ -158,15 +178,17 @@ export default function PickForm({
     setSubmitting(true)
     setError('')
     const target = targetPick()
+    requestId.current ??= crypto.randomUUID()
     try {
       const response = await fetch('/api/picks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slate_id: slateId, team: selected, pick_id: target?.id ?? null, expected_version: target?.updatedAt }),
+        body: JSON.stringify({ request_id:requestId.current, slate_id: slateId, team: selected, pick_id: target?.id ?? null, expected_version: target?.updatedAt }),
       })
       const result = await response.json()
       if (!response.ok) {
-        setError(result.error || 'Could not save your pick. Try again.')
+        setError(result.error || 'Pick rejected. Refresh before editing.')
+        requestId.current=null
         router.refresh()
         return
       }
@@ -182,11 +204,15 @@ export default function PickForm({
         }
         return target ? current.map((pick) => (pick.id === target.id ? next : pick)) : [...current, next]
       })
+      setUncertain(false)
+      requestId.current=null
       setSelected(null)
       setEditingId(null)
       router.refresh()
     } catch {
-      setError('Could not save your pick. Check your connection and try again.')
+      setUncertain(true)
+      setError('Connection interrupted. Checking whether the server accepted your pick…')
+      await checkReceipt()
     } finally {
       pending.current = false
       setSubmitting(false)
@@ -241,7 +267,7 @@ export default function PickForm({
   const primary = locked ? (
     <Link className={`${s.cta} ${s.ctaQuiet}`} href="/sweat">Open sweat board</Link>
   ) : selected ? (
-    <button type="button" className={s.cta} onClick={submit} disabled={submitting}>
+    <button type="button" className={s.cta} onClick={submit} disabled={submitting || uncertain}>
       {submitting ? 'Saving…' : `Submit ${name(selected)}`}
     </button>
   ) : submittedView && shownPick?.editable ? (
@@ -270,6 +296,7 @@ export default function PickForm({
         {deadline && <span>Locks {lockText} · <b><LockCountdown deadline={deadline} /></b></span>}
       </div>
       {error && <p role="alert" className={s.alert}>{error}</p>}
+      {uncertain && <div><button className={s.cta} onClick={()=>void checkReceipt()} disabled={submitting}>Check saved pick</button>{!locked&&<button className={s.cta} onClick={()=>void submit()} disabled={submitting}>Retry same selection</button>}</div>}
 
       <div className={s.split} style={{ marginTop: 24 }}>
         <section aria-label="Today's games" ref={grid}>
@@ -283,7 +310,7 @@ export default function PickForm({
                 </div>
                 {[game.away, game.home].map((side) => {
                   const { state, note } = sideState(side, game)
-                  const disabled = side.used || game.locked || locked || submitting || !actionAvailable || (state === 'submitted')
+                  const disabled = uncertain || side.used || game.locked || locked || submitting || !actionAvailable || (state === 'submitted')
                   return (
                     <button
                       key={side.team}
@@ -370,7 +397,7 @@ export default function PickForm({
         {locked ? (
           <Link className={`${s.cta} ${s.ctaQuiet}`} href="/sweat">Sweat board</Link>
         ) : selected ? (
-          <button type="button" className={s.cta} onClick={submit} disabled={submitting}>{submitting ? 'Saving…' : 'Submit'}</button>
+          <button type="button" className={s.cta} onClick={submit} disabled={submitting || uncertain}>{submitting ? 'Saving…' : 'Submit'}</button>
         ) : submittedView && shownPick?.editable ? (
           <button type="button" className={`${s.cta} ${s.ctaQuiet}`} onClick={() => startChange(shownPick)}>Change</button>
         ) : null}

@@ -11,7 +11,7 @@ export async function restoreCheck(snapshot) {
   await db.exec('create role anon; create role authenticated; create role service_role; create role authenticator;')
   for (const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort()) await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
   const allowed = ['teams','pools','slates','players','games','picks','audit_log','notification_outbox','contest_archives','revoked_sessions','operation_runs','email_suppressions']
-  const optional=['rate_limits','clock','player_accounts','notification_preferences','push_devices']
+  const optional=['rate_limits','clock','player_accounts','notification_preferences','push_devices','delivery_settings','email_campaigns','campaign_recipients','notification_attempts','provider_events','pick_revisions','pick_requests','rule_versions','integrity_checks','incidents']
   if (![1,2].includes(snapshot.version) || !snapshot.tables || allowed.some(table=>!Array.isArray(snapshot.tables[table])) || Object.keys(snapshot.tables).some(table=>!allowed.includes(table)&&!optional.includes(table))) throw new Error('Incomplete or unsupported backup')
   for(const table of optional.filter(table=>table in snapshot.tables)) {
    const exists=(await db.query('select to_regclass($1) as relation',[`public.${table}`])).rows[0].relation

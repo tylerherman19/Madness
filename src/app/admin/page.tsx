@@ -1,3 +1,4 @@
+import { allRows } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
@@ -29,13 +30,15 @@ export default async function AdminDashboard() {
     pool,
   ] = await Promise.all([
     supabase.from('slates').select('*').eq('is_active', true).single(),
-    supabase.from('players').select('id, full_name, email, status, paid'),
+    allRows(supabase.from('players').select('id, full_name, email, status, paid')),
     supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active').order('slate_date'),
     loadAll<{ player_id: string; seed: number | null }>(supabase, 'picks', 'player_id, seed').then((data) => ({ data })),
     getSignupCutoff(),
     getEffectiveNow(),
     getPoolConfig(supabase),
   ])
+
+  const {data:completion,error:completionError}=await supabase.rpc('contest_counts')
 
   // Surfaced so the signup gate is inspectable rather than inferred — this is
   // the exact value haveSignupsClosed() compares against.
@@ -79,7 +82,7 @@ export default async function AdminDashboard() {
 
   if (slate) {
     const [{ data: picks }, { data: gamesData }] = await Promise.all([
-      supabase.from('picks').select('player_id, team').eq('slate_id', slate.id),
+      allRows(supabase.from('picks').select('player_id, team').eq('slate_id', slate.id)),
       supabase.from('games').select('id, home_team, away_team, result').eq('slate_id', slate.id).order('tip_time'),
     ])
     games = gamesData || []
@@ -105,8 +108,9 @@ export default async function AdminDashboard() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-8">
+      {completionError?<p role="alert">Quota completion monitoring unavailable.</p>:completion&&<section className="rounded-xl border border-line p-4"><h2>Required selections</h2><p>{completion.complete} complete · {completion.partial} partial · {completion.missing} missing · {completion.unpaid} unpaid</p><p>Required picks: {completion.requirement?.quota??'No active period'}. Deadline: {completion.requirement?.deadline?formatCentralTime(new Date(completion.requirement.deadline)):'Unknown'}</p><Link href="/admin/picks">Review accepted receipts</Link> · <Link href="/admin/system/integrity">Assignment and grading integrity</Link></section>}
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>Admin Dashboard</h1>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>Game overview</h1>
         {slate && (
           <p className="mt-1" style={{ color: 'var(--muted)' }}>
             Active: Slate {slate.slate_number} · Season {slate.season_year}

@@ -31,6 +31,9 @@ jobs:
       - name: Operational database and restore regressions
         run: npm run test:operations
 
+      - name: Tournament reliability and 2000-entry regression
+        run: npm run test:tournament
+
       - name: Runtime dependency security
         run: npm audit --omit=dev --audit-level=high
 
@@ -39,6 +42,9 @@ jobs:
 
       - name: Browser regression tests
         run: npm run test:e2e
+
+      - name: Pre-migration compatibility browser tests
+        run: npm run test:e2e:legacy
 
       - name: Lint
         run: npx eslint

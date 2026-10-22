@@ -10,22 +10,9 @@ export default async function AdminEmailPage() {
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
 
-  const [{ data: players }, { data: slate }] = await Promise.all([
-    supabase.from('players').select('id, email, status'),
-    supabase.from('slates').select('id, slate_number').eq('is_active', true).single(),
-  ])
-
-  // Match the broadcast route's recipient logic so previewed counts are accurate
-  const real = (players || []).filter((p) => !p.email?.endsWith('@nflsurvivor.internal'))
-  const aliveCount = real.filter((p) => p.status === 'alive').length
-
-  let unpickedCount: number | null = null
-  if (slate) {
-    const { data: picks } = await supabase.from('picks').select('player_id').eq('slate_id', slate.id)
-    const pickedIds = new Set((picks || []).map((p) => p.player_id))
-    unpickedCount = real.filter((p) => p.status === 'alive' && !pickedIds.has(p.id)).length
-  }
-
+  const {data:counts,error}=await supabase.rpc('contest_counts')
+  if(error)return <p>Audience counts unavailable. Verify migrations and database access.</p>
+  const slate=counts.requirement
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
       <div>
@@ -33,9 +20,9 @@ export default async function AdminEmailPage() {
       </div>
       <BroadcastForm
         counts={{
-          all: real.length,
-          alive: aliveCount,
-          unpicked: unpickedCount,
+          all: counts.players,
+          alive: counts.alive,
+          unpicked: slate ? counts.unpicked : null,
         }}
         slateNumber={slate?.slate_number ?? null}
       />

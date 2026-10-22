@@ -1,3 +1,4 @@
+import { allRows } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
@@ -13,11 +14,11 @@ export default async function PlayersPage() {
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
 
-  const { data: players } = await supabase
+  const { data: players } = await allRows(supabase
     .from('players')
     .select('id, full_name, email, phone, venmo_handle, paid, status, elimination_slate, elimination_reason')
     .order('status')
-    .order('full_name')
+    .order('full_name'))
 
   const { data: activeSlate } = await supabase
     .from('slates')
@@ -26,7 +27,7 @@ export default async function PlayersPage() {
     .single()
 
   const { data: picksData } = activeSlate
-    ? await supabase.from('picks').select('player_id, team').eq('slate_id', activeSlate.id)
+    ? await allRows(supabase.from('picks').select('id,player_id,team,updated_at').eq('slate_id', activeSlate.id))
     : { data: [] }
 
   const teams = await getTeamAbbrs(supabase)
@@ -48,6 +49,7 @@ export default async function PlayersPage() {
         activeWeekId={activeSlate?.id || null}
         activeWeekNumber={activeSlate?.slate_number || null}
         teams={teams}
+        pickReceipts={Object.fromEntries((picksData??[]).map(p=>[p.player_id,{id:p.id,updatedAt:p.updated_at}]))}
         currentPicks={currentPicks}
         weeksSurvived={weeksSurvived}
       />

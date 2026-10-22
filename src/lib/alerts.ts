@@ -1,8 +1,9 @@
 import 'server-only'
+import {randomUUID} from 'node:crypto'
 import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logAudit } from './audit'
-import { getResend, FROM_EMAIL } from './email'
+import { recordEmail,FROM_EMAIL } from './delivery'
 import { supabase as productionDb } from './supabase'
 import { getDb } from './testMode'
 import type { FailureEventType } from './auditEvents'
@@ -86,8 +87,10 @@ export async function serverError(
   publicMessage = 'Server error',
   status = 500
 ): Promise<NextResponse> {
-  console.error(`${source} error`, describeError(err))
+  const correlationId=randomUUID()
+  console.error(`${source} error`,correlationId,describeError(err))
   const db = await getDb().catch(() => productionDb)
+  await db.rpc('record_incident',{p_key:source,p_impact:publicMessage,p_correlation:correlationId,p_detail:describeError(err).slice(0,1000)}).then(()=>{},()=>{})
   await reportFailure(db, {
     // A cron route failing means a scheduled job didn't do its work.
     kind: source.startsWith('api/cron/') ? 'job-failed' : 'server-error',
@@ -95,32 +98,18 @@ export async function serverError(
     message: `${source} returned ${status}: ${publicMessage}`,
     error: err,
   })
-  return NextResponse.json({ error: publicMessage }, { status })
+  return NextResponse.json({ error: publicMessage,correlationId }, { status,headers:{'X-Correlation-ID':correlationId} })
 }
 
 export type AlertSendResult = { sent: true } | { sent: false; reason: string }
 
 // Plain text, short subject: the gateway shows "subject / body" as one SMS.
-export async function sendAlertText(body: string): Promise<AlertSendResult> {
-  const to = process.env.ALERT_SMS_TO
-  if (!to) return { sent: false, reason: 'ALERT_SMS_TO is not set' }
-  if (process.env.EMAILS_ENABLED !== 'true') return { sent: false, reason: 'Email is off (EMAILS_ENABLED is not "true")' }
-
-  const text = body.length > SMS_MAX_CHARS ? `${body.slice(0, SMS_MAX_CHARS - 1)}…` : body
-  try {
-    const { error } = await getResend().emails.send({
-      from: FROM_EMAIL,
-      to: to.split(',').map((s) => s.trim()).filter(Boolean),
-      subject: 'Madness',
-      text,
-    })
-    if (error) {
-      console.error('alert text failed:', error)
-      return { sent: false, reason: error.message }
-    }
-    return { sent: true }
-  } catch (err) {
-    console.error('alert text failed:', err)
-    return { sent: false, reason: describeError(err) }
-  }
+export async function sendAlertText(body: string,db:SupabaseClient=productionDb): Promise<AlertSendResult> {
+ const to=process.env.ALERT_SMS_TO
+ if(!to)return {sent:false,reason:'ALERT_SMS_TO is not configured'}
+ const text=body.length>SMS_MAX_CHARS?`${body.slice(0,SMS_MAX_CHARS-1)}…`:body
+ try{
+  for(const recipient of to.split(',').map(s=>s.trim()).filter(Boolean))await recordEmail(db,{from:FROM_EMAIL,to:recipient,subject:'Madness',text},'operational')
+  return {sent:false,reason:'Notification recorded; delivery follows configured email mode'}
+ }catch{return {sent:false,reason:'Could not record operational notification'}}
 }
