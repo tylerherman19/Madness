@@ -1,3 +1,4 @@
+import { allRows } from '@/lib/db'
 import writeExcelFile, { type Cell, type SheetData } from 'write-excel-file/node'
 import { buildPickPeriods } from '@/lib/competition'
 import { isPickRevealed } from '@/lib/deadline'
@@ -50,11 +51,11 @@ export async function GET() {
     const supabase = await getDb()
     const [slatesRes, playersRes, picksRes, gamesRes, pool] = await Promise.all([
       supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active, locks_at').order('slate_number'),
-      supabase
+      allRows(supabase
         .from('players')
         .select('id, full_name, status, elimination_slate')
         .not('email', 'like', '%@nflsurvivor.internal')
-        .order('full_name'),
+        .order('full_name')),
       loadAll<ExportPick>(supabase, 'picks', 'player_id, slate_id, team').then((data) => ({ data, error: null })),
       loadAll<ExportGame>(supabase, 'games', 'slate_id, home_team, away_team, result, tip_time, round_label, time_tbd')
         .then((data) => ({ data, error: null })),

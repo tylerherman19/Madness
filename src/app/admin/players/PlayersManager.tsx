@@ -11,6 +11,7 @@ interface Props {
   activeWeekId: string | null
   activeWeekNumber: number | null
   teams: string[]
+  pickReceipts:Record<string,{id:string;updatedAt:string}>
   currentPicks: Record<string, string>
   weeksSurvived: Record<string, number>
 }
@@ -23,13 +24,14 @@ function actionBtn(color: 'neutral' | 'red' | 'green') {
   }
 }
 
-export default function PlayersManager({ players, activeWeekId, activeWeekNumber, teams, currentPicks, weeksSurvived }: Props) {
+export default function PlayersManager({ players, activeWeekId, activeWeekNumber, teams, currentPicks, pickReceipts, weeksSurvived }: Props) {
   const router = useRouter()
   const [message, setMessage] = useState('')
   const [csvText, setCsvText] = useState('')
   const [importing, setImporting] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [pickModal, setPickModal] = useState<{ player: Player; team: string } | null>(null)
+  const [pickReason,setPickReason]=useState('')
   const [submittingPick, setSubmittingPick] = useState(false)
   const [editModal, setEditModal] = useState<{ id: string; full_name: string; email: string } | null>(null)
   const [editError, setEditError] = useState('')
@@ -37,6 +39,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkWorking, setBulkWorking] = useState(false)
   const [search, setSearch] = useState('')
+  const [page,setPage]=useState(0)
   const [showAdd, setShowAdd] = useState(false)
   const [newPlayer, setNewPlayer] = useState({ full_name: '', email: '', password: '' })
   const [addError, setAddError] = useState('')
@@ -48,7 +51,8 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
     ? players.filter((p) => p.full_name.toLowerCase().includes(query) || p.email.toLowerCase().includes(query))
     : players
 
-  const allIds = filtered.map((p) => p.id)
+  const shown=filtered.slice(page*50,page*50+50)
+  const allIds = shown.map((p) => p.id)
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id))
   const someSelected = selected.size > 0
 
@@ -198,7 +202,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   }
 
   async function submitAdminPick() {
-    if (!pickModal || !activeWeekId) return
+    if (!pickModal || !activeWeekId || pickReason.trim().length<3) return
     setSubmittingPick(true)
     try {
       const res = await fetch('/api/picks', {
@@ -208,7 +212,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           slate_id: activeWeekId,
           team: pickModal.team,
           player_id_override: pickModal.player.id,
-          submitted_by_admin: true,
+          submitted_by_admin: true, reason:pickReason, pick_id:pickReceipts[pickModal.player.id]?.id, expected_version:pickReceipts[pickModal.player.id]?.updatedAt,
         }),
       })
       const data = await res.json()
@@ -382,7 +386,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
         <input
           type="text"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {setSearch(e.target.value);setPage(0)}}
           placeholder="Search players by name or email…"
           className="field w-full max-w-sm px-3 py-2 text-sm"
           style={{ color: 'var(--ink)' }}
@@ -399,7 +403,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
         {filtered.length === 0 && query ? (
           <p className="text-sm" style={{ color: 'var(--muted)' }}>No players match &ldquo;{search}&rdquo;.</p>
         ) : null}
-        {filtered.map((p) => {
+        {shown.map((p) => {
           const pick = currentPicks[p.id]
           const slates = weeksSurvived[p.id] || 0
           return (
@@ -417,7 +421,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                   aria-label={`Select ${p.full_name}`}
                   className="shrink-0"
                 />
-                <span className="font-medium flex-1" style={{ color: 'var(--ink)' }}>{p.full_name}</span>
+                <span className="font-medium flex-1" style={{ color: 'var(--ink)' }}><a href={`/admin/players/${p.id}`}>{p.full_name}</a></span>
                 <span className={`pill ${p.status === 'alive' ? 'pill-alive' : 'pill-out'}`}>
                   {p.status === 'alive' ? 'Alive' : 'Out'}
                 </span>
@@ -513,7 +517,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 </td>
               </tr>
             )}
-            {filtered.map((p) => {
+            {shown.map((p) => {
               const pick = currentPicks[p.id]
               const slates = weeksSurvived[p.id] || 0
               return (
@@ -685,6 +689,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             <h3 id="pick-modal-title" className="font-display text-2xl" style={{ color: 'var(--ink)' }}>
               {currentPicks[pickModal.player.id] ? 'Change Pick' : 'Submit Pick'} — {pickModal.player.full_name}
             </h3>
+            <label>Reason for organizer entry or correction<input value={pickReason} onChange={e=>setPickReason(e.target.value)} maxLength={500}/></label>
             {currentPicks[pickModal.player.id] && (
               <p className="text-xs" style={{ color: 'var(--muted)' }}>
                 Current pick: <span className="font-mono font-bold" style={{ color: 'var(--ink)' }}>{currentPicks[pickModal.player.id]}</span>
@@ -709,7 +714,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             <div className="flex gap-3">
               <button
                 onClick={submitAdminPick}
-                disabled={!pickModal.team || submittingPick}
+                disabled={!pickModal.team || submittingPick || pickReason.trim().length<3}
                 className="btn-primary flex-1 py-2 font-semibold disabled:opacity-50"
               >
                 {submittingPick ? 'Submitting…' : currentPicks[pickModal.player.id] ? 'Change Pick' : 'Submit Pick'}
@@ -774,6 +779,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           </div>
         </Modal>
       )}
+      <nav aria-label="Player pages"><button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}>Previous</button> <span>{filtered.length} matching entries · page {page+1}</span> <button onClick={()=>setPage(p=>p+1)} disabled={(page+1)*50>=filtered.length}>Next</button></nav>
     </div>
   )
 }

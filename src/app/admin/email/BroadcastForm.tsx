@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import Link from 'next/link'
+import { useRef,useState } from 'react'
 import { TONE_ROLE, TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
 
 type Audience = 'all' | 'alive' | 'unpicked'
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export default function BroadcastForm({ counts, slateNumber }: Props) {
+  const requestId=useRef<string | null>(null)
+  const [receipt,setReceipt]=useState<string | null>(null)
   const [audience, setAudience] = useState<Audience>('alive')
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
@@ -25,22 +28,25 @@ export default function BroadcastForm({ counts, slateNumber }: Props) {
       setStatus({ tone: 'error', text: 'Error: subject and message are both required.' })
       return
     }
-    if (!confirm(`Send this email to ${audienceCount} player${audienceCount === 1 ? '' : 's'}? This cannot be undone.`)) return
+    if (!confirm(`Queue this announcement for ${audienceCount} player${audienceCount === 1 ? '' : 's'}? Delivery follows the configured email mode.`)) return
 
+    requestId.current ??= crypto.randomUUID()
     setSending(true)
-    setStatus({ tone: 'info', text: 'Sending… this can take a minute for large audiences.' })
+    setStatus({ tone: 'info', text: 'Recording campaign…' })
     try {
       const res = await fetch('/api/admin/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: subject.trim(), message: message.trim(), audience }),
+        body: JSON.stringify({ request_id:requestId.current, subject: subject.trim(), message: message.trim(), audience }),
       })
       const data = await res.json()
       if (res.ok) {
         setStatus({
           tone: 'ok',
-          text: `Sent to ${data.sent}/${data.total} players${data.failures ? ` — failed: ${data.failures.join(', ')}` : ''}`,
+          text: 'Campaign recorded. Recipient expansion and delivery run independently.',
         })
+        setReceipt(data.progressUrl)
+        requestId.current=null
         setSubject('')
         setMessage('')
       } else {
@@ -69,7 +75,7 @@ export default function BroadcastForm({ counts, slateNumber }: Props) {
           <option value="unpicked" disabled={counts.unpicked === null}>
             {counts.unpicked === null
               ? 'No pick yet — needs an active slate'
-              : `No Slate ${slateNumber} pick yet (${counts.unpicked})`}
+              : `Incomplete quota for Slate ${slateNumber} (${counts.unpicked})`}
           </option>
         </select>
       </div>
@@ -110,9 +116,12 @@ export default function BroadcastForm({ counts, slateNumber }: Props) {
         disabled={sending || audienceCount === 0 || !subject.trim() || !message.trim()}
         className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-on-accent hover:bg-accent-strong disabled:opacity-50 transition-colors"
       >
-        {sending ? 'Sending…' : `Send to ${audienceCount} player${audienceCount === 1 ? '' : 's'}`}
+        {sending ? 'Recording…' : `Queue for ${audienceCount} player${audienceCount === 1 ? '' : 's'}`}
       </button>
 
+<p>Counts are current estimates. Membership is recorded during audience expansion; preferences are checked before delivery.</p>
+      {receipt && <Link href={receipt}>Open campaign delivery progress</Link>}
+      <details><summary>Preview</summary><h3>{subject}</h3><p style={{whiteSpace:'pre-wrap'}}>{message}</p></details>
       {status && (
         <p role={TONE_ROLE[status.tone]} className={`text-sm ${TONE_TEXT_CLASS[status.tone]}`}>{status.text}</p>
       )}

@@ -16,6 +16,7 @@ export default async function PoolConfigPage() {
   if (!isAdmin) redirect('/admin/login')
 
   const pool = await getPoolConfig()
+  const {data:rule,error:ruleError}=await (await getDb()).from('rule_versions').select('id,frozen_at,configuration,reason').order('frozen_at',{ascending:false}).limit(1).maybeSingle()
   const now = await getEffectiveNow()
   const slates = await loadAll<Slate>(await getDb(), 'slates', '*')
   const futureDays = slates.filter(day => day.locks_at && new Date(day.locks_at) > now)
@@ -44,6 +45,7 @@ export default async function PoolConfigPage() {
         </p>
       </div>
 
+      <section><h2>Rule version</h2>{ruleError?<p>Rule version unavailable.</p>:rule?<><p>{rule.id} · frozen {rule.frozen_at}</p><p>{rule.reason}. Rule changes require a reviewed amendment; existing accepted receipts retain their rule version.</p></>:<p>Not frozen yet. The first accepted pick freezes the effective contest rules.</p>}</section>
       {unconfigured ? (
         <div className="rounded-xl border border-warning/40 bg-surface p-4">
           <p className="font-medium text-warning">No pool row found.</p>

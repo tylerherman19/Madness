@@ -1,67 +1,232 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
-import { FROM_EMAIL, esc, sleep } from './email'
-import { unsubscribeFooter, unsubscribeHeaders } from './unsubscribe'
+import { openRequest, renderNotification, type DeliveryEvent } from './delivery'
+import { deliveryFailure } from './deliveryPolicy'
+import { buildPickPeriods, sharedRoundPickQuota } from './competition'
+import { loadAll, loadGamesForSlates } from './seasonData'
+import { getPoolConfig } from './pool'
+import type { Slate } from '@/types'
 
-type Event = { id: string; event_key: string; kind: string; lease_token: string; payload: { player_id?: string; slate_id?: string; deadline?: string; name?: string; slate_number?: number; reason?: string } }
 export async function deliverNotifications(db: SupabaseClient) {
-  if (process.env.EMAILS_ENABLED !== 'true' || process.env.OUTBOX_DELIVERY_ENABLED !== 'true') return { sent: 0, suppressed: true }
-  if (!process.env.RESEND_API_KEY) throw new Error('Email provider is not configured')
-  const { data, error } = await db.rpc('claim_notifications', { p_limit: 10 })
+  if (
+    process.env.EMAILS_ENABLED !== 'true' ||
+    process.env.OUTBOX_DELIVERY_ENABLED !== 'true'
+  )
+    return { accepted: 0, disabled: true }
+  if (!process.env.RESEND_API_KEY)
+    throw new Error('Email provider not configured')
+  const { data, error } = await db.rpc('claim_notifications', { p_limit: 30 })
   if (error) throw error
-  const client = new Resend(process.env.RESEND_API_KEY)
-  let sent = 0
-  for (const event of (data ?? []) as Event[]) {
-    const finish = async (args: Record<string, unknown>) => {
-      const { data: ok, error } = await db.rpc('finish_notification', { p_id: event.id, p_token: event.lease_token, ...args })
-      if (error || !ok) throw error ?? new Error('Notification lease expired')
+  const events = (data ?? []) as DeliveryEvent[]
+  let accepted = 0
+  // Shared round/quota inputs loaded once per batch. The per-recipient count is targeted.
+  const reminderPeriods = new Map<string, { ids: string[]; quota: number;active:boolean;deadline:string|null }>()
+  if (events.some((e) => e.kind === 'reminder')) {
+    const [pool, slates] = await Promise.all([
+      getPoolConfig(db, true),
+      loadAll<Slate>(db, 'slates', '*'),
+    ])
+    const games = await loadGamesForSlates(
+      db,
+      slates.map((s) => s.id),
+    )
+    const periods = buildPickPeriods(pool.competition_mode, slates, games)
+    for (const period of periods) {
+      const quota = sharedRoundPickQuota(
+        pool.competition_mode,
+        pool.pick_frequency,
+        period.round,
+      )
+      reminderPeriods.set(period.id, {
+        ids: quota
+          ? periods.filter((p) => p.round === period.round).map((p) => p.id)
+          : [period.id],
+        quota: quota ?? 1,active:!!slates.find(s=>s.id===period.id)?.is_active,deadline:slates.find(s=>s.id===period.id)?.locks_at??null,
+      })
     }
-    const { data: player, error: playerError } = await db.from('players').select('email, full_name, status, notifications_enabled').eq('id', event.payload.player_id).maybeSingle()
-    if (playerError) throw playerError
-    let review = !player || !player.notifications_enabled || !['reminder', 'elimination'].includes(event.kind)
-    if (event.kind === 'elimination' && player?.status !== 'eliminated') review = true
-    if (event.kind === 'reminder') {
-      const deadline = new Date(event.payload.deadline ?? '').getTime()
-      if (!Number.isFinite(deadline) || deadline <= Date.now() || player?.status !== 'alive') review = true
-      // Recheck the whole shared quota immediately before sending.
-      const { buildPickPeriods, sharedRoundPickQuota } = await import('./competition')
-      const { getPoolConfig } = await import('./pool')
-      const { loadAll, loadGamesForSlates, loadPicksForSlates } = await import('./seasonData')
-      const { slateDeadline } = await import('./deadline')
-      const pool = await getPoolConfig(db, true)
-      const allSlates = await loadAll<import('@/types').Slate>(db, 'slates', '*')
-      const slate = allSlates.find(row => row.id === event.payload.slate_id)
-      const slates = allSlates.filter(row => row.season_year === slate?.season_year && (!pool.starts_on || row.slate_date >= pool.starts_on))
-      const games = await loadGamesForSlates(db, slates.map(row => row.id))
-      const actualDeadline = slateDeadline(slate ?? null, games.filter(row => row.slate_id === slate?.id))
-      if (!slate?.is_active || !actualDeadline || actualDeadline <= new Date()) review = true
-      const periods = buildPickPeriods(pool.competition_mode, slates, games)
-      const period = periods.find(row => row.id === slate?.id)
-      const quota = sharedRoundPickQuota(pool.competition_mode, pool.pick_frequency, period?.round ?? null)
-      const ids = quota ? periods.filter(row => row.round === period?.round).map(row => row.id) : [slate?.id ?? '']
-      const picks = await loadPicksForSlates<{player_id: string}>(db, ids, 'player_id')
-      if (picks.filter(row => row.player_id === event.payload.player_id).length >= (quota ?? 1)) review = true
-    }
-    if (player) {
-      const { data: suppression, error } = await db.from('email_suppressions').select('email').eq('email', player.email.trim().toLowerCase()).maybeSingle()
-      if (error) throw error
-      if (suppression || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(player.email) || /\.(test|invalid)$/i.test(player.email)) review = true
-    }
-    if (review) { await finish({ p_review: true, p_error: 'No longer eligible for delivery' }); continue }
-    if (event.kind === 'reminder' && new Date(event.payload.deadline ?? '').getTime() <= Date.now()) { await finish({ p_review: true, p_error: 'Reminder deadline passed' }); continue }
-    const subject = event.kind === 'reminder' ? 'Pick and Pray: your pick deadline is approaching' : 'Pick and Pray: entry eliminated'
-    const message = event.kind === 'reminder' ? `Your pick is due before ${event.payload.deadline}. Open Pick and Pray to complete your picks.` : 'Your entry has been eliminated. Check your results in Pick and Pray.'
-    const url = new URL(event.kind === 'reminder' ? '/pick' : '/#standings', process.env.NEXT_PUBLIC_APP_URL ?? 'https://madness-cyan.vercel.app').toString()
-    const playerId = event.payload.player_id!
-    try {
-      const result = await client.emails.send({ from: FROM_EMAIL, to: player!.email, subject, headers: unsubscribeHeaders(playerId),
-        html: `<p>Hi ${esc(player!.full_name)},</p><p>${esc(message)}</p><p><a href="${esc(url)}">${event.kind === 'reminder' ? 'Make your pick' : 'View standings'}</a></p>${unsubscribeFooter(playerId)}` },
-        { idempotencyKey: `madness/${event.id}` })
-      if (result.error || !result.data?.id) await finish({ p_error: 'Provider rejected delivery; review provider logs' })
-      else { await finish({ p_provider_id: result.data.id }); sent++ }
-    } catch { await finish({ p_error: 'Provider request failed; retry with the same idempotency key' }) }
-    await sleep(600)
   }
-  return { sent, suppressed: false }
+  for (const event of events) {
+    const settle = async (
+      state: string,
+      code: string | null = null,
+      id: string | null = null,
+      delay = 60,
+    ) => {
+      const result = await db.rpc('settle_notification', {
+        p_id: event.id,
+        p_token: event.lease_token,
+        p_status: state,
+        p_code: code,
+        p_provider_id: id,
+        p_delay: delay,
+      })
+      if (result.error || !result.data)
+        throw result.error ?? new Error('Delivery lease lost')
+    }
+    try {
+      if (new Date(event.expires_at).getTime() <= Date.now()) {
+        await settle('expired', 'Message expired')
+        continue
+      }
+      const { data: settings, error: settingsError } = await db
+        .from('delivery_settings')
+        .select('mode,allowlist,paused_until')
+        .eq('id', true)
+        .single()
+      if (settingsError) throw settingsError
+      if (
+        settings.mode === 'record-only' ||
+        (settings.mode === 'test-recipients' &&
+          !settings.allowlist.includes(event.recipient))
+      ) {
+        await settle('canceled', 'Delivery mode changed')
+        continue
+      }
+      if (
+        settings.paused_until &&
+        new Date(settings.paused_until).getTime() > Date.now()
+      ) {
+        await settle('pending', 'Provider paused', null, 300)
+        continue
+      }
+      const { data: suppression, error: suppressionError } = await db
+        .from('email_suppressions')
+        .select('email')
+        .eq('email', event.recipient)
+        .maybeSingle()
+      if (suppressionError) throw suppressionError
+      if (
+        suppression ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(event.recipient) ||
+        /\.(test|invalid)$|@nflsurvivor.internal$/i.test(event.recipient)
+      ) {
+        await settle('suppressed', 'Recipient suppressed or invalid')
+        continue
+      }
+      if (
+        event.kind === 'password-reset' &&
+        process.env.PASSWORD_RESET_EMAILS_ENABLED !== 'true'
+      ) {
+        await settle('suppressed', 'Recovery email switch is disabled')
+        continue
+      }
+      if (event.player_id) {
+        const { data: player, error: playerError } = await db
+          .from('players')
+          .select('status,notifications_enabled,pin_reset_expires')
+          .eq('id', event.player_id)
+          .maybeSingle()
+        if (playerError) throw playerError
+        if (
+          !player ||
+          (event.kind !== 'password-reset' && !player.notifications_enabled) ||
+          (event.kind === 'elimination' && player.status !== 'eliminated')
+        ) {
+          await settle('suppressed', 'Recipient no longer eligible')
+          continue
+        }
+        if (event.kind === 'reminder') {
+          const period = reminderPeriods.get(String(event.payload.slate_id))
+          if (!period || !period.active || !period.deadline || new Date(period.deadline).getTime()<=Date.now() || player.status !== 'alive') {
+            await settle('suppressed', 'Period no longer eligible')
+            continue
+          }
+          const { count, error } = await db
+            .from('picks')
+            .select('id', { count: 'exact', head: true })
+            .eq('player_id', event.player_id)
+            .in('slate_id', period.ids)
+          if (error) throw error
+          if ((count ?? 0) >= period.quota) {
+            await settle('suppressed', 'Required quota already complete')
+            continue
+          }
+        }
+        if (
+          event.kind === 'password-reset' &&
+          (!player.pin_reset_expires ||
+            new Date(player.pin_reset_expires).getTime() <=
+              Date.now() + 60000 ||
+            new Date(player.pin_reset_expires).getTime() !==
+              new Date(String(event.payload.reset_expires)).getTime())
+        ) {
+          await settle('expired', 'Recovery link expired')
+          continue
+        }
+      }
+      // One database gate covers all workers; no per-process rate assumption.
+      let slot = false
+      for (let tries = 0; tries < 15 && !slot; tries++) {
+        const result = await db.rpc('reserve_email_slot')
+        if (result.error) throw result.error
+        slot = !!result.data
+        if (!slot) await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      if (!slot) {
+        await settle('pending', 'Shared provider rate gate', null, 5)
+        continue
+      }
+      const { data: frozen, error: prepareError } = await db.rpc(
+        'prepare_notification',
+        {
+          p_id: event.id,
+          p_token: event.lease_token,
+          p_request: event.frozen_request ?? renderNotification(event),
+        },
+      )
+      if (prepareError) throw prepareError
+      if (!frozen) {
+        await settle(
+          'review',
+          'Lease, mode, expiry or idempotency boundary changed',
+        )
+        continue
+      }
+      const request = openRequest(frozen)
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `madness/${event.id}`,
+        },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(10000),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (response.ok && typeof body.id === 'string') {
+        await settle('sent', null, body.id)
+        accepted++
+      } else {
+        const failure = deliveryFailure(
+          response.status,
+          String(body.name ?? body.message ?? ''),
+          event.attempts + 1,
+          response.headers.get('retry-after'),
+        )
+        if (failure.pause) {
+          const { error } = await db
+            .from('delivery_settings')
+            .update({
+              paused_until: new Date(
+                Date.now() + failure.delay * 1000,
+              ).toISOString(),
+              pause_reason: failure.code,
+            })
+            .eq('id', true)
+          if (error) throw error
+        }
+        await settle(failure.state, failure.code, null, failure.delay)
+      }
+    } catch {
+      // Never log provider bodies or sensitive frozen payloads. Same key/payload on retry.
+      await settle(
+        'pending',
+        'Delivery interrupted; reconcile with same idempotency key',
+        null,
+        120,
+      )
+    }
+  }
+  return { accepted, disabled: false }
 }

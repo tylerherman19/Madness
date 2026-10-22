@@ -102,6 +102,7 @@ export async function syncSlateFromEspn(
         if (abbr && !teamRows.has(abbr)) {
           teamRows.set(abbr, {
             abbr,
+            ...(process.env.TOURNAMENT_RELIABILITY_ENABLED==='true'?{espn_id:c.team.id??null}:{}),
             display_name: c.team.displayName ?? abbr,
             short_name: c.team.shortDisplayName ?? null,
             logo: c.team.logo ?? null,
@@ -121,6 +122,7 @@ export async function syncSlateFromEspn(
         slate_id: slateId,
         espn_event_id: event.id,
         home_team: homeAbbr,
+        ...(process.env.TOURNAMENT_RELIABILITY_ENABLED==='true'?{home_team_id:teams.home.team.id??null,away_team_id:teams.away.team.id??null}:{}),
         away_team: awayAbbr,
         home_seed: seedOf(teams.home),
         away_seed: seedOf(teams.away),

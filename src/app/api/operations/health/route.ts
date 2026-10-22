@@ -11,7 +11,12 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase.from('operation_runs').select('key,status,last_success_at,updated_at').order('updated_at', { ascending: false }).limit(200)
   if (error) throw error
   const now = new Date()
-  const worker = (data ?? []).find(row => row.key.startsWith('worker:') && row.last_success_at)
+  let worker = (data ?? []).find(row => row.key.startsWith('worker:') && row.last_success_at)
+  if(process.env.TOURNAMENT_RELIABILITY_ENABLED==='true') {
+   const {data:recent,error}=await supabase.from('operation_runs').select('key,status,last_success_at,updated_at').eq('key','recurring:results').maybeSingle()
+   if(error)throw error
+   worker=recent??undefined
+  }
   const clock = centralClock(now)
   const overdue = clock.hour === 3 && clock.minute >= 15 || clock.hour > 3
   const { data: slate, error: slateError } = await supabase.from('slates').select('slate_date').eq('is_active', true).maybeSingle()

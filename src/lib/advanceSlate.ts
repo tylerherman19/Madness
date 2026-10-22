@@ -44,6 +44,12 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
     if (!assignment.ok || !assignment.done) return NextResponse.json({ error: 'Assignments are incomplete; advancement deferred' }, { status: 409 })
     await gradeSlatePicks(supabase, slate.id, slate.slate_number, currentGames)
 
+    if(process.env.TOURNAMENT_RELIABILITY_ENABLED==='true') {
+      const {data:completed,error}=await supabase.rpc('complete_tournament',{p_slate:slate.id})
+      if(error)throw error
+      if(completed){revalidateContest();return NextResponse.json({ok:true,caught_up:true,completed:true})}
+    }
+
     // Walk forward day by day until one has games. Each probe is a real sync,
     // so the day that wins is already populated when it goes active.
     const from = new Date(`${slate.slate_date}T12:00:00Z`)

@@ -31,6 +31,9 @@ jobs:
       - name: Operational database and restore regressions
         run: npm run test:operations
 
+      - name: Tournament reliability and 2000-entry regression
+        run: npm run test:tournament
+
       - name: Runtime dependency security
         run: npm audit --omit=dev --audit-level=high
 

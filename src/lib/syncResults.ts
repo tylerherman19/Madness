@@ -8,7 +8,7 @@ import type { Slate } from '@/types'
 import { serverError } from '@/lib/alerts'
 import { centralClock, orderRecoveryDates } from './operationPolicy'
 
-export async function syncResults(supabase: import('@supabase/supabase-js').SupabaseClient, now: Date) {
+export async function syncResults(supabase: import('@supabase/supabase-js').SupabaseClient, now: Date, {grade=true}: {grade?:boolean} = {}) {
   try {
     const pool = await getPoolConfig(supabase, true)
     const slates = (await loadAll<Slate>(supabase, 'slates', '*')).filter(day => !pool.starts_on || day.slate_date >= pool.starts_on)
@@ -26,7 +26,7 @@ export async function syncResults(supabase: import('@supabase/supabase-js').Supa
     // Reconcile stored finals on every overdue period, including days left
     // behind by an interrupted cron. Notifications cannot delay scoring.
     const grading = []
-    for (const slate of overdue) {
+    for (const slate of grade ? overdue : []) {
       if (!pickedIds.has(slate.id)) continue
       grading.push({ slate_id: slate.id, ...await gradeSlatePicks(supabase, slate.id,
         slate.slate_number, storedGames.filter(game => game.slate_id === slate.id && game.result !== 'pending')) })
@@ -45,7 +45,7 @@ export async function syncResults(supabase: import('@supabase/supabase-js').Supa
         const sync = await syncSlateFromEspn(supabase, slate.slate_date.replace(/-/g, ''), slate.season_year)
         if (!sync.ok || sync.partial?.length) throw new Error('Result feed is incomplete')
         const games = await loadGamesForSlates(supabase, [slate.id])
-        grading.push({ slate_id: slate.id, ...await gradeSlatePicks(supabase, slate.id,
+        if(grade) grading.push({ slate_id: slate.id, ...await gradeSlatePicks(supabase, slate.id,
           slate.slate_number, games.filter(game => game.result !== 'pending')) })
       } catch { failed++ }
       if (process.env.AUTOMATION_V2_ENABLED === 'true') {

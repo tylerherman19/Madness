@@ -23,9 +23,9 @@ jobs:
             echo '::warning::Job-freshness monitor is not configured. Set MONITOR_SECRET in GitHub and Vercel.'
             exit 0
           fi
-          curl --fail --silent --show-error --max-time 20 -H "Authorization: Bearer $MONITOR_SECRET" https://madness-cyan.vercel.app/api/operations/health
+          curl --fail-with-body --silent --show-error --max-time 20 -H "Authorization: Bearer $MONITOR_SECRET" https://madness-cyan.vercel.app/api/operations/health
   worker:
-    if: vars.AUTOMATION_V2_ENABLED == 'true'
+    if: vars.AUTOMATION_V2_ENABLED == 'true' && vars.TOURNAMENT_RELIABILITY_ENABLED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 9
     steps:
@@ -40,5 +40,30 @@ jobs:
               failed=1
             fi
             if [ "$attempt" != 5 ]; then sleep 60; fi
+          done
+          exit "$failed"
+
+  tournament-worker:
+    if: vars.AUTOMATION_V2_ENABLED == 'true' && vars.TOURNAMENT_RELIABILITY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        workload: [schedule, results, grading, assignment, advance, reminders, campaigns, delivery, integrity, retention]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run an independent workload with durable due times
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          failed=0
+          for attempt in 1 2 3 4 5; do
+            if ! node scripts/worker-request.mjs '${{ matrix.workload }}'; then failed=1; fi
+            if [ "$attempt" != 5 ]; then sleep 15; fi
           done
           exit "$failed"

@@ -1,3 +1,4 @@
+import {allRows} from '@/lib/db'
 import { NextResponse, after } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { isDeliverable } from '@/lib/email'
@@ -194,9 +195,7 @@ export async function GET() {
     }
     if (revealedTeams.size > 0) {
       // Fetch pick counts from DB, excluding test accounts
-      const { data: allPlayers } = await supabase
-        .from('players')
-        .select('id, email')
+      const { data: allPlayers } = await allRows(supabase.from('players').select('id,email'))
 
       const realPlayerIds = new Set(
         (allPlayers || [])

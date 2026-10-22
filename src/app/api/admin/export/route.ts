@@ -1,3 +1,4 @@
+import { allRows } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
@@ -32,11 +33,11 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await getDb()
     if (type === 'players') {
-      const { data: players, error } = await supabase
+      const { data: players, error } = await allRows(supabase
         .from('players')
         .select('full_name, email, phone, venmo_handle, paid, status, elimination_slate')
-        .order('full_name')
-      if (error) return serverError('api/admin/export', error, error.message)
+        .order('full_name'))
+      if (error) throw error
 
       const csv = toCsv(
         ['full_name', 'email', 'phone', 'venmo_handle', 'paid', 'status', 'elimination_slate'],
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
       loadAll<{ player_id: string; slate_id: string; team: string; auto_assigned: boolean; submitted_by_admin: boolean; created_at: string }>(
         supabase, 'picks', 'player_id, slate_id, team, auto_assigned, submitted_by_admin, created_at'
       ).then((data) => ({ data })),
-      supabase.from('players').select('id, full_name'),
+      allRows(supabase.from('players').select('id, full_name')),
       supabase.from('slates').select('id, slate_number, season_year'),
     ])
 

@@ -1,3 +1,4 @@
+import {allRows} from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { isTestMode, createTestInviteToken } from '@/lib/testMode'
@@ -29,13 +30,10 @@ export interface SandboxSnapshot {
 async function getSandboxSnapshot(): Promise<SandboxSnapshot> {
   const empty = { players: [], activeSlate: null, gameCount: 0, pickCount: 0, games: [], simulatedNow: null }
   try {
-    const { data: players, error } = await sandboxSupabase
-      .from('players')
-      .select('id, full_name, email, status')
-      .order('full_name')
+    const {data:players,error}=await allRows(sandboxSupabase.from('players').select('id,full_name,email,status').order('full_name'))
     // Surface schema-setup problems (missing migration / unexposed schema)
     // right in the panel instead of failing silently everywhere.
-    if (error) return { ok: false, error: error.message, effectiveNow: new Date().toISOString(), ...empty }
+    if (error) return { ok: false, error: String(error), effectiveNow: new Date().toISOString(), ...empty }
 
     const [{ data: slate }, { count: gameCount }, { count: pickCount }, { data: clockRow }] = await Promise.all([
       sandboxSupabase.from('slates').select('id, slate_number, season_year').eq('is_active', true).single(),

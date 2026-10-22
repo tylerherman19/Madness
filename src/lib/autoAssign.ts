@@ -122,6 +122,8 @@ export async function runAutoAssignNow(db: SupabaseClient, now: Date): Promise<A
 // Lazy trigger: cheap to call on every request. Does nothing until the active
 // slate has locked, and nothing again once a run has completed for it.
 export async function autoAssignIfDue(db: SupabaseClient, now: Date): Promise<void> {
+  if(process.env.TOURNAMENT_RELIABILITY_ENABLED==='true')return // Durable scheduler owns assignment; visitors only read.
+
   try {
     const { data: slate, error } = await db
       .from('slates')

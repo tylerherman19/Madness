@@ -38,6 +38,7 @@ export interface EspnCompetitor {
   curatedRank?: { current?: number }
   records?: Array<{ summary?: string }>
   team: {
+    id?: string
     abbreviation?: string
     displayName?: string
     shortDisplayName?: string

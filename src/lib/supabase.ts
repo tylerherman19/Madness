@@ -8,6 +8,7 @@ function lazySupabase(schema: string): SupabaseClient {
   return new Proxy({} as SupabaseClient, {
     get(_target, prop) {
       if (!client) {
+        if(process.env.VERCEL_ENV==='preview'&&process.env.PREVIEW_DATABASE_CONFIRMED!=='true')throw new Error('Configure and confirm an isolated preview database before accessing contest data')
         const url = process.env.SUPABASE_URL
         const key = process.env.SUPABASE_SERVICE_ROLE_KEY
         if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set')

@@ -1,3 +1,4 @@
+import {allRows} from '@/lib/db'
 import ContestRefresh from '@/app/components/ContestRefresh'
 import { publicPlayerLabels } from '@/lib/playerLabels'
 import { pageMetadata } from '@/lib/site'
@@ -34,7 +35,7 @@ export default async function GridPage() {
       loadAll<typeof slates[number] & { is_active: boolean }>(
         supabase, 'slates', 'id, slate_number, slate_date, season_year, locks_at, is_active'
       ),
-      supabase.from('players').select('id, full_name, status, elimination_slate').not('email', 'like', '%@nflsurvivor.internal').order('full_name'),
+      allRows(supabase.from('players').select('id, full_name, status, elimination_slate').not('email', 'like', '%@nflsurvivor.internal').order('full_name')),
     ])
     // One season's grid — the one being played — paged past the row cap.
     const seasonYear = seasonYearOf(allSlates)

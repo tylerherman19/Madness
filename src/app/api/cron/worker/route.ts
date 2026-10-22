@@ -8,12 +8,19 @@ import { queueReminders } from '@/lib/reminders'
 import { deliverNotifications } from '@/lib/notificationWorker'
 import { withOperation } from '@/lib/operations'
 import { centralClock, reminderWindow, turnoverCaughtUp } from '@/lib/operationPolicy'
+import { runTournamentJob,WORKLOADS,type Workload } from '@/lib/tournamentJobs'
 import { serverError } from '@/lib/alerts'
 export const maxDuration = 300
 export async function GET(req: NextRequest) {
  const unauthorized = requireCron(req)
  if (unauthorized) return unauthorized
  if (process.env.AUTOMATION_V2_ENABLED !== 'true') return NextResponse.json({ ok: true, enabled: false })
+ if(process.env.TOURNAMENT_RELIABILITY_ENABLED==='true') {
+  const kind=req.nextUrl.searchParams.get('workload') as Workload|null
+  if(!kind||!WORKLOADS.includes(kind))return NextResponse.json({error:'Choose a workload'},{status:400})
+  try {return NextResponse.json({ok:true,...await runTournamentJob(supabase,kind)})}
+  catch(error){return serverError(`api/cron/worker/${kind}`,error,'This workload is delayed. Saved picks are unaffected; another attempt is scheduled.')}
+ }
  const now = new Date()
  const clock = centralClock(now)
  const slot = Math.floor(now.getTime() / 60_000)

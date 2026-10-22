@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "node --experimental-strip-types --test src/lib/*.test.ts",
     "test:db": "node scripts/test-memo-integrity.mjs",
+    "test:tournament": "node scripts/test-tournament.mjs && node scripts/test-delivery.mjs",
     "test:operations": "node scripts/test-operations.mjs",
     "test:e2e": "playwright test"
   },
@@ -37,6 +38,7 @@
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "pg": "^8.23.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
