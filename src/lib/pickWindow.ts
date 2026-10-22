@@ -45,9 +45,13 @@ export async function loadPickWindow(
   if (activeError) throw activeError
   if (!activeSlate) return { activeSlate: null, pickSlate: null, seasonSlates: [], games: [], picks: [] }
 
+  const readPicks=db.from('picks')
+  const playerPickQuery=process.env.TOURNAMENT_RELIABILITY_ENABLED==='true'
+    ? readPicks.select('id, team, slate_id, auto_assigned, loss_excused, updated_at, version').eq('player_id',playerId)
+    : readPicks.select('id, team, slate_id, auto_assigned, loss_excused, updated_at').eq('player_id',playerId)
   const [slatesRes, picksRes] = await Promise.all([
     db.from('slates').select('*').eq('season_year', activeSlate.season_year),
-    db.from('picks').select(process.env.TOURNAMENT_RELIABILITY_ENABLED==='true'?'id, team, slate_id, auto_assigned, loss_excused, updated_at, version':'id, team, slate_id, auto_assigned, loss_excused, updated_at').eq('player_id', playerId),
+    playerPickQuery,
   ])
   if (slatesRes.error) throw slatesRes.error
   if (picksRes.error) throw picksRes.error
