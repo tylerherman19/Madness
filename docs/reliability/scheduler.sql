@@ -9,6 +9,7 @@
 --    backup/restore, contest state and retention candidates. Keep actual email
 --    switches false and public.delivery_settings.mode='record-only'.
 -- 2. Install pg_cron, pg_net and supabase_vault separately in the dashboard.
+--    Apply harden-scheduler.sql to restrict transport headers/responses.
 -- 3. Install bootstrap-scheduler.sql as postgres. The temporary RPC is a fixed
 --    SECURITY DEFINER function executable only by service_role, not public users.
 -- 4. Dispatch 'Configure reviewed Madness scheduler' on reviewed main with
