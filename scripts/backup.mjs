@@ -20,14 +20,22 @@ export function snapshotDigest(snapshot) {
  return Object.fromEntries(Object.entries(snapshot.tables).map(([name, rows]) => [name, { count: rows.length,
   sha256: createHash('sha256').update(JSON.stringify(rows.map(row => Object.fromEntries(Object.entries(row).sort(([a],[b]) => a.localeCompare(b)))).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))).digest('hex') }]))
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
- const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BACKUP_ENCRYPTION_KEY } = process.env
- if (!SUPABASE_URL?.startsWith('https://') || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Configure the intended Supabase project; credentials are never printed')
- const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/contest_backup`, { method: 'POST', headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, ...(SUPABASE_SERVICE_ROLE_KEY.startsWith('sb_secret_') ? {} : { authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }), 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(120000) })
+export async function fetchBackupSnapshot({ url, serviceKey, schema = 'public' }, request = fetch) {
+ if (!['public', 'sandbox'].includes(schema)) throw new Error('SUPABASE_BACKUP_SCHEMA must be public or sandbox')
+ if (!url?.startsWith('https://') || !serviceKey) throw new Error('Configure the intended Supabase project; credentials are never printed')
+ const response = await request(`${url}/rest/v1/rpc/contest_backup`, { method: 'POST', headers: { apikey: serviceKey, ...(serviceKey.startsWith('sb_secret_') ? {} : { authorization: `Bearer ${serviceKey}` }), 'Content-Type': 'application/json', 'Content-Profile': schema }, body: '{}', signal: AbortSignal.timeout(120000) })
  if (!response.ok) throw new Error(`Backup failed (${response.status}); verify migration 024 and service access`)
  const snapshot = await response.json()
+ // A successful HTTP response from the wrong exposed schema is not a backup
+ // of the requested contest. Reject it before encryption or writing an archive.
+ if (snapshot?.schema !== schema) throw new Error('Backup schema mismatch; no archive was written')
+ return snapshot
+}
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+ const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BACKUP_ENCRYPTION_KEY, SUPABASE_BACKUP_SCHEMA = 'public' } = process.env
+ const snapshot = await fetchBackupSnapshot({ url: SUPABASE_URL, serviceKey: SUPABASE_SERVICE_ROLE_KEY, schema: SUPABASE_BACKUP_SCHEMA })
  const envelope = encryptBackup(snapshot, BACKUP_ENCRYPTION_KEY)
- const file = process.argv[2] ?? `work/backups/madness-${new Date().toISOString().replace(/[:.]/g,'-')}.json.enc`
+ const file = process.argv[2] ?? `work/backups/madness-${SUPABASE_BACKUP_SCHEMA}-${new Date().toISOString().replace(/[:.]/g,'-')}.json.enc`
  await mkdir(resolve(file, '..'), { recursive: true })
  await writeFile(file, JSON.stringify(envelope), { mode: 0o600, flag: 'wx' })
  const roundtrip = decryptBackup(JSON.parse(await readFile(file, 'utf8')), BACKUP_ENCRYPTION_KEY)

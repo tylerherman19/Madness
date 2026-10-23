@@ -1,0 +1,33 @@
+name: Configure reviewed Madness scheduler
+on:
+  workflow_dispatch:
+    inputs:
+      enable:
+        description: Enable the three reviewed scheduler jobs after deployment verification
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: madness-scheduler-configuration
+  cancel-in-progress: false
+jobs:
+  configure:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Configure fixed jobs using existing server-side authorization
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SCHEDULER_ENABLE: ${{ inputs.enable }}
+        run: node scripts/configure-scheduler.mjs

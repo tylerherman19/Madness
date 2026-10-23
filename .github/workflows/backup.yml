@@ -17,17 +17,22 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Create encrypted consistent backup and verify restore
+      - name: Back up public and sandbox and verify isolated restores
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
-          node scripts/backup.mjs work/backup.json.enc
-          node scripts/restore-check.mjs work/backup.json.enc
+          set -euo pipefail
+          for schema in public sandbox; do
+            SUPABASE_BACKUP_SCHEMA="$schema" node scripts/backup.mjs "work/backup-$schema.json.enc"
+            node scripts/restore-check.mjs "work/backup-$schema.json.enc"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: encrypted-madness-backup-${{ github.run_id }}
-          path: work/backup.json.enc
+          path: |
+            work/backup-public.json.enc
+            work/backup-sandbox.json.enc
           retention-days: 14
           if-no-files-found: error
