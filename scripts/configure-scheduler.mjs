@@ -19,6 +19,7 @@ export async function configureScheduler({ supabaseUrl, serviceKey, cronSecret, 
  try {
   response = await request(`${PROJECT_ORIGIN}/rest/v1/rpc/bootstrap_madness_scheduler`, {
    method: 'POST',
+   redirect: 'error',
    headers: {
     apikey: serviceKey,
     ...(serviceKey.startsWith('sb_secret_') ? {} : { Authorization: `Bearer ${serviceKey}` }),

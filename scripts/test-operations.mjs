@@ -38,7 +38,7 @@ for(const enable of [false,true]) {
  assert.equal(summary.enabled,enable)
  assert.equal(JSON.stringify(summary).includes(schedulerConfig.cronSecret),false,'Output only contains reviewed non-secret fields')
 }
-assert.ok(schedulerCalls.every(({url,options})=>url==='https://ugyimdqnyanmxayhdvje.supabase.co/rest/v1/rpc/bootstrap_madness_scheduler' && options.headers['Content-Profile']==='public'))
+assert.ok(schedulerCalls.every(({url,options})=>url==='https://ugyimdqnyanmxayhdvje.supabase.co/rest/v1/rpc/bootstrap_madness_scheduler' && options.headers['Content-Profile']==='public' && options.redirect==='error'))
 assert.deepEqual(schedulerCalls.map(({options})=>JSON.parse(options.body)),[false,true].map(enable=>({p_cron_secret:schedulerConfig.cronSecret,p_enable:enable})))
 const schedulerCallCount=schedulerCalls.length
 for(const supabaseUrl of ['https://other.supabase.co','https://ugyimdqnyanmxayhdvje.supabase.co.evil.test','https://ugyimdqnyanmxayhdvje.supabase.co/other','https://user@ugyimdqnyanmxayhdvje.supabase.co','https://ugyimdqnyanmxayhdvje.supabase.co/?target=elsewhere']) {
