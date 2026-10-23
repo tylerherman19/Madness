@@ -2,8 +2,28 @@ import {PGlite} from '@electric-sql/pglite'
 import {readFile,readdir} from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import ts from 'typescript'
-import {encryptBackup,decryptBackup} from './backup.mjs'
+import {encryptBackup,decryptBackup,fetchBackupSnapshot} from './backup.mjs'
 import {restoreCheck} from './restore-check.mjs'
+// Verify schema routing and identity before the archive/encryption boundary.
+const backupCalls=[]
+const backupRequest=async(url,options)=>{
+ backupCalls.push({url,options})
+ return {ok:true,json:async()=>({schema:options.headers['Content-Profile'],tables:{}})}
+}
+const backupConfig={url:'https://fixture.supabase.test',serviceKey:'fixture-service-role-key'}
+assert.equal((await fetchBackupSnapshot(backupConfig,backupRequest)).schema,'public')
+assert.equal((await fetchBackupSnapshot({...backupConfig,schema:'sandbox'},backupRequest)).schema,'sandbox')
+assert.deepEqual(backupCalls.map(call=>call.options.headers['Content-Profile']),['public','sandbox'])
+assert.ok(backupCalls.every(call=>call.url==='https://fixture.supabase.test/rest/v1/rpc/contest_backup' && call.options.method==='POST'))
+const countBeforeInvalid=backupCalls.length
+for(const schema of ['', 'PUBLIC', 'private', 'public,sandbox']) {
+ await assert.rejects(fetchBackupSnapshot({...backupConfig,schema},backupRequest),/must be public or sandbox/)
+}
+assert.equal(backupCalls.length,countBeforeInvalid,'Unsupported schemas must not make a request')
+for(const responseSchema of ['public',undefined]) {
+ await assert.rejects(fetchBackupSnapshot({...backupConfig,schema:'sandbox'},async()=>({ok:true,json:async()=>({schema:responseSchema,tables:{}})})),/schema mismatch/)
+}
+console.log('PASS backup schema: public default, explicit sandbox profile, invalid schema rejection and response identity check')
 const db=new PGlite()
 await db.exec('create role anon;create role authenticated;create role service_role;create role authenticator;')
 for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql') && f < '025_').sort()) await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
