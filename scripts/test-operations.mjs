@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import ts from 'typescript'
 import {encryptBackup,decryptBackup,fetchBackupSnapshot} from './backup.mjs'
 import {restoreCheck} from './restore-check.mjs'
+import {configureScheduler} from './configure-scheduler.mjs'
 // Verify schema routing and identity before the archive/encryption boundary.
 const backupCalls=[]
 const backupRequest=async(url,options)=>{
@@ -24,12 +25,53 @@ for(const responseSchema of ['public',undefined]) {
  await assert.rejects(fetchBackupSnapshot({...backupConfig,schema:'sandbox'},async()=>({ok:true,json:async()=>({schema:responseSchema,tables:{}})})),/schema mismatch/)
 }
 console.log('PASS backup schema: public default, explicit sandbox profile, invalid schema rejection and response identity check')
+// Only the fixed project and reviewed bootstrap response can be accepted.
+const schedulerConfig={supabaseUrl:'https://ugyimdqnyanmxayhdvje.supabase.co',serviceKey:'fixture-service-role',cronSecret:'fixture-existing-cron-authorization'}
+const schedulerJobs=['madness-independent-workers','madness-schedule-sync','madness-retention']
+const schedulerCalls=[]
+const schedulerRequest=async(url,options)=>{
+ schedulerCalls.push({url,options})
+ return {ok:true,json:async()=>({ok:true,enabled:JSON.parse(options.body).p_enable,configured:3,base_url:'https://madness-cyan.vercel.app',job_names:schedulerJobs,unexpected_secret:schedulerConfig.cronSecret})}
+}
+for(const enable of [false,true]) {
+ const summary=await configureScheduler({...schedulerConfig,enable},schedulerRequest)
+ assert.equal(summary.enabled,enable)
+ assert.equal(JSON.stringify(summary).includes(schedulerConfig.cronSecret),false,'Output only contains reviewed non-secret fields')
+}
+assert.ok(schedulerCalls.every(({url,options})=>url==='https://ugyimdqnyanmxayhdvje.supabase.co/rest/v1/rpc/bootstrap_madness_scheduler' && options.headers['Content-Profile']==='public'))
+assert.deepEqual(schedulerCalls.map(({options})=>JSON.parse(options.body)),[false,true].map(enable=>({p_cron_secret:schedulerConfig.cronSecret,p_enable:enable})))
+const schedulerCallCount=schedulerCalls.length
+for(const supabaseUrl of ['https://other.supabase.co','https://ugyimdqnyanmxayhdvje.supabase.co.evil.test','https://ugyimdqnyanmxayhdvje.supabase.co/other','https://user@ugyimdqnyanmxayhdvje.supabase.co','https://ugyimdqnyanmxayhdvje.supabase.co/?target=elsewhere']) {
+ await assert.rejects(configureScheduler({...schedulerConfig,supabaseUrl},schedulerRequest),/restricted to the verified Madness project/)
+}
+await assert.rejects(configureScheduler({...schedulerConfig,enable:'true'},schedulerRequest),/must be a boolean/)
+assert.equal(schedulerCalls.length,schedulerCallCount,'Wrong target and invalid configuration must not send credentials')
+let errorBodyRead=false
+await assert.rejects(configureScheduler(schedulerConfig,async()=>({ok:false,status:503,json:async()=>{errorBodyRead=true;return {secret:schedulerConfig.cronSecret}}})),/^Error: Scheduler configuration failed \(HTTP 503\)$/)
+assert.equal(errorBodyRead,false,'Provider/database error bodies must not be read or logged')
+await assert.rejects(configureScheduler(schedulerConfig,async()=>{throw new Error(schedulerConfig.cronSecret)}),/^Error: Scheduler configuration request failed$/)
+await assert.rejects(configureScheduler(schedulerConfig,async()=>({ok:true,json:async()=>({ok:true,enabled:false,configured:3,base_url:'https://other.example',job_names:schedulerJobs})})),/could not be verified/)
+console.log('PASS scheduler client: fixed target, explicit activation, sanitized output and safe failure handling')
 const db=new PGlite()
 await db.exec('create role anon;create role authenticated;create role service_role;create role authenticator;')
 for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql') && f < '025_').sort()) await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
 await db.exec(await readFile('supabase/migrations/024_operations.sql','utf8'))
 const scalar=async(sql,params=[])=>Object.values((await db.query(sql,params)).rows[0])[0]
 const fails=async(sql,pattern)=>assert.rejects(db.exec(sql),pattern)
+// The temporary RPC compiles with a fixed search path and cannot be invoked
+// by a public caller. Real extension execution remains a hosted setup check.
+await db.exec(await readFile('docs/reliability/bootstrap-scheduler.sql','utf8'))
+const bootstrapSignature='public.bootstrap_madness_scheduler(text,boolean)'
+assert.equal(await scalar(`select has_function_privilege('anon',$1,'EXECUTE')`,[bootstrapSignature]),false)
+assert.equal(await scalar(`select has_function_privilege('authenticated',$1,'EXECUTE')`,[bootstrapSignature]),false)
+assert.equal(await scalar(`select has_function_privilege('service_role',$1,'EXECUTE')`,[bootstrapSignature]),true)
+assert.equal(await scalar(`select prosecdef from pg_proc where oid=$1::regprocedure`,[bootstrapSignature]),true)
+assert.deepEqual(await scalar(`select proconfig from pg_proc where oid=$1::regprocedure`,[bootstrapSignature]),['search_path=pg_catalog'])
+await db.exec('set role anon')
+await fails(`select public.bootstrap_madness_scheduler('fixture-cron-authorization',false)`,/permission denied/)
+await db.exec('reset role; drop function public.bootstrap_madness_scheduler(text,boolean);')
+console.log('PASS scheduler RPC boundary: fixed definer search path, service-role-only execution and anon denial')
+
 // Exercise the real assignment coordinator without a Next server or network.
 // Only framework side effects/provider calls are replaced; claims and player
 // writes still use the migrated PostgreSQL functions below.
