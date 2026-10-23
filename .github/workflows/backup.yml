@@ -29,6 +29,7 @@ jobs:
             node scripts/restore-check.mjs "work/backup-$schema.json.enc"
           done
       - uses: actions/upload-artifact@v4
+        id: upload
         with:
           name: encrypted-madness-backup-${{ github.run_id }}
           path: |
@@ -36,3 +37,10 @@ jobs:
             work/backup-sandbox.json.enc
           retention-days: 14
           if-no-files-found: error
+      - name: Reverify uploaded archives and record restore observations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        run: node scripts/record-backup-check.mjs

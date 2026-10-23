@@ -9,6 +9,8 @@
 --    backup/restore, contest state and retention candidates. Keep actual email
 --    switches false and public.delivery_settings.mode='record-only'.
 -- 2. Install pg_cron, pg_net and supabase_vault separately in the dashboard.
+--    Run audit-scheduler-isolation.sql and verify net stays outside Data API schemas.
+--    Hosted pg_net grants are managed by Supabase; trust direct database roles.
 -- 3. Install bootstrap-scheduler.sql as postgres. The temporary RPC is a fixed
 --    SECURITY DEFINER function executable only by service_role, not public users.
 -- 4. Dispatch 'Configure reviewed Madness scheduler' on reviewed main with
@@ -30,7 +32,9 @@
 -- madness-independent-workers: every minute; results, grading, assignment,
 -- advance, reminders, campaigns, delivery, integrity (independent due times).
 -- madness-schedule-sync: every 15 minutes; schedule.
--- madness-retention: daily 11:00 UTC; retention (review eligibility first).
+-- madness-retention: hourly due check; cleanup runs at most once per 24 hours.
+-- Hourly checks avoid missing a whole day when completion time drifts past an
+-- exact daily invocation. Review eligibility before initial activation.
 -- The application origin is exactly https://madness-cyan.vercel.app. Stored
 -- job commands reference Vault values and fail closed if that origin changes.
 --

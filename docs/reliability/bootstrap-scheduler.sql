@@ -98,7 +98,7 @@ begin
  $schedule$);
  perform cron.alter_job(job_id,active:=p_enable);
  configured := configured+1;
- job_id := cron.schedule('madness-retention','0 11 * * *',$retention$
+ job_id := cron.schedule('madness-retention','0 * * * *',$retention$
   select net.http_get(
    url := (select decrypted_secret from vault.decrypted_secrets where name='madness_base_url' and decrypted_secret='https://madness-cyan.vercel.app')||'/api/cron/worker?workload=retention',
    headers := jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='madness_cron_secret')),

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
-import { getDb } from '@/lib/testMode'
+import { getDb, isTestMode } from '@/lib/testMode'
 import Actions from '../Actions'
 import Controls from '../../operations/Controls'
 const views: Record<string, string> = {
@@ -19,6 +19,33 @@ const stamp = (s: string | null | undefined) =>
         timeZoneName: 'short',
       })
     : 'Not observed'
+function backupObservation(value: unknown, schema: string) {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Record<string, unknown>
+  if (!row.progress || typeof row.progress !== 'object') return null
+  const progress = row.progress as Record<string, unknown>
+  const time = (value: unknown): value is string =>
+    typeof value === 'string' && Number.isFinite(Date.parse(value))
+  const id = (value: unknown): value is string =>
+    typeof value === 'string' && /^[1-9][0-9]{0,19}$/.test(value)
+  if (
+    row.key !== 'recovery:backup-restore' || row.status !== 'done' ||
+    !time(row.last_success_at) || !time(progress.snapshot_created_at) ||
+    progress.schema !== schema || progress.artifact_status !== 'uploaded' ||
+    !id(progress.github_run_id) || !id(progress.artifact_id) ||
+    typeof progress.commit_sha !== 'string' || !/^[a-f0-9]{40}$/.test(progress.commit_sha) ||
+    typeof progress.tables !== 'number' || !Number.isSafeInteger(progress.tables) || progress.tables < 1 ||
+    typeof progress.rows !== 'number' || !Number.isSafeInteger(progress.rows) || progress.rows < 0 ||
+    JSON.stringify(progress.verified_schemas) !== '["public","sandbox"]' ||
+    Date.parse(progress.snapshot_created_at) > Date.parse(row.last_success_at) + 300000 ||
+    Date.parse(row.last_success_at) > Date.now() + 300000
+  ) return null
+  return {
+    checkedAt: row.last_success_at, snapshotAt: progress.snapshot_created_at,
+    schema, tables: progress.tables, rows: progress.rows,
+    runId: progress.github_run_id, artifactId: progress.artifact_id, commitSha: progress.commit_sha,
+  }
+}
 export default async function SystemView({
   params,
   searchParams,
@@ -74,6 +101,16 @@ export default async function SystemView({
         </p>
       </section>
     )
+  const backupResult = view === 'overview' || view === 'recovery'
+    ? await db.from('operation_runs')
+        .select('key,status,last_success_at,progress')
+        .eq('key', 'recovery:backup-restore')
+        .maybeSingle()
+    : null
+  const backup = backupResult && !backupResult.error
+    ? backupObservation(backupResult.data, (await isTestMode()) ? 'sandbox' : 'public')
+    : null
+  const backupArtifactMayBeExpired = backup && new Date().getTime() - Date.parse(backup.checkedAt) >= 14 * 86400000
   const pagination = (
     <nav aria-label="Record pages">
       {page > 0 && (
@@ -152,7 +189,10 @@ export default async function SystemView({
               'Version unavailable'}
           </dd>
           <dt>Backup / verified restore</dt>
-          <dd>Unknown in this view. Verify workflow artifacts in Recovery.</dd>
+          <dd>
+            {backup ? <>Last isolated restore check {stamp(backup.checkedAt)} · {backup.schema} snapshot, {backup.tables} tables and {backup.rows} rows.</> : 'Unknown; no verified restore observation is available.'}{' '}
+            <Link href="/admin/system/recovery">Recovery evidence</Link>
+          </dd>
         </dl>
         <p>
           A recent heartbeat does not prove all assignments, grading or
@@ -498,12 +538,18 @@ export default async function SystemView({
   else
     content = (
       <>
-        <p>
-          Backup and restore status:{' '}
-          <strong>not verified in this environment</strong>. A backup job
-          passing is insufficient; inspect its isolated restore result and
-          encrypted artifact.
-        </p>
+        {backup ? <>
+          <h2>Last observed backup and isolated restore</h2>
+          <dl>
+            <dt>Restore verified</dt><dd>{stamp(backup.checkedAt)}</dd>
+            <dt>Snapshot created</dt><dd>{stamp(backup.snapshotAt)}</dd>
+            <dt>Coverage in this schema</dt><dd>{backup.schema} · {backup.tables} tables · {backup.rows} rows reconciled</dd>
+            <dt>Archives verified in this run</dt><dd>Public and sandbox, each restored into an isolated database after encrypted artifact upload</dd>
+            <dt>Workflow evidence</dt><dd><a href={`https://github.com/tylerherman19/Madness/actions/runs/${backup.runId}`}>Run {backup.runId}</a> · artifact {backup.artifactId}</dd>
+            <dt>Matching source</dt><dd><a href={`https://github.com/tylerherman19/Madness/commit/${backup.commitSha}`}>{backup.commitSha.slice(0, 12)}</a></dd>
+          </dl>
+          <p>{backupArtifactMayBeExpired ? 'The recorded artifact may have expired. ' : ''}Encrypted artifacts are retained for 14 days. This observation records the checks at the time shown; confirm the artifact remains available before recovery.</p>
+        </> : <p role="status">Backup and restore status: <strong>Unknown</strong>. No verified restore observation is available for this schema. Check the workflow run and encrypted artifact; a job starting or an absent error does not establish recoverability.</p>}
         <p>
           Backups include new delivery, revision, campaign and operational
           tables. Run the encrypted backup workflow outside deadline traffic.

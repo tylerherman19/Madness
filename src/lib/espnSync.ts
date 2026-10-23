@@ -1,4 +1,5 @@
 import 'server-only'
+import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   fetchDayScoreboard,
@@ -14,6 +15,7 @@ import {
   CONFERENCES,
 } from './espn'
 import { getOrCreateSlate, refreshLockTime, renumberSlates } from './slates'
+import { selectAllIn } from './db'
 
 export interface SyncResult {
   ok: boolean
@@ -21,18 +23,16 @@ export interface SyncResult {
   slateId?: string
   gamesSynced?: number
   teamsSeen?: number
-  // Conferences whose ESPN call failed. Games are still written, but stale
-  // rows are left alone when this is non-empty — see below.
+  // Failed conferences or validation/review gates. Never prune an incomplete feed.
   partial?: string[]
 }
 
 // Sync one day's games from ESPN into `supabase` (the caller passes getDb()'s
 // result so this routes to prod or the test sandbox correctly).
 //
-// `yyyymmdd` is the ESPN query date. Games are filed under the slate matching
-// their own Central tip date, which is not always the queried one: ESPN's
-// `dates` parameter returns late games that tip after midnight ET the
-// following day, and those belong to the day they are actually played.
+// `yyyymmdd` is the playing date in Central time. A UTC-next-day tip still
+// belongs here when its Central date matches. TBD dates use ESPN's Eastern
+// placeholder convention. A response for another playing day is incomplete.
 //
 // Only activates a slate if nothing else is active — syncing tomorrow must
 // not switch the active slate out from under today.
@@ -46,6 +46,11 @@ export async function syncSlateFromEspn(
   seasonYear: number,
   { revalidateSeconds = 0 }: { revalidateSeconds?: number } = {}
 ): Promise<SyncResult> {
+  const requestedDate = `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
+  if (!/^\d{8}$/.test(yyyymmdd) || !Number.isFinite(Date.parse(`${requestedDate}T12:00:00Z`)) ||
+    new Date(`${requestedDate}T12:00:00Z`).toISOString().slice(0, 10) !== requestedDate) {
+    return { ok: false, error: 'Invalid schedule date' }
+  }
   const { events, failedGroups } = await fetchDayScoreboard(yyyymmdd, revalidateSeconds)
 
   if (failedGroups.length === Object.keys(CONFERENCES).length + 1) {
@@ -62,10 +67,52 @@ export async function syncSlateFromEspn(
   // before — so its Eastern date is the real playing date.
   const byDate = new Map<string, typeof events>()
   for (const event of events) {
+    const teams = eventCompetitors(event)
+    if (!event.id || !teams?.home.team.abbreviation || !teams.away.team.abbreviation) {
+      return { ok: false, error: 'Schedule feed contains incomplete game data; keeping the saved schedule.', partial: [...failedGroups, 'invalid-event'] }
+    }
+    if (!Number.isFinite(Date.parse(event.date))) {
+      return { ok: false, error: 'Schedule feed contains an invalid game date; keeping the saved schedule.', partial: [...failedGroups, 'invalid-date'] }
+    }
     const date = isTimeTbd(event) ? easternDateOf(event.date) : centralDateOf(event.date)
+    if (date !== requestedDate) {
+      return { ok: false, error: 'Schedule feed contains games for another playing date; keeping the saved schedule.', partial: [...failedGroups, 'date-mismatch'] }
+    }
     const bucket = byDate.get(date)
     if (bucket) bucket.push(event)
     else byDate.set(date, [event])
+  }
+
+  // Read before creating/updating slates. This gives known changes a clear
+  // review incident; migration 028 also serializes against racing pick saves.
+  let storedGames: StoredGame[]
+  let storedSlates: { id: string; slate_date: string }[]
+  const reliable = process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true'
+  try {
+    storedGames = await selectAllIn<StoredGame>(events.map(event => event.id), (batch, from, to) =>
+      supabase.from('games').select(`id,espn_event_id,slate_id,home_team,away_team${reliable ? ',home_team_id,away_team_id' : ''}`)
+        .in('espn_event_id', batch).order('id').range(from, to))
+    storedSlates = await selectAllIn<{ id: string; slate_date: string }>(storedGames.map(game => game.slate_id), (batch, from, to) =>
+      supabase.from('slates').select('id,slate_date').in('id', batch).order('id').range(from, to))
+    const slateDates = new Map(storedSlates.map(slate => [slate.id, slate.slate_date]))
+    const changes = storedGames.filter(game => {
+      const event = events.find(event => event.id === game.espn_event_id)!
+      const teams = eventCompetitors(event)
+      return slateDates.get(game.slate_id) !== requestedDate || (teams && (
+        game.home_team !== teams.home.team.abbreviation || game.away_team !== teams.away.team.abbreviation ||
+        (reliable && ((game.home_team_id != null && game.home_team_id !== (teams.home.team.id ?? null)) ||
+          (game.away_team_id != null && game.away_team_id !== (teams.away.team.id ?? null))))))
+    })
+    const picks = await selectAllIn<{ slate_id: string }>(changes.map(game => game.slate_id), (batch, from, to) =>
+      supabase.from('picks').select('id,slate_id').in('slate_id', batch).order('id').range(from, to))
+    const pickedSlates = new Set(picks.map(pick => pick.slate_id))
+    const protectedGames = changes.filter(game => pickedSlates.has(game.slate_id))
+    if (protectedGames.length > 0) {
+      await recordScheduleReview(supabase, reliable, requestedDate, protectedGames.map(game => game.id))
+      return { ok: false, error: 'A picked schedule changed; keeping the saved games for manual review.', partial: [...failedGroups, 'schedule-review'] }
+    }
+  } catch {
+    return { ok: false, error: 'Could not verify schedule integrity; keeping the saved schedule.', partial: [...failedGroups, 'schedule-integrity'] }
   }
 
   const { data: currentActive } = await supabase
@@ -77,10 +124,6 @@ export async function syncSlateFromEspn(
   const teamRows = new Map<string, Record<string, unknown>>()
   let totalGames = 0
   let primarySlateId: string | undefined
-
-  // The requested day is the one we report back and may activate; any spill
-  // onto the next date is written too, but never steals `is_active`.
-  const requestedDate = `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
 
   for (const [slateDate, dayEvents] of byDate) {
     const slate = await getOrCreateSlate(supabase, slateDate, seasonYear)
@@ -144,26 +187,29 @@ export async function syncSlateFromEspn(
     if (rows.length > 0) {
       // Conflict on the ESPN event id — the same game arriving from two
       // conference calls updates one row rather than inserting twice.
-      const { error } = await supabase
+      const { data: saved, error } = await supabase
         .from('games')
         .upsert(rows, { onConflict: 'espn_event_id' })
+        .select('id,espn_event_id')
       if (error) {
         return { ok: false, error: `Failed to save games: ${error.message}` }
+      }
+      if (!saved || saved.length !== rows.length) {
+        // 028 skips protected rows and records the incident atomically. A
+        // smaller representation also fails closed if a response is truncated.
+        await recordScheduleReview(supabase, reliable, requestedDate, storedGames.map(game => game.id))
+        return { ok: false, error: 'A schedule change was held for manual review.', partial: [...failedGroups, 'schedule-review'] }
       }
       totalGames += rows.length
     }
 
-    // Only the requested day is authoritative. A bucket for any other date
-    // holds just the stray games this query happened to return (a late tip
-    // that spills past midnight), not that day's full schedule — pruning it
-    // would delete every other game on that day.
     if (slateDate === requestedDate && failedGroups.length === 0) {
-      await pruneMissingGames(supabase, slateId, new Set(rows.map((r) => r.espn_event_id)))
+      if (!await pruneMissingGames(supabase, slateId, new Set(rows.map((r) => r.espn_event_id)))) {
+        return { ok: false, error: 'Schedule cleanup was incomplete; saved games were kept for review.', partial: ['schedule-review'] }
+      }
     }
 
-    // Recompute the lock from everything stored on the slate — manual games
-    // included, placeholder tips excluded — rather than from this query's
-    // rows, which for a spill-over bucket are a single late game.
+    // Manual games count; placeholder tips do not.
     await refreshLockTime(supabase, slateId)
     if (process.env.AUTOMATION_V2_ENABLED === 'true') {
       const ranks = await fetchApRankings()
@@ -175,10 +221,17 @@ export async function syncSlateFromEspn(
     }
   }
 
+  // A permitted move of an unpicked event also changes its previous day's
+  // earliest tip. The database refreshes both pre-lock assignment snapshots.
+  for (const slate of storedSlates) {
+    if (slate.slate_date !== requestedDate) await refreshLockTime(supabase, slate.id)
+  }
+
   await renumberSlates(supabase, seasonYear)
 
   if (teamRows.size > 0) {
-    await supabase.from('teams').upsert([...teamRows.values()], { onConflict: 'abbr' })
+    const { error } = await supabase.from('teams').upsert([...teamRows.values()], { onConflict: 'abbr' })
+    if (error) return { ok: false, error: `Failed to save team directory: ${error.message}` }
   }
 
   if (!currentActive && primarySlateId) {
@@ -201,6 +254,30 @@ export async function syncSlateFromEspn(
   }
 }
 
+interface StoredGame {
+  id: string
+  espn_event_id: string
+  slate_id: string
+  home_team: string
+  away_team: string
+  home_team_id?: string | null
+  away_team_id?: string | null
+}
+
+async function recordScheduleReview(db: SupabaseClient, reliable: boolean, date: string, gameIds: string[]): Promise<void> {
+  const message = 'Schedule identity changed after picks. Review the affected games before changing periods, teams or outcomes.'
+  const details = { requested_date: date, game_ids: gameIds }
+  if (reliable) {
+    const { error } = await db.rpc('record_incident', { p_key: `schedule-sync:${date}`, p_impact: message,
+      p_correlation: randomUUID(), p_detail: JSON.stringify(details).slice(0, 1000) })
+    if (error) throw error
+  } else {
+    // Pre-025 deployments have neither incidents nor stable team/game columns.
+    const { error } = await db.from('audit_log').insert({ event_type: 'schedule-change', actor: 'system', message, details })
+    if (error) throw error
+  }
+}
+
 // Drop games ESPN no longer lists for a day it fully answered for. Two kinds
 // of row are never touched:
 //
@@ -213,15 +290,21 @@ async function pruneMissingGames(
   supabase: SupabaseClient,
   slateId: string,
   listed: Set<string>
-): Promise<void> {
-  const [{ data: stored }, { data: picks }] = await Promise.all([
-    supabase.from('games').select('id, espn_event_id, home_team, away_team').eq('slate_id', slateId),
-    supabase.from('picks').select('team').eq('slate_id', slateId),
-  ])
-  const pickedTeams = new Set((picks ?? []).map((pick: { team: string }) => pick.team))
+): Promise<boolean> {
+  let stored: StoredGame[]
+  let picks: { team: string }[]
+  try {
+    [stored, picks] = await Promise.all([
+      selectAllIn<StoredGame>([slateId], (batch, from, to) => supabase.from('games')
+        .select('id,espn_event_id,home_team,away_team').in('slate_id', batch).order('id').range(from, to)),
+      selectAllIn<{ team: string }>([slateId], (batch, from, to) => supabase.from('picks')
+        .select('id,team').in('slate_id', batch).order('id').range(from, to)),
+    ])
+  } catch { return false }
+  const pickedTeams = new Set(picks.map(pick => pick.team))
 
   const staleIds: string[] = []
-  for (const game of stored ?? []) {
+  for (const game of stored) {
     if (listed.has(game.espn_event_id)) continue
     if (!isEspnSourced(game.espn_event_id)) continue
     if (pickedTeams.has(game.home_team) || pickedTeams.has(game.away_team)) {
@@ -231,8 +314,10 @@ async function pruneMissingGames(
     staleIds.push(game.id)
   }
   if (staleIds.length > 0) {
-    await supabase.from('games').delete().in('id', staleIds)
+    const { data, error } = await supabase.from('games').delete().in('id', staleIds).select('id')
+    if (error || data?.length !== staleIds.length) return false
   }
+  return true
 }
 
 export function isEspnSourced(espnEventId: string): boolean {
