@@ -53,7 +53,8 @@ export default function RulesSection({ pool }: { pool: PoolConfig }) {
   return (
     <section id="rules" className={s.rulesSection} aria-labelledby="rules-title">
       <div className={s.sectionHead}><h2 id="rules-title">Rules</h2></div>
-      <ol className={s.ruleList}>
+      {/* Two columns on a computer, read down: the first half on the left. */}
+      <ol className={s.ruleList} style={{ '--rows': Math.ceil(rules.length / 2) } as React.CSSProperties}>
         {rules.map((rule, index) => (
           <li key={rule.title}>
             <span>{index + 1}</span>
