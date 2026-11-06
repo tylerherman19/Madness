@@ -25,6 +25,7 @@ export interface SyncResult {
   teamsSeen?: number
   // Failed conferences or validation/review gates. Never prune an incomplete feed.
   partial?: string[]
+  reviewGames?: string[]
 }
 
 // Sync one day's games from ESPN into `supabase` (the caller passes getDb()'s
@@ -87,6 +88,8 @@ export async function syncSlateFromEspn(
   // review incident; migration 028 also serializes against racing pick saves.
   let storedGames: StoredGame[]
   let storedSlates: { id: string; slate_date: string }[]
+  const held = new Map<string, string>()
+  const oriented = new Map<string, typeof events[number]>()
   const reliable = process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true'
   try {
     storedGames = await selectAllIn<StoredGame>(events.map(event => event.id), (batch, from, to) =>
@@ -95,21 +98,35 @@ export async function syncSlateFromEspn(
     storedSlates = await selectAllIn<{ id: string; slate_date: string }>(storedGames.map(game => game.slate_id), (batch, from, to) =>
       supabase.from('slates').select('id,slate_date').in('id', batch).order('id').range(from, to))
     const slateDates = new Map(storedSlates.map(slate => [slate.id, slate.slate_date]))
+    const eventsById = new Map(events.map(event => [event.id, event]))
     const changes = storedGames.filter(game => {
-      const event = events.find(event => event.id === game.espn_event_id)!
-      const teams = eventCompetitors(event)
-      return slateDates.get(game.slate_id) !== requestedDate || (teams && (
-        game.home_team !== teams.home.team.abbreviation || game.away_team !== teams.away.team.abbreviation ||
+      const event = eventsById.get(game.espn_event_id)!
+      if (slateDates.get(game.slate_id) !== requestedDate) return true
+      const teams = eventCompetitors(event)!
+      // Keep the saved orientation so existing pick links and frozen snapshots
+      // stay valid. Move the entire competitor (including winner and score).
+      if (event.competitions[0].neutralSite === true &&
+          game.home_team_id && game.away_team_id && game.home_team_id !== game.away_team_id &&
+          game.home_team_id === teams.away.team.id && game.away_team_id === teams.home.team.id &&
+          game.home_team === teams.away.team.abbreviation && game.away_team === teams.home.team.abbreviation) {
+        const competition = event.competitions[0]
+        const home = { ...teams.away, homeAway: 'home' as const }
+        const away = { ...teams.home, homeAway: 'away' as const }
+        oriented.set(event.id, { ...event, competitions: [{ ...competition, competitors: [home, away] }, ...event.competitions.slice(1)] })
+        return false
+      }
+      return game.home_team !== teams.home.team.abbreviation || game.away_team !== teams.away.team.abbreviation ||
         (reliable && ((game.home_team_id != null && game.home_team_id !== (teams.home.team.id ?? null)) ||
-          (game.away_team_id != null && game.away_team_id !== (teams.away.team.id ?? null))))))
+          (game.away_team_id != null && game.away_team_id !== (teams.away.team.id ?? null))))
     })
     const picks = await selectAllIn<{ slate_id: string }>(changes.map(game => game.slate_id), (batch, from, to) =>
       supabase.from('picks').select('id,slate_id').in('slate_id', batch).order('id').range(from, to))
     const pickedSlates = new Set(picks.map(pick => pick.slate_id))
     const protectedGames = changes.filter(game => pickedSlates.has(game.slate_id))
-    if (protectedGames.length > 0) {
-      await recordScheduleReview(supabase, reliable, requestedDate, protectedGames.map(game => game.id))
-      return { ok: false, error: 'A picked schedule changed; keeping the saved games for manual review.', partial: [...failedGroups, 'schedule-review'] }
+    for (const game of protectedGames) held.set(game.espn_event_id, game.id)
+    if (held.size) await recordScheduleReview(supabase, reliable, requestedDate, [...held.values()])
+    if (held.size === events.length) {
+      return { ok: false, error: 'All games are held for schedule review.', reviewGames: [...held.values()] }
     }
   } catch {
     return { ok: false, error: 'Could not verify schedule integrity; keeping the saved schedule.', partial: [...failedGroups, 'schedule-integrity'] }
@@ -133,7 +150,9 @@ export async function syncSlateFromEspn(
 
     const rows = []
 
-    for (const event of dayEvents) {
+    for (const incoming of dayEvents) {
+      if (held.has(incoming.id)) continue
+      const event = oriented.get(incoming.id) ?? incoming
       const teams = eventCompetitors(event)
       if (!teams) continue
       const homeAbbr = teams.home.team.abbreviation
@@ -197,13 +216,19 @@ export async function syncSlateFromEspn(
       if (!saved || saved.length !== rows.length) {
         // 028 skips protected rows and records the incident atomically. A
         // smaller representation also fails closed if a response is truncated.
-        await recordScheduleReview(supabase, reliable, requestedDate, storedGames.map(game => game.id))
-        return { ok: false, error: 'A schedule change was held for manual review.', partial: [...failedGroups, 'schedule-review'] }
+        const savedIds = new Set(saved?.map(row => row.espn_event_id))
+        const missing = rows.filter(row => !savedIds.has(row.espn_event_id))
+        const known = new Map(storedGames.map(game => [game.espn_event_id, game.id]))
+        if (missing.some(row => !known.has(row.espn_event_id))) {
+          return { ok: false, error: 'Could not verify all game writes.' }
+        }
+        for (const row of missing) held.set(row.espn_event_id, known.get(row.espn_event_id)!)
+        await recordScheduleReview(supabase, reliable, requestedDate, [...held.values()])
       }
-      totalGames += rows.length
+      totalGames += saved?.length ?? 0
     }
 
-    if (slateDate === requestedDate && failedGroups.length === 0) {
+    if (slateDate === requestedDate && failedGroups.length === 0 && !held.size) {
       if (!await pruneMissingGames(supabase, slateId, new Set(rows.map((r) => r.espn_event_id)))) {
         return { ok: false, error: 'Schedule cleanup was incomplete; saved games were kept for review.', partial: ['schedule-review'] }
       }
@@ -251,6 +276,7 @@ export async function syncSlateFromEspn(
     gamesSynced: totalGames,
     teamsSeen: teamRows.size,
     partial: failedGroups.length > 0 ? failedGroups : undefined,
+    reviewGames: held.size ? [...held.values()] : undefined,
   }
 }
 

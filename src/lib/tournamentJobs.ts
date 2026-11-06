@@ -94,7 +94,7 @@ export async function runTournamentJob(
         (!response.ok && !response.error?.startsWith('No games found')) ||
         response.partial?.length
       )
-        throw new Error('Schedule feed incomplete')
+        throw new Error(response.error ?? `Schedule feed incomplete: ${response.partial?.join(', ')}`)
       progress = response
     } else if (kind === 'assignment') {
       const assignment = await runAutoAssignNow(db, now)

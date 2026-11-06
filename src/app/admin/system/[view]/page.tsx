@@ -214,7 +214,9 @@ export default async function SystemView({
       <>
         <p>
           Each workload has its own lease and retry time. One failed workload
-          does not prevent the scheduler from dispatching others.
+          does not prevent the scheduler from dispatching others. Schedule, results and turnover
+          check again after a pause when marked for review. Open Errors and incidents
+          to see which games or missed deadlines need attention.
         </p>
         <div className="system-table">
           <table>

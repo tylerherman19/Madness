@@ -57,6 +57,7 @@ export interface EspnEvent {
     // False when ESPN has the date but not the tip time yet — a full season
     // is published months ahead with midnight-Eastern placeholders.
     timeValid?: boolean
+    neutralSite?: boolean
     status: {
       type: { state: string; shortDetail?: string; completed: boolean }
       displayClock?: string
