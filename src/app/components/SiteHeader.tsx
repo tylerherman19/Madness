@@ -3,10 +3,13 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import BrandMark from './BrandMark'
 import LogoutButton from './LogoutButton'
 import type { CompetitionMode } from '@/lib/competition'
-import { eventLabel, themeStyle } from '@/lib/poolTheme'
-import { lastAccount, rememberAccount, rememberMode, usePoolMode, useRememberedMode } from './PoolMode'
+import type { PickState, Viewer } from '@/lib/viewerState'
+import { themeStyle } from '@/lib/poolTheme'
+import { rememberMode, usePoolMode, useRememberedMode } from './PoolMode'
+import { useViewer } from './useViewer'
 import s from './pp.module.css'
 
 // Same links on every screen size: across the top on a computer, in the menu
@@ -25,43 +28,50 @@ function isCurrent(path: string, href: string): boolean {
   return path === href || path.startsWith(`${href}/`)
 }
 
-export function LogoMark({ size = 30 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="510 180 460 460" aria-hidden="true">
-      <polygon points="548,195 872,195 956,281 872,370 663,370 608,577 528,626 620,316 852,316 884,281 852,250 603,250" fill="#F3EFE3" />
-      <polygon points="701,404 747,404 692,577 633,626" fill="#8FB07F" />
-      <text x="748" y="542" fontFamily="Source Sans 3, sans-serif" fontWeight="700" fontSize="150" fill="#8FB07F">&amp;</text>
-    </svg>
-  )
+// The header's one action, from where the visitor's entry stands.
+function actionFor(viewer: Viewer | undefined): { href: string; label: string } | null | undefined {
+  if (!viewer) return undefined // still finding out
+  if (!viewer.name) return { href: '/login', label: 'Log in' }
+  const byState: Record<PickState, { href: string; label: string } | null> = {
+    open: { href: '/pick', label: 'Make your pick' },
+    submitted: { href: '/pick', label: 'Change pick' },
+    locked: { href: '/sweat', label: 'View picks' },
+    eliminated: { href: '/sweat', label: 'View picks' },
+    none: null,
+  }
+  return viewer.pick ? byState[viewer.pick] : undefined
 }
 
 export default function SiteHeader({
-  signupsClosed = false,
+  signupsClosed,
   mode,
   seasonYear,
   account,
+  pick,
+  hideAction = false,
 }: {
-  signupsClosed?: boolean
+  signupsClosed?: boolean // when the page read it; otherwise the header asks
   mode?: CompetitionMode
   seasonYear?: number | null
-  account?: string
+  // The signed-in name when the page read the session (null: signed out).
+  // Left out on pages built ahead for everyone; the header then asks.
+  account?: string | null
+  pick?: PickState
+  // The page shows the same action itself (Today's entry strip).
+  hideAction?: boolean
 }) {
   const scope = usePoolMode()
   const last = useRememberedMode()
   const knownMode = mode ?? scope.mode
   const knownYear = seasonYear ?? scope.seasonYear
-  // Loading screens know nothing yet; they borrow the last page's values.
+  // Loading screens know nothing yet; they borrow the last page's colors.
   const shownMode = knownMode ?? last.mode
-  const shownYear = knownMode ? knownYear : last.seasonYear
-  const shownAccount = knownMode ? account : account ?? lastAccount()
   useEffect(() => {
-    if (!knownMode) return
-    rememberMode(knownMode, knownYear)
-    rememberAccount(account)
-  }, [knownMode, knownYear, account])
+    if (knownMode) rememberMode(knownMode, knownYear)
+  }, [knownMode, knownYear])
+  const viewer = useViewer(account === undefined ? undefined : { name: account, pick, signupsClosed })
   const path = usePathname() ?? '/'
   const [menuOpen, setMenuOpen] = useState(false)
-  const event = eventLabel(shownMode, shownYear)
   const theme = themeStyle(shownMode)
 
   useEffect(() => {
@@ -76,50 +86,59 @@ export default function SiteHeader({
     if ((event.target as HTMLElement).closest('a')) setMenuOpen(false)
   }
 
-  const accountLink = shownAccount ? <LogoutButton /> : <Link href="/login" aria-current={path === '/login' ? 'page' : undefined}>Log in</Link>
+  const signedIn = !!viewer?.name
+  const found = actionFor(viewer)
+  const action = found && !hideAction && found.href !== path ? found : null
+  const closed = signupsClosed ?? viewer?.signupsClosed ?? true
+  const join = viewer && !signedIn && !closed
+    ? <Link href="/signup" aria-current={path === '/signup' ? 'page' : undefined}>Join pool</Link>
+    : null
+  const logout = signedIn ? <LogoutButton /> : null
 
   return (
-    <>
-      <header className={s.header} style={theme}>
-        <div className={s.headerInner}>
-          <Link className={s.brand} href="/" aria-label="Pick and Pray, home">
-            <LogoMark />
-            <span className={s.brandName}>Pick and Pray</span>
-          </Link>
-          <nav className={s.nav} aria-label="Pool">
-            {links.map((link) => (
-              <Link key={link.href} href={link.href} aria-current={isCurrent(path, link.href) ? 'page' : undefined}>
-                {link.label}
-              </Link>
-            ))}
-            {accountLink}
-          </nav>
-          <Link className={s.submitPick} href="/pick" aria-current={path === '/pick' ? 'page' : undefined}>Submit pick</Link>
-          <button
-            type="button"
-            className={s.menuButton}
-            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={menuOpen}
-            aria-controls="site-menu"
-            onClick={() => setMenuOpen(!menuOpen)}
-          >
-            <span /><span /><span />
-          </button>
-        </div>
-        <div className={s.mobileEvent}>{event}</div>
-        {menuOpen && (
-          <nav id="site-menu" className={s.siteMenu} aria-label="Menu" onClick={closeOnLink}>
-            {shownAccount && <div className={s.siteMenuName}>{shownAccount}</div>}
-            {links.map((link) => (
-              <Link key={link.href} href={link.href} aria-current={isCurrent(path, link.href) ? 'page' : undefined}>
-                {link.label}
-              </Link>
-            ))}
-            {accountLink}
-            {!shownAccount && !signupsClosed && <Link href="/signup">Join pool</Link>}
-          </nav>
-        )}
-      </header>
-    </>
+    <header className={s.header} style={theme}>
+      <div className={s.headerInner}>
+        <Link className={s.brand} href="/" aria-label="Pick and Pray, home">
+          <BrandMark />
+          <span className={s.brandName}>Pick and Pray</span>
+        </Link>
+        <nav className={s.nav} aria-label="Pool">
+          {links.map((link) => (
+            <Link key={link.href} href={link.href} aria-current={isCurrent(path, link.href) ? 'page' : undefined}>
+              {link.label}
+            </Link>
+          ))}
+          {join}
+          {logout}
+        </nav>
+        {action
+          ? <Link className={s.headerAction} href={action.href}>{action.label}</Link>
+          : found === undefined && !hideAction
+            ? <span className={`${s.headerAction} ${s.headerActionPending}`} aria-hidden="true" />
+            : null}
+        <button
+          type="button"
+          className={s.menuButton}
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={menuOpen}
+          aria-controls="site-menu"
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          <span /><span /><span />
+        </button>
+      </div>
+      {menuOpen && (
+        <nav id="site-menu" className={s.siteMenu} aria-label="Menu" onClick={closeOnLink}>
+          {signedIn && <div className={s.siteMenuName}>Signed in as {viewer?.name}</div>}
+          {links.map((link) => (
+            <Link key={link.href} href={link.href} aria-current={isCurrent(path, link.href) ? 'page' : undefined}>
+              {link.label}
+            </Link>
+          ))}
+          {join}
+          {logout}
+        </nav>
+      )}
+    </header>
   )
 }

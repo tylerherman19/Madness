@@ -2,7 +2,7 @@ import Link from 'next/link'
 import InfoPage from '../components/InfoPage'
 import { pageMetadata, supportEmail } from '@/lib/site'
 
-export const metadata = pageMetadata('Contact', 'Reach the Madness pool organizer for account, payment, privacy, or pool questions.', '/contact')
+export const metadata = pageMetadata('Contact', 'Reach the Pick and Pray organizer for account, payment, privacy, or pool questions.', '/contact')
 
 export default function ContactPage() {
   return <InfoPage title="Contact the organizer">

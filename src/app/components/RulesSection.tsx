@@ -38,7 +38,7 @@ function rulesFor(pool: PoolConfig): { title: string; text: string }[] {
     { title: 'One pick a day', text: onePick },
     { title: 'Win and advance', text: 'If your team wins, you survive and pick again on the next pick day.' },
     { title: 'Lose and you’re out', text: 'If your team loses, your entry is eliminated for the rest of the pool.' },
-    { title: 'Picks stay hidden', text: 'Nobody can see anyone else’s pick until the first game of the day tips off.' },
+    { title: 'Picks stay hidden', text: 'Nobody can see anyone else’s pick until the first game of the day tips\u00a0off.' },
     { title: 'Change until lock', text: 'You can change your pick as many times as you like before the first tip. Only your last submitted pick counts.' },
     { title: 'No repeats', text: reuse },
     { title: 'Missed the lock', text: missed },
@@ -51,13 +51,13 @@ function rulesFor(pool: PoolConfig): { title: string; text: string }[] {
 export default function RulesSection({ pool }: { pool: PoolConfig }) {
   const rules = rulesFor(pool)
   return (
-    <section id="rules" className={s.rulesSection} aria-label="Rules">
-      <div className={s.sectionHead}><h2>Rules</h2></div>
+    <section id="rules" className={s.rulesSection} aria-labelledby="rules-title">
+      <div className={s.sectionHead}><h2 id="rules-title">Rules</h2></div>
       <ol className={s.ruleList}>
         {rules.map((rule, index) => (
           <li key={rule.title}>
             <span>{index + 1}</span>
-            <div><h2>{rule.title}</h2><p>{rule.text}</p></div>
+            <div><h3>{rule.title}</h3><p>{rule.text}</p></div>
           </li>
         ))}
       </ol>

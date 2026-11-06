@@ -6,50 +6,35 @@ import { normalizeRound, seedToShow, type CompetitionMode, type TournamentRound 
 // module only turns it into colors and labels. No database, no clock, so both
 // server and client components import it.
 
+// The season changes one thing: the accent. Neutrals (warm off-white, white,
+// charcoal and the warm grays in pp.module.css) are the same all year.
 export interface PoolTheme {
-  head: string // header, scoreboard and other dark surfaces
-  accent: string // actions and selection
-  accent2: string // accents drawn on the dark head color
-  tint: string
-  ink: string
-  mut: string
-  line: string
-  soft: string
+  accent: string // actions, links, selection: 4.5:1+ with white text and on the page
+  accent2: string // the accent drawn on charcoal: 6:1+ there
+  tint: string // the accent's palest fill: your own row, today's column
 }
 
 export const POOL_THEMES: Record<CompetitionMode, PoolTheme> = {
-  'march-madness': {
-    head: '#0B2545', accent: '#1D6FE0', accent2: '#5AA2FF', tint: '#EAF2FE',
-    ink: '#0B2545', mut: '#4A6283', line: '#D8DEE9', soft: '#EDF1F7',
-  },
-  'regular-season': {
-    head: '#1E2227', accent: '#D9581A', accent2: '#FF9A5C', tint: '#FCEDE3',
-    ink: '#1E2227', mut: '#5C6168', line: '#E0E0DD', soft: '#EFEFED',
-  },
+  'march-madness': { accent: '#1A66D2', accent2: '#5AA2FF', tint: '#EAF2FE' },
+  'regular-season': { accent: '#B84A12', accent2: '#FF9A5C', tint: '#FCEDE3' },
 }
 
 export function themeFor(mode: CompetitionMode | undefined): PoolTheme {
   return POOL_THEMES[mode ?? 'regular-season'] ?? POOL_THEMES['regular-season']
 }
 
-// The theme as CSS custom properties, set once on the page shell. The legacy
-// tokens are remapped too, so older screens inside the shell pick up the mode.
+// The theme as CSS custom properties, set once on a page shell. The shared
+// stylesheet's names (--accent, --accent-tint) follow the season too, so
+// admin and form styles inside the shell pick up the same accent.
 export function themeStyle(mode: CompetitionMode | undefined): CSSProperties {
   const t = themeFor(mode)
   return {
-    '--pp-head': t.head,
     '--pp-accent': t.accent,
     '--pp-accent2': t.accent2,
     '--pp-tint': t.tint,
-    '--pp-ink': t.ink,
-    '--pp-mut': t.mut,
-    '--pp-line': t.line,
-    '--pp-soft': t.soft,
-    '--ink': t.ink,
     '--accent': t.accent,
     '--accent-strong': t.accent,
     '--accent-tint': t.tint,
-    '--paper': '#F7F7F4',
   } as CSSProperties
 }
 

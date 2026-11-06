@@ -8,7 +8,7 @@ import {
 } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export const FROM_EMAIL = 'Griffin Sell - Madness <pool@pickandpray.org>'
+export const FROM_EMAIL = 'Griffin Sell, Pick and Pray <pool@pickandpray.org>'
 export const esc = (s: string) =>
   s
     .replace(/&/g, '&amp;')
@@ -108,13 +108,13 @@ export function renderNotification(
       : event.kind === 'reminder'
         ? `Complete your required selections before ${p.deadline}.`
         : event.kind === 'elimination'
-          ? 'Your entry is currently eliminated. Check Madness for results and corrections.'
-          : `Saved ${p.team}, revision ${p.version}, accepted ${p.accepted_at}. This is a receipt for that revision. Check Madness for your current selection.`
+          ? 'Your entry is currently eliminated. Check Pick and Pray for results and corrections.'
+          : `Saved ${p.team}, revision ${p.version}, accepted ${p.accepted_at}. This is a receipt for that revision. Check Pick and Pray for your current selection.`
   return {
     from: FROM_EMAIL,
     to: event.recipient,
-    subject: `Madness: ${label}`,
+    subject: `Pick and Pray: ${label}`,
     ...(event.player_id?{headers:unsubscribeHeaders(event.player_id)}:{}),
-    html: `<p>Hi ${esc(String(p.name ?? ''))},</p><p>${esc(message).replace(/\n/g, '<br>')}</p><p><a href="${esc(process.env.NEXT_PUBLIC_APP_URL ?? 'https://madness-cyan.vercel.app')}">Open Madness</a></p>${event.player_id?unsubscribeFooter(event.player_id):''}`,
+    html: `<p>Hi ${esc(String(p.name ?? ''))},</p><p>${esc(message).replace(/\n/g, '<br>')}</p><p><a href="${esc(process.env.NEXT_PUBLIC_APP_URL ?? 'https://madness-cyan.vercel.app')}">Open Pick and Pray</a></p>${event.player_id?unsubscribeFooter(event.player_id):''}`,
   }
 }

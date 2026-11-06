@@ -14,15 +14,11 @@ type Side = 'away' | 'home'
 const sweatUrl = (sandbox: boolean) => (sandbox ? '/api/sweat?sandbox=1' : '/api/sweat')
 type Standing = 'safe' | 'lead' | 'trail' | 'wait' | 'out'
 
-const SUMMARY_COLORS: Record<Standing, string> = {
-  safe: '#5FD08F',
-  lead: '#B7E4C7',
-  trail: '#FFB3A8',
-  wait: 'rgba(255,255,255,.35)',
-  out: '#FF6B5C',
-}
-
+// Each count's color comes from the stylesheet (data-k); the label always
+// says the same thing in words.
 const YOU_LABEL: Record<Standing, string> = { safe: 'Safe', lead: 'Leading', trail: 'Trailing', wait: 'To play', out: 'Out' }
+const SUM_LABEL: Record<Standing, string> = { safe: 'Won', lead: 'Leading', trail: 'Trailing', wait: 'To play', out: 'Lost today' }
+const STANDINGS: Standing[] = ['safe', 'lead', 'trail', 'wait', 'out']
 
 function standingOf(game: SweatGame | undefined, side: Side): Standing {
   if (!game || game.state === 'pre') return 'wait'
@@ -56,6 +52,7 @@ export default function SweatBoard({
   const [error, setError] = useState(false)
   const [retry, setRetry] = useState(0)
   const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [showOthers, setShowOthers] = useState(false)
   const live = data?.hasLiveGames ?? false
 
   useEffect(() => {
@@ -105,11 +102,19 @@ export default function SweatBoard({
 
   const atRisk = (game: SweatGame) =>
     game.awayScore < game.homeScore ? game.awayPlayers.length : game.homeScore < game.awayScore ? game.homePlayers.length : game.awayPlayers.length + game.homePlayers.length
-  const groups = [
-    { key: 'in', title: 'Live now', sub: revealed ? 'Most at risk first' : '', games: games.filter((g) => g.state === 'in').sort((a, b) => atRisk(b) - atRisk(a)) },
-    { key: 'pre', title: 'Up next', sub: '', games: games.filter((g) => g.state === 'pre').sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()) },
-    { key: 'post', title: 'Final', sub: '', games: games.filter((g) => g.state === 'post').sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()) },
+  const groupsOf = (list: SweatGame[]) => [
+    { key: 'in', title: 'Live now', sub: revealed ? 'Most at risk first' : '', games: list.filter((g) => g.state === 'in').sort((a, b) => atRisk(b) - atRisk(a)) },
+    { key: 'pre', title: 'Up next', sub: '', games: list.filter((g) => g.state === 'pre').sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()) },
+    { key: 'post', title: 'Final', sub: '', games: list.filter((g) => g.state === 'post').sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()) },
   ].filter((group) => group.games.length > 0)
+  // Games the pool has a stake in come first: every game with a pool pick
+  // once picks are revealed, your own game before then. The rest of the
+  // slate stays one tap away.
+  const stakeGames = revealed
+    ? games.filter((game) => game.awayPlayers.length + game.homePlayers.length > 0)
+    : myGame ? [myGame] : []
+  const otherGames = games.filter((game) => !stakeGames.includes(game))
+  const split = stakeGames.length > 0 && otherGames.length > 0
 
   const distribution = new Map<string, number>()
   for (const player of data?.players ?? []) if (player.team) distribution.set(player.team, (distribution.get(player.team) ?? 0) + 1)
@@ -120,88 +125,9 @@ export default function SweatBoard({
   const autoTeams = [...new Set(autoPlayers.map((player) => player.team).filter(Boolean) as string[])]
   const missed = summary?.noPick ?? 0
 
-  return (
-    <>
-      <div className={s.sweatHead}>
-        <div>
-          {kicker && <div className={s.kicker}>{kicker}</div>}
-          <h1 className={s.title}>Sweat board</h1>
-        </div>
-        <div className={s.liveNote}>
-          {live && <span className={s.liveDot} />}
-          {live ? 'Live' : 'Scores'}
-          {updated && <> · updated {updated.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' })}</>}
-          {data?.locksAt && <span className={s.liveExtra}> · picks revealed at {lockText}</span>}
-        </div>
-      </div>
-
-      {error && (
-        <p role="alert" className={s.notice}>
-          {data ? 'Updates are unavailable. Showing the last scores received.' : 'Could not load the sweat board.'}{' '}
-          <button type="button" className={s.linkButton} onClick={() => setRetry(retry + 1)}>Try again</button>
-        </p>
-      )}
-      {!data && !error && <SweatBoardSkeleton />}
-
-      {data && (
-        <>
-          <section className={s.youBar} aria-label="Your status">
-            <div className={s.youMain}>
-              {myTeams === null ? (
-                <div>
-                  <div className={s.cellLabel}>Pool</div>
-                  <div className={s.youTeam}>{data.aliveCount} alive</div>
-                  <div className={s.youLine}>{revealed ? `Picks revealed at ${lockText}` : `Picks are hidden until ${lockText}`}</div>
-                </div>
-              ) : myTeam ? (
-                <>
-                  <TeamLogo team={myTeam} brands={teamBrands} size={48} />
-                  <div style={{ minWidth: 0 }}>
-                    <div className={s.cellLabel}>You · {myStanding ? YOU_LABEL[myStanding] : 'To play'}</div>
-                    <div className={s.youTeam}>{myTeams.map(name).join(', ')}</div>
-                    {myGame && (
-                      <div className={s.youLine}>
-                        vs {name(sideOf(myGame, myTeam) === 'home' ? myGame.awayTeam : myGame.homeTeam)} · {clockOf(myGame)}{myGame.tv ? ` · ${myGame.tv}` : ''}
-                      </div>
-                    )}
-                  </div>
-                  {myGame && myGame.state !== 'pre' && (
-                    <div className={s.youScore}>
-                      {sideOf(myGame, myTeam) === 'home' ? `${myGame.homeScore}–${myGame.awayScore}` : `${myGame.awayScore}–${myGame.homeScore}`}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div>
-                  <div className={s.cellLabel}>You</div>
-                  <div className={s.youTeam}>No pick</div>
-                  <div className={s.youLine}>{revealed ? 'Missed the lock' : `Picks lock at ${lockText}`}</div>
-                </div>
-              )}
-            </div>
-            <div className={s.youSum}>
-              <div className={s.sumGrid}>
-                {(['safe', 'lead', 'trail', 'wait', 'out'] as Standing[]).map((key) => (
-                  <div key={key}>
-                    <div className={s.sumNum} style={{ color: key === 'wait' ? '#FFFFFF' : SUMMARY_COLORS[key] }}>{counts[key]}</div>
-                    <div className={s.sumLabel}>{key === 'out' ? 'Out today' : YOU_LABEL[key]}</div>
-                  </div>
-                ))}
-              </div>
-              <div className={s.segs}>
-                {(['safe', 'lead', 'trail', 'wait', 'out'] as Standing[]).map((key) => (
-                  <span key={key} style={{ flex: counts[key], background: SUMMARY_COLORS[key] }} />
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <div className={s.split} style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px', marginTop: 32 }}>
-            <section aria-label="Games">
-              <div className={s.sweatCols}><span>Game</span><span>Team</span><span>Score</span><span>Pool<span className={s.longLabel}> picks</span></span><span>Stakes</span></div>
-              {groups.map((group) => (
+  const renderGroups = (list: SweatGame[]) => groupsOf(list).map((group) => (
                 <div key={group.key}>
-                  <div className={s.groupHead}><h2>{group.title} <span>{group.games.length}</span></h2><span>{group.sub}</span></div>
+                  <div className={s.groupHead}><h3>{group.title} <span>{group.games.length}</span></h3><span>{group.sub}</span></div>
                   {group.games.map((game) => {
                     const sides = (['away', 'home'] as Side[]).map((side) => {
                       const team = side === 'away' ? game.awayTeam : game.homeTeam
@@ -230,9 +156,10 @@ export default function SweatBoard({
                           </div>
                           {sides.map((side, index) => {
                             const lost = game.state === 'post' && side.standing === 'out'
+                            const won = game.state === 'post' && side.standing === 'safe'
                             const tone = side.standing === 'trail' || side.standing === 'out' ? s.red : side.standing === 'safe' || side.standing === 'lead' ? s.green : undefined
                             return [
-                              <span key={`t-${side.side}`} className={`${s.sTeam} ${lost ? s.loser : ''}`} style={{ gridRow: index + 1 }}>
+                              <span key={`t-${side.side}`} className={`${s.sTeam} ${lost ? s.loser : won ? s.winner : ''}`} style={{ gridRow: index + 1 }}>
                                 <span>{side.seed ?? ''}</span><TeamLogo team={side.team} brands={teamBrands} size={22} /><span>{name(side.team)}</span>
                               </span>,
                               <span key={`s-${side.side}`} className={`${s.sScore} ${lost ? s.loser : ''}`} style={{ gridRow: index + 1 }}>
@@ -261,13 +188,104 @@ export default function SweatBoard({
                     )
                   })}
                 </div>
-              ))}
-              {groups.length === 0 && <p className={s.empty}>No games yet. The board fills in when the next slate is set.</p>}
+              ))
+
+  return (
+    <>
+      <div className={s.sweatHead}>
+        <div>
+          {kicker && <div className={s.kicker}>{kicker}</div>}
+          <h1 className={s.title}>Sweat board</h1>
+        </div>
+        <div className={s.liveNote}>
+          {live && <span className={s.liveDot} />}
+          {live ? 'Live scores' : 'Scores'}
+          {updated && <>, updated {updated.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' })}</>}
+        </div>
+      </div>
+
+      {error && (
+        <p role="alert" className={s.notice}>
+          {data ? 'Updates are unavailable. Showing the last scores received.' : 'Could not load the sweat board.'}{' '}
+          <button type="button" className={s.linkButton} onClick={() => setRetry(retry + 1)}>Try again</button>
+        </p>
+      )}
+      {!data && !error && <SweatBoardSkeleton />}
+
+      {data && (
+        <>
+          <section className={s.youBar} aria-label="Your status">
+            <div className={s.youMain}>
+              {myTeams === null ? (
+                <div>
+                  <div className={s.cellLabel}>Pool</div>
+                  <div className={s.youTeam}>{data.entriesToday} playing today</div>
+                  <div className={s.youLine}>{revealed ? `Picks revealed at ${lockText}` : `Picks are hidden until ${lockText}`}</div>
+                </div>
+              ) : myTeam ? (
+                <>
+                  <TeamLogo team={myTeam} brands={teamBrands} size={48} />
+                  <div style={{ minWidth: 0 }}>
+                    <div className={s.cellLabel}>You: {myStanding ? YOU_LABEL[myStanding] : 'To play'}</div>
+                    <div className={s.youTeam}>{myTeams.map(name).join(', ')}</div>
+                    {myGame && (
+                      <div className={s.youLine}>
+                        vs {name(sideOf(myGame, myTeam) === 'home' ? myGame.awayTeam : myGame.homeTeam)} · {clockOf(myGame)}{myGame.tv ? ` · ${myGame.tv}` : ''}
+                      </div>
+                    )}
+                  </div>
+                  {myGame && myGame.state !== 'pre' && (
+                    <div className={s.youScore}>
+                      {sideOf(myGame, myTeam) === 'home' ? `${myGame.homeScore}–${myGame.awayScore}` : `${myGame.awayScore}–${myGame.homeScore}`}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div>
+                  <div className={s.cellLabel}>You</div>
+                  <div className={s.youTeam}>No pick</div>
+                  <div className={s.youLine}>{revealed ? 'Missed the lock' : `Picks lock at ${lockText}`}</div>
+                </div>
+              )}
+            </div>
+            <div className={s.youSum}>
+              <ul className={s.sumGrid} aria-label="Today's picks">
+                {STANDINGS.map((key) => (
+                  <li key={key} data-k={key}>
+                    <span className={s.sumNum}>{counts[key]}</span>
+                    <span className={s.sumLabel}>{SUM_LABEL[key]}</span>
+                  </li>
+                ))}
+              </ul>
+              {/* The same counts as a bar; the list above says it in words. */}
+              <div className={s.segs} aria-hidden="true">
+                {STANDINGS.map((key) => <span key={key} data-k={key} style={{ flex: counts[key] }} />)}
+              </div>
+              {counts.out > 0 && <p className={s.sumNote}>Lost today counts finished games. Standings change when the day’s results are graded.</p>}
+            </div>
+          </section>
+
+          <div className={`${s.split} ${s.sweatSplit}`}>
+            <section aria-label="Games">
+              <div className={s.sweatCols}><span>Game</span><span>Team</span><span>Score</span><span>Pool<span className={s.longLabel}> picks</span></span><span>Stakes</span></div>
+              {split ? (
+                <>
+                  <h2 className={s.sweatSection}>{revealed ? 'Games with pool picks' : 'Your game'}</h2>
+                  {renderGroups(stakeGames)}
+                  <div className={s.othersToggle}>
+                    <button type="button" className={s.textButton} aria-expanded={showOthers} onClick={() => setShowOthers(!showOthers)}>
+                      {showOthers ? 'Hide other games' : `Show ${otherGames.length} other ${otherGames.length === 1 ? 'game' : 'games'}`}
+                    </button>
+                  </div>
+                  {showOthers && <><h2 className={s.sweatSection}>Other games</h2>{renderGroups(otherGames)}</>}
+                </>
+              ) : renderGroups(games)}
+              {games.length === 0 && <p className={s.empty}>No games yet. The board fills in when the next slate is set.</p>}
             </section>
 
             <aside className={`${s.aside} ${s.sweatSide}`} aria-label="Pool picks">
               <div className={s.asideHead} style={{ paddingBottom: 0 }}><h2>Pool picks</h2></div>
-              <div className={s.small}>{data.players.length} entries · {revealed ? `revealed at ${lockText}` : `hidden until ${lockText}`}</div>
+              <div className={s.small}>{data.entriesToday} {data.entriesToday === 1 ? 'entry' : 'entries'} playing today. Picks {revealed ? 'revealed' : 'hidden until'} {lockText}.</div>
               {revealed ? (
                 <div style={{ marginTop: 12 }}>
                   {dist.map(([team, n]) => (
@@ -279,12 +297,12 @@ export default function SweatBoard({
                   ))}
                 </div>
               ) : (
-                <p className={s.small} style={{ marginTop: 12 }}>{summary?.hidden ?? 0} locked in · {summary?.pending ?? 0} no pick yet</p>
+                <p className={s.small} style={{ marginTop: 12 }}>{summary?.hidden ?? 0} picks in, {summary?.pending ?? 0} not yet.</p>
               )}
               {revealed && (
                 <div className={s.sub}>
-                  <h3>Out today <span className={s.red}>{outToday.length}</span></h3>
-                  <p className={s.small} style={{ color: '#4B5563' }}>{outToday.length ? outToday.map((player) => player.name).join(', ') : 'Nobody yet.'}</p>
+                  <h3>Lost today <span className={s.red}>{outToday.length}</span></h3>
+                  <p className={s.small}>{outToday.length ? outToday.map((player) => player.name).join(', ') : 'Nobody yet.'}</p>
                 </div>
               )}
               {(autoPlayers.length > 0 || missed > 0) && (
@@ -297,13 +315,6 @@ export default function SweatBoard({
             </aside>
           </div>
 
-          {(autoPlayers.length > 0 || missed > 0) && (
-            <p className={`${s.small} ${s.mobileOnly}`} style={{ marginTop: 16 }}>
-              {autoPlayers.length > 0
-                ? `${autoPlayers.length} auto-assigned after missing the lock: ${autoPlayers.map((player) => player.name).join(', ')}.`
-                : `${missed} missed the lock.`}
-            </p>
-          )}
         </>
       )}
     </>

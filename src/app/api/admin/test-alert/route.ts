@@ -7,6 +7,6 @@ import { sendAlertText } from '@/lib/alerts'
 export async function POST() {
   const unauthorized = await requireAdmin()
   if (unauthorized) return unauthorized
-  const delivery = await sendAlertText('Madness test alert: failure texts are working.')
+  const delivery = await sendAlertText('Pick and Pray test alert: failure texts are working.')
   return NextResponse.json(delivery)
 }

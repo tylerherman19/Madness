@@ -72,7 +72,7 @@ async function run(db: SupabaseClient, actor: 'system' | 'admin') {
       signups && `${signups} signup${signups === 1 ? '' : 's'}`,
     ].filter(Boolean).join(', ')
     const failureText = failures === 0 ? 'No failures.' : `FAILURES: ${failures} (${sources.slice(0, 3).join(', ')})`
-    const text = `Madness ${date}: ${activity}. ${alive.count ?? 0} alive. ${failureText}`
+    const text = `Pick and Pray ${date}: ${activity}. ${alive.count ?? 0} alive. ${failureText}`
 
     const delivery = await sendAlertText(text,db)
     await logAudit(db, {

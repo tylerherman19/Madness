@@ -1,35 +1,40 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import type { ScheduleDay } from './page'
 import type { LiveScoresResponse } from '@/app/api/live-scores/route'
 import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
 import { tipTime } from '@/lib/poolTheme'
 import TeamLogo from '@/app/components/TeamLogo'
 import { american, point } from '@/lib/oddsFormat'
+import { RETRY_MS, nextPollMs } from '@/lib/livePolling'
 import s from '@/app/components/pp.module.css'
 
-export default function ScheduleBoard({ days, brands, tournament }: { days: ScheduleDay[]; brands: TeamBrandDirectory; tournament: boolean }) {
+export default function ScheduleBoard({ days, brands, tournament, sandbox = false }: { days: ScheduleDay[]; brands: TeamBrandDirectory; tournament: boolean; sandbox?: boolean }) {
   const [date, setDate] = useState(days.find((d) => d.games.length)?.date ?? days[0]?.date ?? '')
   const [query, setQuery] = useState('')
   const [live, setLive] = useState<LiveScoresResponse | null>(null)
 
+  // Scores from the same feed and on the same timing as the ticker: often
+  // while games are on, rarely once the day is done. Test mode reads its own
+  // never-cached address.
   useEffect(() => {
-    let cancelled = false
-    async function load() {
+    let dead = false
+    let timer: number | undefined
+    let body: LiveScoresResponse | null = null
+    const load = async () => {
       try {
-        const res = await fetch('/api/live-scores', { cache: 'no-store' })
-        if (res.ok) {
-          const json = await res.json()
-          if (!cancelled) setLive(json)
-        }
+        const res = await fetch(sandbox ? '/api/live-scores?sandbox=1' : '/api/live-scores')
+        if (res.ok) body = await res.json()
+        if (res.ok && !dead) setLive(body)
       } catch { /* scheduled games stay available */ }
+      finally {
+        if (!dead) timer = window.setTimeout(load, body ? nextPollMs(body.games, body.hasLiveGames) : RETRY_MS)
+      }
     }
     load()
-    const timer = setInterval(load, 30000)
-    return () => { cancelled = true; clearInterval(timer) }
-  }, [])
+    return () => { dead = true; window.clearTimeout(timer) }
+  }, [sandbox])
 
   const day = days.find((d) => d.date === date)
   const name = (team: string) => brandFor(team, brands).shortName
@@ -40,13 +45,7 @@ export default function ScheduleBoard({ days, brands, tournament }: { days: Sche
 
   return (
     <>
-      <div className={s.pickHeader}>
-        <div>
-          <div className={s.kicker}>{day?.label ?? 'Upcoming games'}</div>
-          <h1 className={s.title}>Schedule</h1>
-        </div>
-        <Link href="/pick" className={`${s.cta} ${s.ctaQuiet}`} style={{ width: 'auto', padding: '0 20px', height: 44 }}>Make your pick</Link>
-      </div>
+      <h1 className={s.title}>Schedule</h1>
 
       <div className={s.toolbar}>
         <div className={`${s.tabs} ${s.dayTabs}`} role="tablist" aria-label="Day">
@@ -79,15 +78,16 @@ export default function ScheduleBoard({ days, brands, tournament }: { days: Sche
               </span>
               <span className={s.sides}>
                 {([[game.awayAbbr, game.awaySeed, result?.awayScore], [game.homeAbbr, game.homeSeed, result?.homeScore]] as const).map(([team, seed, score], i) => {
-                  const lost = result?.state === 'post' && scores && score! < (i === 0 ? result.homeScore : result.awayScore)
+                  const other = i === 0 ? result?.homeScore : result?.awayScore
+                  const outcome = result?.state === 'post' && scores && score != null && other != null ? (score > other ? 'won' : score < other ? 'lost' : undefined) : undefined
                   return (
-                    <span className={s.side} data-note={lost ? 'used' : undefined} key={team}>
+                    <span className={s.side} data-result={outcome} key={team}>
                       <span className={s.teamLine}>
                         <span className={s.tag}>{tournament && seed ? seed : !tournament && seed && seed <= 25 ? seed : ''}</span>
                         <TeamLogo team={team} brands={brands} size={24} />
                         {name(team)}
                       </span>
-                      {scores ? <b className={s.sideScore}>{score}</b> : game.odds ? <span className={s.sideNote} style={{ color: '#6B7280' }}>{american(i === 0 ? game.odds.awayMoneyline : game.odds.homeMoneyline)}</span> : null}
+                      {scores ? <b className={s.sideScore}>{score}</b> : game.odds ? <span className={s.sideNote}>{american(i === 0 ? game.odds.awayMoneyline : game.odds.homeMoneyline)}</span> : null}
                     </span>
                   )
                 })}

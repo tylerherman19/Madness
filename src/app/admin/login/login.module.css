@@ -1,54 +1,90 @@
+/* Admin log in: the arena photo under a charcoal wash, one plain form card.
+   Colors, fonts, corners and controls come from the shared tokens
+   (globals.css), so this screen matches the pool pages. */
 .page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 100vh;
+  padding: 24px 16px;
+  background-color: var(--surface-inverse);
   background-image:
-    linear-gradient(90deg, rgba(4, 18, 38, 0.82), rgba(4, 18, 38, 0.28)),
+    linear-gradient(90deg, rgba(30, 34, 39, 0.86), rgba(30, 34, 39, 0.4)),
     url('/kohl-center-hero.jpg');
   background-position: center;
   background-size: cover;
 }
 
 .card {
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 24px 70px rgba(3, 13, 28, 0.32);
-  backdrop-filter: blur(14px);
+  width: 100%;
+  max-width: 384px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 34px;
-  color: #0d1c34;
+  gap: 10px;
+  margin-bottom: 28px;
+  color: var(--ink);
 }
 
-.brand svg {
-  width: 31px;
-  height: 31px;
+.brandName {
+  font-family: var(--font-saira), 'Saira Condensed', sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
-.brand span {
-  font-family: var(--concept-display), sans-serif;
-  font-size: 23px;
-  font-weight: 700;
-  line-height: 0.75;
-}
-
-.brand small {
+.brandName small {
   display: block;
-  margin-top: 7px;
-  font-family: var(--concept-text), sans-serif;
-  font-size: 6px;
-  letter-spacing: 0.23em;
-}
-
-.card h1 {
-  color: #0d1c34;
-  font-size: 44px;
-}
-
-.card h1 + p {
-  color: #68768b;
+  margin-top: 2px;
+  font-family: var(--font-source), 'Source Sans 3', sans-serif;
   font-size: 12px;
-  line-height: 1.6;
+  font-weight: 600;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.title {
+  margin: 0 0 24px;
+  font-family: var(--font-saira), 'Saira Condensed', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.05;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+
+.back {
+  display: inline-block;
+  margin-top: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+@media (max-width: 480px) {
+  .card { padding: 24px 20px; }
 }

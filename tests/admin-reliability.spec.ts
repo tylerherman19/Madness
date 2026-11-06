@@ -138,7 +138,7 @@ test('a lost pick response reconciles the saved receipt without a duplicate subm
  await page.route('**/api/picks',async route=>{if(route.request().method()==='POST'){posts++;await route.fetch();await route.abort('failed')}else await route.continue()})
  await page.goto('/pick')
  await page.getByRole('radio').first().click()
- await page.getByRole('button',{name:/Submit A|Submit B/}).first().click()
+ await page.getByRole('button',{name:'Submit pick'}).first().click()
  await expect(page.getByText(/Submitted\. You can change it until/)).toBeVisible()
  expect(posts).toBe(1);expect(reconciled).toBe(true)
  expect((await (await request.get('http://127.0.0.1:54329/picks')).json()).length).toBe(1)

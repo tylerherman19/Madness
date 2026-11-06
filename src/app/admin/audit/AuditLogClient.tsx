@@ -201,7 +201,7 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
                     {formatWhen(row.created_at)}
                   </span>
                   <span
-                    className="text-[10px] tracking-widest uppercase shrink-0 border rounded px-1.5 py-0.5"
+                    className="text-xs tracking-widest uppercase shrink-0 border rounded px-1.5 py-0.5"
                     style={{ color: ACTOR_COLORS[row.actor], borderColor: 'var(--line)' }}
                   >
                     {row.actor}
@@ -213,7 +213,7 @@ export default function AuditLogClient({ rows, loadedAt }: { rows: AuditRow[]; l
                     >
                       {row.message}
                     </p>
-                    <p className="text-[11px] tracking-widest uppercase mt-0.5" style={{ color: 'var(--muted)' }}>
+                    <p className="text-xs tracking-widest uppercase mt-0.5" style={{ color: 'var(--muted)' }}>
                       {AUDIT_EVENT_TYPES[row.event_type] || row.event_type}
                       {hasDetails && (
                         <button

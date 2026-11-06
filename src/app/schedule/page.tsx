@@ -1,5 +1,6 @@
 import { pageMetadata } from '@/lib/site'
 import PoolShell from '@/app/components/PoolShell'
+import { isTestMode } from '@/lib/testMode'
 import { getDb } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
 import {
@@ -217,7 +218,7 @@ export default async function SchedulePage() {
   const brands = brandsFor(days.flatMap((day) => day.games.flatMap((game) => [game.homeAbbr, game.awayAbbr])), teamBrands)
   return (
     <PoolShell mode={pool.competition_mode} seasonYear={pool.season_year}>
-      <ScheduleBoard days={enriched} brands={brands} tournament={capabilitiesFor(pool.competition_mode).showSeeds} />
+      <ScheduleBoard days={enriched} brands={brands} tournament={capabilitiesFor(pool.competition_mode).showSeeds} sandbox={await isTestMode()} />
     </PoolShell>
   )
 }

@@ -49,7 +49,7 @@ another conditional.
   discards every send unless `EMAILS_ENABLED=true`. The `/api/cron/reminders` job
   still runs on schedule; it just has nothing to deliver.
 - Separate Supabase project, separate Vercel project.
-- In-app copy, logos, and `pickandpray.org` links are unchanged from the original.
+- The product is branded Pick and Pray (the P& mark in `public/logo.png`), with `pickandpray.org` links.
 
 ## Local setup
 
@@ -90,6 +90,27 @@ Large reads (a season's games and picks) are paged through `src/lib/db.ts`:
 PostgREST silently caps every response at 1,000 rows by default. The first
 page asks for the exact row total, so the remaining pages are fetched together
 rather than one after another.
+
+## Design system
+
+One set of values carries every screen: the `.shell` tokens at the top of
+`src/app/components/pp.module.css` for the pool pages, and `:root` in
+`src/app/globals.css` (mapped to Tailwind) for admin and forms.
+
+- **Type:** Saira Condensed (one weight, 800) for titles, scores and big
+  numbers; Source Sans 3 for everything else. Seven sizes (12, 14, 16, 20, 28,
+  40, 52px) and three weights (400, 600, 800). Tailwind's size and weight
+  utilities are remapped onto the same scale.
+- **Color:** warm off-white page, white surfaces, charcoal header and
+  scoreboard, one warm-gray family (primary ink, secondary ink, dividers,
+  faint fills), and one accent per season, set by `themeStyle()` in
+  `src/lib/poolTheme.ts` (burnt orange `#B84A12` in the regular season, blue
+  `#1A66D2` in March Madness). Green, red and amber are statuses only and
+  always come with a text label.
+- **Shape:** data rows are square; buttons and panels use 6px corners, inputs
+  4px. Dividers are 1px. The one shadow is for floating surfaces.
+- **Focus and motion:** every control shows a 3px focus ring in the accent (the light accent on charcoal); inputs a 2px one. Transitions are
+  140ms; the score ticker and live dot respect reduced motion.
 
 ## Caching
 

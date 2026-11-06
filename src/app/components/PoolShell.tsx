@@ -1,4 +1,5 @@
 import type { CompetitionMode } from '@/lib/competition'
+import type { PickState } from '@/lib/viewerState'
 import { themeStyle } from '@/lib/poolTheme'
 import { isTestMode } from '@/lib/testMode'
 import SiteHeader from './SiteHeader'
@@ -12,23 +13,29 @@ export default async function PoolShell({
   mode,
   seasonYear,
   account,
+  pick,
+  hideAction,
   signupsClosed,
   width = 'wide',
   children,
 }: {
   mode: CompetitionMode
   seasonYear?: number | null
-  account?: string
+  // From pages that read the session: the name (null when signed out) and
+  // where the entry stands. Pages built ahead for everyone leave both out.
+  account?: string | null
+  pick?: PickState
+  hideAction?: boolean
   signupsClosed?: boolean
-  width?: 'wide' | 'mid' | 'narrow'
+  width?: 'wide' | 'narrow'
   children: React.ReactNode
 }) {
   // Draft-mode gated, so cached pages stay cached.
   const sandbox = await isTestMode()
-  const widthClass = width === 'mid' ? s.mainMid : width === 'narrow' ? s.mainNarrow : ''
+  const widthClass = width === 'narrow' ? s.mainNarrow : ''
   return (
     <div className={s.shell} style={themeStyle(mode)} data-mode={mode}>
-      <SiteHeader mode={mode} seasonYear={seasonYear} account={account} signupsClosed={signupsClosed} />
+      <SiteHeader mode={mode} seasonYear={seasonYear} account={account} pick={pick} hideAction={hideAction} signupsClosed={signupsClosed} />
       <LiveTicker sandbox={sandbox} />
       <main id="main" className={`${s.main} ${widthClass}`}>{children}</main>
       <TrustFooter />

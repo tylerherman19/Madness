@@ -35,7 +35,7 @@ export function generateRecap(input: RecapInput): string {
   const lines: string[] = []
 
   lines.push(
-    `MADNESS POOL — ${(periodLabel ?? `DAY ${slate.slate_number}`).toUpperCase()} RECAP`
+    `PICK AND PRAY: ${(periodLabel ?? `DAY ${slate.slate_number}`).toUpperCase()} RECAP`
   )
   lines.push('─'.repeat(40))
 

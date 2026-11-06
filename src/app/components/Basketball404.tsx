@@ -1,11 +1,10 @@
-'use client'
-
-import { useEffect, useRef, useState } from 'react'
 import styles from './basketball404.module.css'
 
-// One possession, looped: drive, step-back jumper over a contest, swish,
-// rebound, outlet pass back out. Every frame is a pure function of time so
-// the ball stays in the players' hands and the legs never moonwalk.
+// The 404 illustration: one still frame of a possession (a step-back jumper
+// over a contest, the ball in the air). Each pose is a pure function of time,
+// so any moment of the play can be drawn; STILL picks the one shown. Drawn on
+// the server with the pool's neutrals and the season's accent for the ball;
+// the page's action ("Back to the pool") stays the focal point.
 const T = 6.4
 const FLOOR = 256
 const BALL_FLOOR = FLOOR - 12
@@ -177,81 +176,33 @@ function frame(t: number) {
   }
 }
 
-type Frame = ReturnType<typeof frame>
 const PLAYERS = ['shooter', 'defender', 'rebounder'] as const
-
-function apply(svg: SVGSVGElement, f: Frame) {
-  const q = (part: string) => svg.querySelector(`[data-part="${part}"]`)
-  PLAYERS.forEach((name, i) => {
-    q(`${name}-body`)?.setAttribute('d', f[name].d)
-    q(`${name}-head`)?.setAttribute('cx', n(f[name].head[0]))
-    q(`${name}-head`)?.setAttribute('cy', n(f[name].head[1]))
-    const [x, jy] = f.shadows[i], shadow = q(`${name}-shadow`)
-    shadow?.setAttribute('cx', n(x))
-    shadow?.setAttribute('rx', n(20 + jy * .3))
-  })
-  q('ball')?.setAttribute('transform', f.ball)
-  const bs = q('ball-shadow')
-  bs?.setAttribute('cx', n(f.ballShadow.cx))
-  bs?.setAttribute('rx', n(f.ballShadow.rx))
-  bs?.setAttribute('opacity', f.ballShadow.opacity.toFixed(2))
-  q('net')?.setAttribute('d', f.net)
-  const sw = q('swish')
-  sw?.setAttribute('opacity', f.swish.opacity.toFixed(2))
-  sw?.setAttribute('y', n(f.swish.y))
-}
-
-const COLORS = { shooter: '#0b55bf', defender: '#0d1c34', rebounder: '#536175' }
+const INK = { shooter: 'var(--pp-ink)', defender: 'var(--pp-ink-2)', rebounder: 'var(--pp-control)' }
 
 export default function Basketball404() {
-  const [paused, setPaused] = useState(false)
-  const svgRef = useRef<SVGSVGElement>(null)
-  const clock = useRef(0)
-  const initial = frame(0)
-
-  useEffect(() => {
-    const svg = svgRef.current
-    if (!svg) return
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { apply(svg, frame(STILL)); return }
-    if (paused) return
-    let raf = 0, last = performance.now()
-    const tick = () => {
-      const now = performance.now()
-      clock.current = (clock.current + Math.min(now - last, 50) / 1000) % T
-      last = now
-      apply(svg, frame(clock.current))
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [paused])
-
+  const f = frame(STILL)
   return <div className={styles.scene}>
-    <svg ref={svgRef} viewBox="0 0 560 310" role="img" aria-labelledby="basketball-404-title" className={styles.court}>
-      <title id="basketball-404-title">Animated stick figures playing basketball: a player dribbles at a defender, hits a step-back jumper over the contest, and a teammate rebounds and throws an outlet pass back out.</title>
-      <rect x="2" y="2" width="556" height="306" rx="20" fill="#eef3fb" />
-      <rect x="2" y="256" width="556" height="52" fill="#e3ebf6" />
-      <path d="M25 256H535M370 256V172H512M370 172Q324 213 370 256" fill="none" stroke="#b9cbe3" strokeWidth="3" />
-      <text x="36" y="84" fill="#dce5f2" fontSize="64" fontWeight="800" fontFamily="Arial, sans-serif" letterSpacing="4">404</text>
-      <path d="M485 254V49H449" fill="none" stroke="#536175" strokeWidth="6" strokeLinecap="round" />
-      <rect x="442" y="29" width="8" height="78" rx="3" fill="#0d1c34" />
-      <g fill="#0d1c34">
-        {PLAYERS.map((name, i) => <ellipse key={name} data-part={`${name}-shadow`} cx={n(initial.shadows[i][0])} cy="258" rx="20" ry="3.5" opacity=".14" />)}
-        <ellipse data-part="ball-shadow" cx={n(initial.ballShadow.cx)} cy="258" rx={n(initial.ballShadow.rx)} ry="3" opacity={initial.ballShadow.opacity.toFixed(2)} />
+    <svg viewBox="0 0 560 310" role="img" aria-labelledby="basketball-404-title" className={styles.court}>
+      <title id="basketball-404-title">Stick figures playing basketball: a shooter rises over a defender for a jumper while a teammate waits for the rebound.</title>
+      <rect x="0" y="0" width="560" height="310" style={{ fill: 'var(--pp-surface)' }} />
+      <rect x="0" y="256" width="560" height="54" style={{ fill: 'var(--pp-fill)' }} />
+      <path d="M25 256H535M370 256V172H512M370 172Q324 213 370 256" fill="none" strokeWidth="2" style={{ stroke: 'var(--pp-line)' }} />
+      <path d="M485 254V49H449" fill="none" strokeWidth="6" strokeLinecap="round" style={{ stroke: 'var(--pp-control)' }} />
+      <rect x="442" y="29" width="8" height="78" style={{ fill: 'var(--pp-ink)' }} />
+      <g style={{ fill: 'var(--pp-ink)' }}>
+        {PLAYERS.map((name, i) => <ellipse key={name} cx={n(f.shadows[i][0])} cy="258" rx={n(20 + f.shadows[i][1] * .3)} ry="3.5" opacity=".12" />)}
+        <ellipse cx={n(f.ballShadow.cx)} cy="258" rx={n(f.ballShadow.rx)} ry="3" opacity={f.ballShadow.opacity.toFixed(2)} />
       </g>
-      {PLAYERS.map(name => <g key={name} color={COLORS[name]} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round">
-        <path data-part={`${name}-body`} d={initial[name].d} />
-        <circle data-part={`${name}-head`} cx={n(initial[name].head[0])} cy={n(initial[name].head[1])} r="12" fill="#eef3fb" />
+      {PLAYERS.map(name => <g key={name} fill="none" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: INK[name] }}>
+        <path d={f[name].d} />
+        <circle cx={n(f[name].head[0])} cy={n(f[name].head[1])} r="12" style={{ fill: 'var(--pp-surface)' }} />
       </g>)}
-      <g data-part="ball" transform={initial.ball}>
-        <circle r="12" fill="#c1481d" stroke="#783313" strokeWidth="2" />
-        <path d="M-12 0H12M0 -12V12M-8 -9Q5 0 -8 9M8 -9Q-5 0 8 9" fill="none" stroke="#783313" strokeWidth="1.5" />
+      <g transform={f.ball}>
+        <circle r="12" strokeWidth="2" style={{ fill: 'var(--pp-accent)', stroke: 'var(--pp-ink)' }} />
+        <path d="M-12 0H12M0 -12V12M-8 -9Q5 0 -8 9M8 -9Q-5 0 8 9" fill="none" strokeWidth="1.5" style={{ stroke: 'var(--pp-ink)' }} />
       </g>
-      <path data-part="net" d={initial.net} fill="none" stroke="#536175" strokeWidth="2" strokeLinejoin="round" />
-      <path d="M416 98H449" stroke="#c1481d" strokeWidth="5" strokeLinecap="round" />
-      <text data-part="swish" x="380" y="66" opacity="0" textAnchor="middle" fill="#0b55bf" fontSize="18" fontWeight="800" fontFamily="Arial, sans-serif" letterSpacing="2">SWISH!</text>
-      <text x="25" y="292" fill="#536175" fontSize="13" fontFamily="Arial, sans-serif">WRONG PAGE. RIGHT GAME.</text>
+      <path d={f.net} fill="none" strokeWidth="2" strokeLinejoin="round" style={{ stroke: 'var(--pp-control)' }} />
+      <path d="M416 98H449" strokeWidth="5" strokeLinecap="round" style={{ stroke: 'var(--pp-accent)' }} />
     </svg>
-    <button className={styles.toggle} aria-pressed={paused} onClick={() => setPaused(!paused)}>{paused ? 'Resume animation' : 'Pause animation'}</button>
   </div>
 }

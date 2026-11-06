@@ -13,7 +13,7 @@ import AdvanceWeekButton from './AdvanceWeekButton'
 import SetActiveWeek from './SetActiveWeek'
 import ResetPoolButton from './ResetPoolButton'
 
-export const metadata = { title: 'Dashboard', description: 'Madness pool administration: dashboard.' }
+export const metadata = { title: 'Dashboard', description: 'Pick and Pray administration: dashboard.' }
 
 export default async function AdminDashboard() {
   const isAdmin = await getAdminSession()
@@ -197,7 +197,7 @@ export default async function AdminDashboard() {
                   </div>
                   <div className="text-right">
                     <p className="text-xl font-bold tabular-nums text-ink">{player.seedTotal}</p>
-                    <p className="text-[11px] text-muted">seed total</p>
+                    <p className="text-xs text-muted">seed total</p>
                   </div>
                 </div>
               ))}

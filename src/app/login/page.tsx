@@ -1,91 +1,22 @@
-'use client'
-
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AuthShell from '@/app/components/AuthShell'
+import { haveSignupsClosedCached } from '@/lib/season'
+import LoginForm from './LoginForm'
 
-export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Login failed'); return }
-      router.push('/pick')
-      router.refresh()
-    } catch {
-      setError('Something went wrong. Try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
+export default async function LoginPage() {
+  const closed = await haveSignupsClosedCached()
   return (
-    <AuthShell title="Log in" description="Enter your email and the password you chose when you joined.">
-            <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading} aria-describedby={error ? "login-error" : undefined}>
-              <div>
-                <label htmlFor="login-email" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Email</label>
-                <input
-                  id="login-email" name="email" maxLength={254} type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  autoComplete="username"
-                  className="field w-full px-3.5 py-2.5 text-sm"
-                  style={{ color: 'var(--ink)' }}
-                />
-              </div>
-              <div>
-                <label htmlFor="login-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Password</label>
-                <input
-                  id="login-password" name="password" type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Your password"
-                  required
-                  maxLength={72}
-                  autoComplete="current-password"
-                  className="field w-full px-3.5 py-2.5 text-sm"
-                  style={{ color: 'var(--ink)' }}
-                />
-              </div>
-
-              {error && (
-                <p id="login-error" role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--danger)', background: 'var(--danger-tint)' }}>{error}</p>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-primary w-full py-3"
-              >
-                {loading ? 'Logging in…' : 'Log in'}
-              </button>
-            </form>
-          <div className="mt-6 space-y-3 text-center">
-            <Link href="/forgot-pin" className="block text-sm font-bold underline" style={{ color: 'var(--muted)' }}>
-              Forgot your password?
-            </Link>
-            <p className="text-xs" style={{ color: 'var(--muted)' }}>
-              New to the pool?{' '}
-              <Link href="/signup" className="underline" style={{ color: 'var(--ink)' }}>Sign up here</Link>
-            </p>
-            <Link href="/" className="block text-sm font-bold" style={{ color: 'var(--muted)' }}>Back to the pool</Link>
-          </div>
+    <AuthShell
+      title="Log in"
+      description="Use the email and password you chose when you joined."
+      links={[
+        <Link key="forgot" href="/forgot-pin">Forgot your password?</Link>,
+        closed
+          ? <span key="closed">Sign-ups are closed for this season.</span>
+          : <span key="join">New to the pool? <Link href="/signup">Join the pool</Link></span>,
+      ]}
+    >
+      <LoginForm />
     </AuthShell>
   )
 }

@@ -410,7 +410,7 @@ export default function PoolConfigForm({ pool }: { pool: PoolConfig }) {
                 >
                   <span
                     aria-hidden="true"
-                    className="absolute -left-2 top-0 flex h-4 w-4 items-center justify-center rounded-full border text-[9px] font-bold sm:-top-2 sm:left-0"
+                    className="absolute -left-2 top-0 flex h-4 w-4 items-center justify-center rounded-full border text-xs font-bold sm:-top-2 sm:left-0"
                     style={{
                       background: active ? 'var(--accent)' : 'var(--surface)',
                       borderColor: active ? 'var(--accent)' : 'var(--line-strong)',

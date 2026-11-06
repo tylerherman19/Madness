@@ -23,7 +23,7 @@ import {
 // data that isn't there.
 export const DEFAULT_POOL_CONFIG: PoolConfig = {
   id: '',
-  name: 'MADNESS',
+  name: 'Pick and Pray',
   competition_mode: 'regular-season',
   status: 'live',
   season_year: new Date().getFullYear(),

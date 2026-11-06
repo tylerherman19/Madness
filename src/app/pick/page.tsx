@@ -200,7 +200,7 @@ export default async function PickPage() {
   if (data.kind === 'no-session') redirect('/login')
 
   const shell = (children: React.ReactNode) => (
-    <PoolShell mode={mode} seasonYear={pool.season_year} account={session.full_name}>{children}</PoolShell>
+    <PoolShell mode={mode} seasonYear={pool.season_year} account={session.full_name} hideAction>{children}</PoolShell>
   )
 
   if (data.kind === 'failed') {

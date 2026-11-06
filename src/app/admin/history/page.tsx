@@ -26,7 +26,7 @@ interface GameRow {
   round_label: string | null
 }
 
-export const metadata = { title: 'Pool History', description: 'Madness pool administration: pool history.' }
+export const metadata = { title: 'Pool History', description: 'Pick and Pray administration: pool history.' }
 
 export default async function AdminHistoryPage() {
   const isAdmin = await getAdminSession()

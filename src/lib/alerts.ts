@@ -109,7 +109,7 @@ export async function sendAlertText(body: string,db:SupabaseClient=productionDb)
  if(!to)return {sent:false,reason:'ALERT_SMS_TO is not configured'}
  const text=body.length>SMS_MAX_CHARS?`${body.slice(0,SMS_MAX_CHARS-1)}…`:body
  try{
-  for(const recipient of to.split(',').map(s=>s.trim()).filter(Boolean))await recordEmail(db,{from:FROM_EMAIL,to:recipient,subject:'Madness',text},'operational')
+  for(const recipient of to.split(',').map(s=>s.trim()).filter(Boolean))await recordEmail(db,{from:FROM_EMAIL,to:recipient,subject:'Pick and Pray',text},'operational')
   return {sent:false,reason:'Notification recorded; delivery follows configured email mode'}
  }catch{return {sent:false,reason:'Could not record operational notification'}}
 }

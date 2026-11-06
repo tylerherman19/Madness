@@ -5,6 +5,8 @@ import Link from 'next/link'
 import AuthShell from '@/app/components/AuthShell'
 import { signupValidationError } from '@/lib/signupValidation'
 import { supportEmail } from '@/lib/site'
+import { resetViewer } from '@/app/components/useViewer'
+import s from '@/app/components/pp.module.css'
 
 export default function SignupForm() {
   const [fullName, setFullName] = useState('')
@@ -36,6 +38,7 @@ export default function SignupForm() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Signup failed'); return }
+      resetViewer()
       setDone(true)
     } catch {
       setError('Something went wrong. Try again.')
@@ -45,32 +48,29 @@ export default function SignupForm() {
   }
 
   return (
-    <AuthShell title="Join the pool" description="$25 entry.">
+    <AuthShell
+      title={done ? 'You’re in' : 'Join the pool'}
+      description={done ? 'Your account is ready.' : 'Entry is $25, paid by Venmo to @griffinsell.'}
+      guide={!done}
+      links={done ? [] : [<span key="login">Already joined? <Link href="/login">Log in</Link></span>]}
+    >
           {done ? (
-            <div className="card p-6 sm:p-8 text-center space-y-4">
-              <p className="font-display text-5xl" style={{ color: 'var(--success)' }}>You&apos;re in</p>
-              <p className="text-sm" style={{ color: 'var(--ink)' }}>
-                Your account is ready. Use the password you just chose to log in and submit picks.
-              </p>
-              <p className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--ink)', background: 'var(--success-tint)' }}>
-                Venmo <strong>@griffinsell</strong> $25 to lock in your spot.
-              </p>
-              <Link href="/login" className="btn-primary inline-flex px-6 py-3 mt-1">
-                Log in
-              </Link>
+            <div className="space-y-4">
+              <p>Venmo <strong>@griffinsell</strong> $25 to hold your spot, then log in with the password you just chose to make your first pick.</p>
+              <Link href="/login" className="btn-primary w-full py-3">Log in</Link>
             </div>
           ) : (
             <>
               <div>
                 <form onSubmit={handleSubmit} className="space-y-4" aria-busy={loading} aria-describedby={error ? "signup-error" : undefined}>
                   {[
-                    { id: 'signup-name', maxLength: 80, label: 'Full Name', type: 'text', val: fullName, set: setFullName, placeholder: 'e.g. John Smith', required: true, autoComplete: 'name' },
+                    { id: 'signup-name', maxLength: 80, label: 'Full name', type: 'text', val: fullName, set: setFullName, placeholder: 'e.g. John Smith', required: true, autoComplete: 'name' },
                     { id: 'signup-email', maxLength: 254, label: 'Email', type: 'email', val: email, set: setEmail, placeholder: 'you@example.com', required: true, autoComplete: 'email' },
                     { id: 'signup-phone', maxLength: 20, label: 'Phone', type: 'tel', val: phone, set: setPhone, placeholder: '(608) 555-1234', required: true, autoComplete: 'tel' },
-                    { id: 'signup-venmo', maxLength: 50, label: 'Venmo Handle', type: 'text', val: venmo, set: setVenmo, placeholder: '@yourhandle', required: true },
+                    { id: 'signup-venmo', maxLength: 50, label: 'Venmo handle', type: 'text', val: venmo, set: setVenmo, placeholder: '@yourhandle', required: true },
                   ].map(({ id, maxLength, label, type, val, set, placeholder, required, autoComplete }) => (
                     <div key={label}>
-                      <label htmlFor={id} className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>{label}</label>
+                      <label htmlFor={id} className="block mb-2 font-semibold">{label}</label>
                       <input
                         id={id}
                         name={id}
@@ -81,24 +81,23 @@ export default function SignupForm() {
                         placeholder={placeholder}
                         required={required}
                         autoComplete={autoComplete}
-                        className="field w-full px-3.5 py-2.5 text-sm"
-                        style={{ color: 'var(--ink)' }}
+                        className="field w-full px-3 py-2.5"
                       />
                     </div>
                   ))}
 
                   <div>
-                    <label htmlFor="signup-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Create password</label>
-                    <input id="signup-password" name="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--ink)' }} />
+                    <label htmlFor="signup-password" className="block mb-2 font-semibold">Create password</label>
+                    <input id="signup-password" name="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3 py-2.5" />
                   </div>
                   <div>
-                    <label htmlFor="signup-confirm-password" className="text-sm font-bold block mb-2" style={{ color: 'var(--ink)' }}>Confirm password</label>
-                    <input id="signup-confirm-password" name="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" style={{ color: 'var(--ink)' }} />
+                    <label htmlFor="signup-confirm-password" className="block mb-2 font-semibold">Confirm password</label>
+                    <input id="signup-confirm-password" name="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3 py-2.5" />
                   </div>
 
-                  <p className="text-sm leading-6">By creating an account, you agree to the <Link className="underline" href="/terms">Terms of Use</Link> and acknowledge the <Link className="underline" href="/privacy">Privacy Policy</Link>, including the $25 entry fee and payment arrangements.</p>
-                  <p className="text-sm leading-6">Questions before joining? <a className="underline" href={`mailto:${supportEmail}`}>{supportEmail}</a>.</p>
-                  {error && <p id="signup-error" role="alert" className="text-sm rounded-md px-3 py-2" style={{ color: 'var(--danger)', background: 'var(--danger-tint)' }}>{error}</p>}
+                  <p>By creating an account, you agree to the <Link className="underline" href="/terms">Terms of Use</Link> and acknowledge the <Link className="underline" href="/privacy">Privacy Policy</Link>, including the $25 entry fee and payment arrangements.</p>
+                  <p>Questions before joining? <a className="underline" href={`mailto:${supportEmail}`}>{supportEmail}</a>.</p>
+                  {error && <p id="signup-error" role="alert" className={s.authError}>{error}</p>}
 
                   <button
                     type="submit"
@@ -110,13 +109,6 @@ export default function SignupForm() {
                 </form>
               </div>
 
-              <div className="mt-6 text-center space-y-2.5">
-                <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                  Already have an account?{' '}
-                  <Link href="/login" className="underline" style={{ color: 'var(--ink)' }}>Log in</Link>
-                </p>
-                <Link href="/" className="block text-sm font-bold" style={{ color: 'var(--muted)' }}>Back to the pool</Link>
-              </div>
             </>
           )}
     </AuthShell>

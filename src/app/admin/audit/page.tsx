@@ -9,7 +9,7 @@ import AuditLogClient from './AuditLogClient'
 // everything ever recorded.
 const MAX_ROWS = 1000
 
-export const metadata = { title: 'Audit Log', description: 'Madness pool administration: audit log.' }
+export const metadata = { title: 'Audit Log', description: 'Pick and Pray administration: audit log.' }
 
 export default async function AdminAuditPage() {
   const isAdmin = await getAdminSession()

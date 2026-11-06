@@ -1,6 +1,4 @@
-.scene { max-width:640px; margin:24px 0; }
-.toggle { min-height:44px; padding:8px 14px; margin-top:8px; border:1px solid #536175; border-radius:6px; background:#fff; color:#214f91; font-size:14px; cursor:pointer; }
-.court { display:block; width:100%; height:auto; overflow:hidden; }
-@media(prefers-reduced-motion:reduce) {
-  .toggle { display:none; }
-}
+/* The 404 illustration sits below the page's action, smaller than the text
+   column, on the same flat surface as the rest of the pool. */
+.scene { max-width: 420px; margin: 32px 0 0; }
+.court { display: block; width: 100%; height: auto; border: 1px solid var(--pp-line); }
