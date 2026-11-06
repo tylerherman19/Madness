@@ -68,7 +68,7 @@ function TodayBody() {
     <>
       <div style={{ marginTop: 22 }}><DarkBand height={98} /></div>
       <div style={{ marginTop: 28 }}><Bone w="100%" h={120} /></div>
-      <div className={s.split}><section><GameRows rows={8} /></section><Aside /></div>
+      <ListBody rows={10} />
     </>
   )
 }

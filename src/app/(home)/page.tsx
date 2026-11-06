@@ -5,15 +5,13 @@ import { getContestCore, getContestStandings, preloadContestStandings, type Cont
 import { haveSignupsClosedCached } from '@/lib/season'
 import { getSession } from '@/lib/session'
 import { getPoolConfig } from '@/lib/pool'
-import { getDb, getEffectiveNow } from '@/lib/testMode'
+import { getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline } from '@/lib/deadline'
 import { loadMyPicks, type MyPick } from '@/lib/myEntry'
 import { buildTimeline } from '@/lib/timeline'
-import { conferenceGroup } from '@/lib/teams'
-import { getCachedTeamConferences } from '@/lib/sharedData'
 import { brandFor } from '@/lib/teamBrand'
 import { capabilitiesFor } from '@/lib/competition'
-import { dayDate, eventLabel, pickDayTitle, teamTag, tipTime, weekdayMonthDay } from '@/lib/poolTheme'
+import { dayDate, eventLabel, pickDayTitle, tipTime } from '@/lib/poolTheme'
 import PoolShell from '../components/PoolShell'
 import ContestRefresh from '../components/ContestRefresh'
 import LockCountdown from '../components/LockCountdown'
@@ -35,12 +33,11 @@ export default async function Today() {
   // Your own picks are read as soon as the session is known, alongside the
   // pool's data rather than after it.
   const sessionRead = getSession()
-  const [data, closed, session, allMyPicks, conferenceMap] = await Promise.all([
+  const [data, closed, session, allMyPicks] = await Promise.all([
     getContestCore(),
     haveSignupsClosedCached(),
     sessionRead,
     sessionRead.then((current) => (current ? loadMyPicks(current.player_id) : [])),
-    getDb().then(getCachedTeamConferences),
   ])
   // The standings started loading with everything else. When they are
   // already in hand — the usual, cached case — they render with the page;
@@ -61,22 +58,15 @@ export default async function Today() {
   const periods = data?.periods ?? []
   const period = data?.currentPeriod ?? null
   const dayNumber = period ? periods.findIndex((p) => p.id === period.id) + 1 : 0
-  const games = (data?.slateGames ?? []).slice().sort((a, b) => Number(a.time_tbd) - Number(b.time_tbd) || new Date(a.tip_time).getTime() - new Date(b.tip_time).getTime())
-  const lock = slate ? slateDeadline(slate, games) : null
+  const lock = slate ? slateDeadline(slate, data?.slateGames ?? []) : null
   const lockIso = lock?.toISOString() ?? null
   const lockText = tipTime(lockIso)
   const now = data?.now ?? (await getEffectiveNow())
   const locked = lock ? lock <= now : false
 
-  const conferences = !tournament && games.length ? conferenceMap : {}
-
   // The signed-in player's own entry.
   const me = session ? data?.players.find((player) => player.id === session.player_id) ?? null : null
-  const seasonIds = new Set(periods.map((p) => p.id))
-  const myPicks: MyPick[] = session && data ? allMyPicks.filter((p) => seasonIds.has(p.slateId)) : []
-  const todayPicks = myPicks.filter((p) => p.slateId === slate?.id)
-  const used = new Set(myPicks.filter((p) => p.slateId !== slate?.id).map((p) => p.team))
-  const mine = new Set(todayPicks.map((p) => p.team))
+  const todayPicks: MyPick[] = session && slate ? allMyPicks.filter((p) => p.slateId === slate.id) : []
 
   const alive = data?.aliveCount ?? 0
   const total = data?.totalPlayers ?? 0
@@ -178,29 +168,6 @@ export default async function Today() {
           </div>
         </section>
       )}
-
-      <section className={s.homeSection} aria-label="Today's schedule">
-          <div className={s.sectionHead}><h2>{data?.slateIsToday || !period ? 'Today’s games' : `${weekdayMonthDay(period.date)} games`}</h2><span>{games.length} games</span></div>
-          {games.map((game) => (
-            <div className={s.gameRow} key={game.id}>
-              <span className={s.gameTime}><b>{game.time_tbd ? 'TBD' : tipTime(game.tip_time)}</b><span>{game.tv ?? ''}</span></span>
-              <span className={s.sides}>
-                {([[game.away_team, game.away_seed], [game.home_team, game.home_seed]] as const).map(([team, seed]) => {
-                  const note = mine.has(team) ? 'mine' : used.has(team) ? 'used' : undefined
-                  const tag = teamTag(mode, seed, game.round_label)
-                  return (
-                    <span className={s.side} data-note={note} key={team}>
-                      <span className={s.teamLine}><span className={s.tag}>{tag ?? ''}</span><TeamLogo team={team} brands={brands} size={24} />{name(team)}</span>
-                      {note && <span className={s.sideNote}>{note === 'mine' ? 'Your pick' : 'Used'}</span>}
-                    </span>
-                  )
-                })}
-              </span>
-              <span className={s.group}>{tournament ? game.region ?? '' : conferenceGroup(game.away_team, game.home_team, conferences) ?? ''}</span>
-            </div>
-          ))}
-          {games.length === 0 && <p className={s.empty}>The next slate appears here when it is set.</p>}
-      </section>
 
       <section id="standings" className={s.homeSection} aria-label="Standings">
         <div className={s.sectionHead}><h2>Standings</h2><span>{period ? `Through day ${dayNumber}` : ''}</span></div>
