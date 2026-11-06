@@ -346,7 +346,7 @@
 .winner { margin-top: 22px; padding: 18px 24px; border-radius: var(--pp-radius); background: var(--pp-head); color: var(--pp-on-dark); }
 .winner b { display: block; font-family: var(--pp-display); font-weight: var(--pp-heavy); font-size: var(--pp-text-2xl); line-height: 1; }
 
-.ruleList { margin: 0; padding: 0; list-style: none; }
+.ruleList { display: grid; grid-auto-flow: column; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 5), auto); column-gap: 48px; margin: 0; padding: 0; list-style: none; }
 .ruleList li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 18px 0; border-bottom: 1px solid var(--pp-line); }
 .ruleList li > span { font-family: var(--pp-display); font-weight: var(--pp-heavy); font-size: var(--pp-text-lg); color: var(--pp-ink-2); }
 .ruleList h3 { font-size: var(--pp-text-md); font-weight: var(--pp-semibold); }
@@ -473,6 +473,7 @@
   
   
   
+  .ruleList { display: block; }
   .ruleList li { display: block; padding: 12px 0; }
   .ruleList li > span { margin-right: 6px; font-size: var(--pp-text-md); }
   .ruleList h3 { display: inline; font-size: var(--pp-text-md); }
@@ -620,7 +621,7 @@
 .infoBody a:not(:global(.btn-primary)) { color: var(--pp-accent); font-weight: var(--pp-semibold); }
 .infoBody :global(.btn-primary) { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; margin: 4px 0 0; color: var(--pp-on-dark); text-decoration: none; }
 
-.rulesSection { max-width: 760px; margin-top: 48px; scroll-margin-top: 16px; }
+.rulesSection { margin-top: 48px; scroll-margin-top: 16px; }
 
 .homeSection { margin-top: 40px; scroll-margin-top: 16px; }
 .homeSection .stSection:first-of-type { margin-top: 20px; }
