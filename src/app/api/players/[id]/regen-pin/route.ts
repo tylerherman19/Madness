@@ -33,7 +33,7 @@ export async function POST(
   const resetUrl=new URL('/reset-password',process.env.NEXT_PUBLIC_APP_URL ?? 'https://madness-cyan.vercel.app')
   resetUrl.searchParams.set('token',token)
   try {
-    const encrypted=sealRequest({from:FROM_EMAIL,to:player.email,subject:'Reset your Madness password',text:`Choose a new password: ${resetUrl}. This link expires in one hour.`})
+    const encrypted=sealRequest({from:FROM_EMAIL,to:player.email,subject:'Reset your Pick and Pray password',text:`Choose a new password: ${resetUrl}. This link expires in one hour.`})
     const {data,error}=await supabase.rpc('request_password_reset',{p_player:id,p_hash:tokenHash,p_expires:expires,p_encrypted:encrypted,p_actor:await adminSessionId()})
     if(error) throw error
     return NextResponse.json({ok:true,emailSent:false,notificationId:data,message:'Reset request recorded. Delivery follows the configured email mode.'})

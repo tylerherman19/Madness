@@ -14,12 +14,11 @@ type Variant = 'today' | 'pick' | 'sweat' | 'standings' | 'rules' | 'list' | 'pa
 // when the data arrives.
 export default function PoolLoading({ variant = 'page' }: { variant?: Variant }) {
   const { mode } = useRememberedMode()
-  const width = variant === 'standings' ? s.mainNarrow : variant === 'rules' ? s.mainMid : ''
   return (
     <div className={s.shell} style={themeStyle(mode)}>
       <SiteHeader />
       {variant !== 'page' && <TickerSkeleton />}
-      <main id="main" className={`${s.main} ${width}`}>
+      <main id="main" className={s.main}>
         <SkeletonRegion label="Loading">
           <Bone w={220} h={14} />
           <Bone w={variant === 'today' ? 420 : 300} h={46} style={{ display: 'block', marginTop: 8, maxWidth: '100%' }} />
@@ -68,7 +67,7 @@ function TodayBody() {
     <>
       <div style={{ marginTop: 22 }}><DarkBand height={98} /></div>
       <div style={{ marginTop: 28 }}><Bone w="100%" h={120} /></div>
-      <div className={s.split}><section><GameRows rows={8} /></section><Aside /></div>
+      <ListBody rows={10} />
     </>
   )
 }

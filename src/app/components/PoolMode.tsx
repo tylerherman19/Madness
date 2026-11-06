@@ -49,13 +49,3 @@ export function useRememberedMode(): { mode?: CompetitionMode; seasonYear?: numb
   if (mode !== 'march-madness' && mode !== 'regular-season') return {}
   return { mode, seasonYear: Number(year) || undefined }
 }
-
-// The signed-in name from the last real page, kept in memory only, so a
-// loading screen in between keeps the same header.
-let rememberedAccount: string | undefined
-export function rememberAccount(account: string | undefined) {
-  rememberedAccount = account
-}
-export function lastAccount(): string | undefined {
-  return rememberedAccount
-}

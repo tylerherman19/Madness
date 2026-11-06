@@ -242,7 +242,7 @@ export default function PickForm({
       ? 'Selected, not submitted yet.'
       : submittedView
         ? `Submitted. You can change it until ${lockText}.`
-        : `Choose a team. Picks lock at ${lockText}.`
+        : `No team selected yet. Picks lock at ${lockText}.`
   const messageTone = !locked && selected ? s.amber : !submittedView && !locked ? s.gray : undefined
   const dockState = locked
     ? { text: 'Locked', tone: s.gray }
@@ -264,16 +264,21 @@ export default function PickForm({
     return { note: '' }
   }
 
+  // Action names match the rest of the site: "Make your pick" opens this
+  // page, "Choose a team" is the instruction here, "Submit pick" saves it.
   const primary = locked ? (
-    <Link className={`${s.cta} ${s.ctaQuiet}`} href="/sweat">Open sweat board</Link>
+    <Link className={`${s.cta} ${s.ctaQuiet}`} href="/sweat">View picks</Link>
   ) : selected ? (
     <button type="button" className={s.cta} onClick={submit} disabled={submitting || uncertain}>
-      {submitting ? 'Saving…' : `Submit ${name(selected)}`}
+      {submitting ? 'Saving…' : 'Submit pick'}
     </button>
   ) : submittedView && shownPick?.editable ? (
     <button type="button" className={`${s.cta} ${s.ctaQuiet}`} onClick={() => startChange(shownPick)}>Change pick</button>
   ) : (
-    <button type="button" className={s.cta} disabled>Choose a team</button>
+    <>
+      <button type="button" className={s.cta} disabled aria-describedby="submit-hint">Submit pick</button>
+      <p id="submit-hint" className={s.ctaHint}>Choose a team from today’s games to submit.</p>
+    </>
   )
 
   return (
@@ -281,7 +286,7 @@ export default function PickForm({
       <div className={s.pickHeader}>
         <div>
           <div className={s.kicker}>{dateLabel} · {titleLabel}</div>
-          <h1 className={s.title}>{locked ? 'Your pick' : 'Make your pick'}</h1>
+          <h1 className={s.title}>{locked ? 'Your pick' : 'Choose a team'}</h1>
         </div>
         {deadline && (
           <div className={s.lockBox}>
@@ -395,11 +400,11 @@ export default function PickForm({
           <b>{shownTeam ? name(shownTeam) : 'Choose a team'}</b>
         </span>
         {locked ? (
-          <Link className={`${s.cta} ${s.ctaQuiet}`} href="/sweat">Sweat board</Link>
+          <Link className={`${s.cta} ${s.ctaQuiet}`} href="/sweat">View picks</Link>
         ) : selected ? (
-          <button type="button" className={s.cta} onClick={submit} disabled={submitting || uncertain}>{submitting ? 'Saving…' : 'Submit'}</button>
+          <button type="button" className={s.cta} onClick={submit} disabled={submitting || uncertain}>{submitting ? 'Saving…' : 'Submit pick'}</button>
         ) : submittedView && shownPick?.editable ? (
-          <button type="button" className={`${s.cta} ${s.ctaQuiet}`} onClick={() => startChange(shownPick)}>Change</button>
+          <button type="button" className={`${s.cta} ${s.ctaQuiet}`} onClick={() => startChange(shownPick)}>Change pick</button>
         ) : null}
       </div>
     </div>

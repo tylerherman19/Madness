@@ -14,6 +14,7 @@ import { brandFor } from '@/lib/teamBrand'
 import { getTeamBrandDirectory } from '@/lib/sharedData'
 import { eventLabel, roundShort, weekdayDay } from '@/lib/poolTheme'
 import s from '@/app/components/pp.module.css'
+import GridScroller from './GridScroller'
 
 // Cache the render for 60s (like the homepage) so 1k concurrent viewers are
 // served from the CDN instead of each triggering the full query set. Current-slate
@@ -25,7 +26,7 @@ export const metadata = pageMetadata('Pick Grid', 'Explore the Pick and Pray sur
 export default async function GridPage() {
   // Guard the fetch so a DB outage (or a build without env) degrades to the
   // empty state instead of failing the render / prerender.
-  let slates: { id: string; slate_number: number; slate_date: string; season_year: number; locks_at: string | null }[] = []
+  let slates: { id: string; slate_number: number; slate_date: string; season_year: number; locks_at: string | null; is_active?: boolean }[] = []
   let players: { id: string; full_name: string; status: string; elimination_slate: number | null }[] = []
   let allPicks: { player_id: string; slate_id: string; team: string }[] = []
   let allGames: { slate_id: string; home_team: string; away_team: string; result: string; tip_time: string; round_label: string | null }[] = []
@@ -171,6 +172,12 @@ export default async function GridPage() {
     return a.full_name.localeCompare(b.full_name)
   })
 
+  // Today's column, and the days after the next one, which start hidden.
+  const activeIndex = slates.findIndex((w) => w.is_active)
+  const laterFrom = activeIndex === -1 ? slates.length : activeIndex + 2
+  const isLater = (index: number) => index >= laterFrom
+  const laterCount = Math.max(0, slates.length - laterFrom)
+
   const teamBrands = await getTeamBrandDirectory()
   const columnLabel = (slateId: string, index: number) => {
     const period = periodById[slateId]
@@ -191,14 +198,14 @@ export default async function GridPage() {
       {slates.length === 0 ? (
         <p className={s.notice}>No pick days scheduled yet.</p>
       ) : (
-        <div className={s.gridWrap} role="region" aria-label="Every entry's picks by day" tabIndex={0}>
+        <GridScroller laterCount={laterCount} label="Every entry's picks by day">
           <table className={s.gridTable}>
             <thead>
               <tr>
                 <th scope="col">Entry</th>
                 {slates.map((w, index) => (
-                  <th scope="col" key={w.id}>
-                    {columnLabel(w.id, index)}
+                  <th scope="col" key={w.id} data-current={index === activeIndex || undefined} data-later={isLater(index) || undefined}>
+                    {index === activeIndex ? 'Today' : columnLabel(w.id, index)}
                     <small>{periodById[w.id] ? weekdayDay(periodById[w.id].date) : ''}</small>
                     {topPickByWeek[w.id] && <small>{brandFor(topPickByWeek[w.id]!.team, teamBrands).shortName} ×{topPickByWeek[w.id]!.count}</small>}
                   </th>
@@ -212,10 +219,11 @@ export default async function GridPage() {
               {withStats.map((player) => (
                 <tr key={player.id} data-out={player.status === 'eliminated'}>
                   <th scope="row">{player.full_name}</th>
-                  {slates.map((w) => {
+                  {slates.map((w, index) => {
+                    const at = { 'data-current': index === activeIndex || undefined, 'data-later': isLater(index) || undefined }
                     const teams = pickMap[player.id]?.[w.id] ?? []
-                    if (!teams.length) return <td key={w.id} className={s.gridNone}>–</td>
-                    if (!isRevealed(w.id)) return <td key={w.id} className={s.gridNone}>Hidden</td>
+                    if (!teams.length) return <td key={w.id} {...at} className={s.gridNone}>–</td>
+                    if (!isRevealed(w.id)) return <td key={w.id} {...at} className={s.gridNone}>Hidden</td>
                     const outcomes = resultMap[player.id]?.[w.id] ?? []
                     const outcome: Outcome = outcomes.includes('lost')
                       ? 'lost'
@@ -223,7 +231,7 @@ export default async function GridPage() {
                         ? 'won'
                         : 'pending'
                     return (
-                      <td key={w.id} data-result={outcome}>
+                      <td key={w.id} {...at} data-result={outcome}>
                         {teams.map((team) => (
                           <span className={s.teamLine} key={team}><TeamLogo team={team} brands={teamBrands} size={18} />{team}</span>
                         ))}
@@ -235,9 +243,9 @@ export default async function GridPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </GridScroller>
       )}
-      <p className={s.small} style={{ marginTop: 12 }}>Green won · red lost · picks stay hidden until each day locks.</p>
+      {slates.length > 0 && <p className={s.small} style={{ marginTop: 12 }}>Each day’s picks appear when that day locks. Picks that won are in green; picks that lost are in red.</p>}
     </PoolShell>
   )
 }

@@ -5,15 +5,13 @@ import { getContestCore, getContestStandings, preloadContestStandings, type Cont
 import { haveSignupsClosedCached } from '@/lib/season'
 import { getSession } from '@/lib/session'
 import { getPoolConfig } from '@/lib/pool'
-import { getDb, getEffectiveNow } from '@/lib/testMode'
+import { getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline } from '@/lib/deadline'
 import { loadMyPicks, type MyPick } from '@/lib/myEntry'
 import { buildTimeline } from '@/lib/timeline'
-import { conferenceGroup } from '@/lib/teams'
-import { getCachedTeamConferences } from '@/lib/sharedData'
 import { brandFor } from '@/lib/teamBrand'
 import { capabilitiesFor } from '@/lib/competition'
-import { dayDate, eventLabel, pickDayTitle, teamTag, tipTime, weekdayMonthDay } from '@/lib/poolTheme'
+import { dayDate, eventLabel, pickDayTitle, tipTime } from '@/lib/poolTheme'
 import PoolShell from '../components/PoolShell'
 import ContestRefresh from '../components/ContestRefresh'
 import LockCountdown from '../components/LockCountdown'
@@ -21,7 +19,10 @@ import TeamLogo from '../components/TeamLogo'
 import StandingsTable from '../components/StandingsTable'
 import { StandingsTableSkeleton } from '../components/PageSkeletons'
 import RulesSection from '../components/RulesSection'
+import SurvivalTimeline from '../components/SurvivalTimeline'
+import ScrollToHash from '../components/ScrollToHash'
 import { buildStandingsRows } from '@/lib/standingsRows'
+import { pickStateOf } from '@/lib/viewerState'
 import type { StandingRow } from '@/types'
 import s from '../components/pp.module.css'
 
@@ -35,12 +36,11 @@ export default async function Today() {
   // Your own picks are read as soon as the session is known, alongside the
   // pool's data rather than after it.
   const sessionRead = getSession()
-  const [data, closed, session, allMyPicks, conferenceMap] = await Promise.all([
+  const [data, closed, session, allMyPicks] = await Promise.all([
     getContestCore(),
     haveSignupsClosedCached(),
     sessionRead,
     sessionRead.then((current) => (current ? loadMyPicks(current.player_id) : [])),
-    getDb().then(getCachedTeamConferences),
   ])
   // The standings started loading with everything else. When they are
   // already in hand — the usual, cached case — they render with the page;
@@ -61,22 +61,15 @@ export default async function Today() {
   const periods = data?.periods ?? []
   const period = data?.currentPeriod ?? null
   const dayNumber = period ? periods.findIndex((p) => p.id === period.id) + 1 : 0
-  const games = (data?.slateGames ?? []).slice().sort((a, b) => Number(a.time_tbd) - Number(b.time_tbd) || new Date(a.tip_time).getTime() - new Date(b.tip_time).getTime())
-  const lock = slate ? slateDeadline(slate, games) : null
+  const lock = slate ? slateDeadline(slate, data?.slateGames ?? []) : null
   const lockIso = lock?.toISOString() ?? null
   const lockText = tipTime(lockIso)
   const now = data?.now ?? (await getEffectiveNow())
   const locked = lock ? lock <= now : false
 
-  const conferences = !tournament && games.length ? conferenceMap : {}
-
   // The signed-in player's own entry.
   const me = session ? data?.players.find((player) => player.id === session.player_id) ?? null : null
-  const seasonIds = new Set(periods.map((p) => p.id))
-  const myPicks: MyPick[] = session && data ? allMyPicks.filter((p) => seasonIds.has(p.slateId)) : []
-  const todayPicks = myPicks.filter((p) => p.slateId === slate?.id)
-  const used = new Set(myPicks.filter((p) => p.slateId !== slate?.id).map((p) => p.team))
-  const mine = new Set(todayPicks.map((p) => p.team))
+  const todayPicks: MyPick[] = session && slate ? allMyPicks.filter((p) => p.slateId === slate.id) : []
 
   const alive = data?.aliveCount ?? 0
   const total = data?.totalPlayers ?? 0
@@ -101,15 +94,17 @@ export default async function Today() {
           ? { text: 'Auto-assigned at lock', tone: s.amber }
           : locked
             ? { text: `Locked at ${lockText}`, tone: s.gray }
-            : { text: `Submitted · change until ${lockText}`, tone: s.green }
+            : { text: `Submitted, change until ${lockText}`, tone: s.green }
   const myTeamText = todayPicks.length ? todayPicks.map((p) => name(p.team)).join(', ') : me?.status === 'eliminated' ? 'Eliminated' : 'No pick yet'
-  const action = !session
+  // The same names the header uses for the same actions.
+  const pick = session
+    ? pickStateOf({ hasSlate: !!slate, eliminated: me?.status === 'eliminated', locked, hasPick: todayPicks.length > 0 })
+    : undefined
+  const action = !pick || pick === 'none'
     ? null
-    : me?.status === 'eliminated'
-      ? { href: '/#standings', label: 'View standings' }
-      : locked || !slate
-        ? { href: '/sweat', label: 'Open sweat board' }
-        : { href: '/pick', label: todayPicks.length ? 'Change your pick' : 'Make your pick' }
+    : pick === 'eliminated' || pick === 'locked'
+      ? { href: '/sweat', label: 'View picks' }
+      : { href: '/pick', label: pick === 'submitted' ? 'Change pick' : 'Make your pick' }
 
   const survivors = (data?.players ?? []).filter((player) => player.status === 'alive')
   const winner = pool.status === 'completed' && survivors.length === 1 ? survivors[0].full_name : null
@@ -121,8 +116,17 @@ export default async function Today() {
   }
 
   return (
-    <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name} signupsClosed={closed}>
+    <PoolShell
+      mode={mode}
+      seasonYear={pool.season_year}
+      account={session?.full_name ?? null}
+      pick={pick}
+      // The entry strip below carries the page's action (or log in).
+      hideAction={!session || !!(me && action)}
+      signupsClosed={closed}
+    >
       <ContestRefresh />
+      <ScrollToHash />
       <div className={s.kicker}>{period ? `${dayDate(period.date)} · ` : ''}{eventLabel(mode, pool.season_year)}</div>
       <h1 className={s.title}>{period ? pickDayTitle(period.round, period.date, dayNumber) : 'No games scheduled'}</h1>
       {!data && <p role="status" className={s.notice}>Pool data is unavailable. Refresh to try again.</p>}
@@ -136,7 +140,7 @@ export default async function Today() {
           <div className={s.meter}><span style={{ width: `${alive ? (submitted / alive) * 100 : 0}%` }} /></div>
         </div>
         <div className={s.scoreCell}>
-          <div className={s.cellLabel}>{lockIso ? <>Locks<span className={s.liveExtra}> at first tip</span> · {lockText}</> : 'Lock time'}</div>
+          <div className={s.cellLabel}>{lockIso ? <>Locks<span className={s.liveExtra}> at first tip,</span> {lockText}</> : 'Lock time'}</div>
           <div className={s.cellValue}>{lockIso ? <LockCountdown deadline={lockIso} soonClassName={s.clockSoon} /> : 'TBD'}</div>
         </div>
       </section>
@@ -144,7 +148,7 @@ export default async function Today() {
       {session && me && action ? (
         <section className={s.entryStrip} aria-label="Your pick">
           <span>
-            <small className={entryState?.tone}>{pickLabel} · {entryState?.text}</small>
+            <small>{pickLabel}: <span className={entryState?.tone}>{entryState?.text}</span></small>
             <span className={s.cardTeamRow}>
               {todayPicks.length === 1 && <TeamLogo team={todayPicks[0].team} brands={brands} size={30} />}
               <b className={s.cardTeam}>{myTeamText}</b>
@@ -160,47 +164,7 @@ export default async function Today() {
         </section>
       ) : null}
 
-      {timeline.length > 1 && (
-        <section className={s.timeline} aria-label="Survival timeline">
-          <div className={s.timelineHead}><h2>Survival timeline</h2><span>Entries remaining after each day</span></div>
-          <div className={s.tlBars} style={{ gridTemplateColumns: `repeat(${timeline.length}, minmax(0, 1fr))` }}>
-            {timeline.map((col) => (
-              <div className={s.tlCol} data-state={col.state} key={col.key}>
-                <span className={s.tlNum}>{col.remaining ?? ''}{col.state === 'today' && <small> Pending</small>}</span>
-                <span className={s.tlBar} style={{ '--r': col.remaining == null ? 0 : col.remaining / timelineMax } as React.CSSProperties} />
-              </div>
-            ))}
-          </div>
-          <div className={s.tlLabels} style={{ gridTemplateColumns: `repeat(${timeline.length}, minmax(0, 1fr))` }}>
-            {timeline.map((col) => (
-              <div className={s.tlLabel} data-state={col.state} key={col.key}>{col.label}<small>{col.date}</small></div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className={s.homeSection} aria-label="Today's schedule">
-          <div className={s.sectionHead}><h2>{data?.slateIsToday || !period ? 'Today’s games' : `${weekdayMonthDay(period.date)} games`}</h2><span>{games.length} games</span></div>
-          {games.map((game) => (
-            <div className={s.gameRow} key={game.id}>
-              <span className={s.gameTime}><b>{game.time_tbd ? 'TBD' : tipTime(game.tip_time)}</b><span>{game.tv ?? ''}</span></span>
-              <span className={s.sides}>
-                {([[game.away_team, game.away_seed], [game.home_team, game.home_seed]] as const).map(([team, seed]) => {
-                  const note = mine.has(team) ? 'mine' : used.has(team) ? 'used' : undefined
-                  const tag = teamTag(mode, seed, game.round_label)
-                  return (
-                    <span className={s.side} data-note={note} key={team}>
-                      <span className={s.teamLine}><span className={s.tag}>{tag ?? ''}</span><TeamLogo team={team} brands={brands} size={24} />{name(team)}</span>
-                      {note && <span className={s.sideNote}>{note === 'mine' ? 'Your pick' : 'Used'}</span>}
-                    </span>
-                  )
-                })}
-              </span>
-              <span className={s.group}>{tournament ? game.region ?? '' : conferenceGroup(game.away_team, game.home_team, conferences) ?? ''}</span>
-            </div>
-          ))}
-          {games.length === 0 && <p className={s.empty}>The next slate appears here when it is set.</p>}
-      </section>
+      {timeline.length > 1 && <SurvivalTimeline columns={timeline} max={timelineMax} />}
 
       <section id="standings" className={s.homeSection} aria-label="Standings">
         <div className={s.sectionHead}><h2>Standings</h2><span>{period ? `Through day ${dayNumber}` : ''}</span></div>

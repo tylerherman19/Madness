@@ -10,6 +10,7 @@ export interface TimelineColumn {
   date: string // "Thu 18", or '' for the start column
   remaining: number | null // null for days not played yet
   state: 'done' | 'today' | 'future'
+  later?: boolean // past the next game day: shown on request
 }
 
 // The bracket calendar, used to sketch tournament days not synced yet.
@@ -98,18 +99,19 @@ export function buildTimeline({
     }
   }
 
-  // A regular season has far more days than fit; keep the recent ones, today
-  // and the next few.
-  let visible = columns
-  if (columns.length > maxColumns) {
-    const anchor = currentIndex === -1 ? columns.length - 1 : currentIndex
-    const end = Math.min(columns.length, Math.max(anchor + 4, maxColumns))
-    visible = columns.slice(Math.max(0, end - maxColumns), end)
-  }
+  // Shown at first: the recent completed days, today and the next game day.
+  // Later days come after, marked `later`, for the page to show on request.
+  // A regular season has far more days than fit, so both are windows.
+  const firstFuture = columns.findIndex((c) => c.state === 'future')
+  const shownEnd = firstFuture === -1 ? columns.length : firstFuture + 1
+  const shownStart = Math.max(0, shownEnd - maxColumns)
+  const shown = columns.slice(shownStart, shownEnd)
+  const later = columns.slice(shownEnd, shownEnd + maxColumns).map((c) => ({ ...c, later: true }))
 
-  const startRemaining = visible[0] === columns[0] ? totalEntries : null
+  const startRemaining = shownStart === 0 ? totalEntries : null
   return [
     ...(startRemaining !== null ? [{ key: 'start', label: 'Start', date: '', remaining: totalEntries, state: 'done' as const }] : []),
-    ...visible,
+    ...shown,
+    ...later,
   ]
 }

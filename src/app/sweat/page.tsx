@@ -41,7 +41,7 @@ export default async function SweatPage() {
   const brands = brandsFor([...games.flatMap((g) => [g.home_team, g.away_team]), ...(myTeams ?? [])], data?.teamBrands ?? {})
 
   return (
-    <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name}>
+    <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name ?? null}>
       <SweatBoard
         teamBrands={brands}
         myTeams={myTeams}

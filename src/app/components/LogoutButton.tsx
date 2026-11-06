@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { resetViewer } from './useViewer'
 
+// Styled by where it sits (the header's nav and phone menu).
 export default function LogoutButton() {
   const router = useRouter()
   const [error, setError] = useState('')
@@ -14,14 +16,16 @@ export default function LogoutButton() {
     try {
       const response = await fetch('/api/auth/logout', { method: 'POST' })
       if (!response.ok) { setError('Could not log out. Try again.'); return }
+      resetViewer()
       router.push('/')
       router.refresh()
-    } catch { setError('Could not log out. Check your connection.'); }
+    } catch { setError('Could not log out. Check your connection.') }
     finally { setBusy(false) }
   }
   return (
-    <><button disabled={busy} onClick={handleLogout} className="text-xs tracking-widest uppercase transition-colors" style={{ color: 'var(--muted)' }}>
-      Log out
-    </button>{error && <span role="alert" className="text-xs">{error}</span>}</>
+    <>
+      <button type="button" disabled={busy} onClick={handleLogout}>Log out</button>
+      {error && <span role="alert">{error}</span>}
+    </>
   )
 }

@@ -66,7 +66,7 @@ async function getSandboxSnapshot(): Promise<SandboxSnapshot> {
   }
 }
 
-export const metadata = { title: 'Test Mode', description: 'Madness pool administration: test mode.' }
+export const metadata = { title: 'Test Mode', description: 'Pick and Pray administration: test mode.' }
 
 export default async function TestingPage() {
   const isAdmin = await getAdminSession()

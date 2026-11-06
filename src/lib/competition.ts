@@ -1,6 +1,6 @@
 // The competition-mode system.
 //
-// MADNESS runs two competitions off one survivor engine: a regular-season
+// Pick and Pray runs two competitions off one survivor engine: a regular-season
 // college basketball pool and an NCAA tournament pool. They share every rule
 // that matters — one pick per pick period, no team twice, a loss ends you —
 // and differ only in what the product should *show* and *call things*.
@@ -100,7 +100,7 @@ export function capabilitiesFor(mode: CompetitionMode): CompetitionCapabilities 
 
 // ---------------------------------------------------------------------- copy
 
-// Terminology. MADNESS is the brand year-round; only the supporting line and
+// Terminology. Pick and Pray is the brand year-round; only the supporting line and
 // the nouns move. Nothing here ever renders the permanent navigation as
 // "March Madness Survivor" — the site operates in January too.
 export interface CompetitionCopy {

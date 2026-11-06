@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+import css from '@/app/components/pp.module.css'
 import { useState, type FormEvent } from 'react'
 
 export default function ResetPasswordForm({ token }: { token: string }) {
@@ -36,19 +38,19 @@ export default function ResetPasswordForm({ token }: { token: string }) {
     }
   }
 
-  if (done) return <p className="text-sm font-bold" style={{ color: 'var(--success)' }}>Password updated. You can now log in.</p>
+  if (done) return <div className="space-y-4"><p role="status">Password updated. Log in with your new password.</p><Link href="/login" className="btn-primary w-full py-3">Log in</Link></div>
 
   return (
     <form onSubmit={submit} className="space-y-5">
       <div>
-        <label htmlFor="new-password" className="text-sm font-bold block mb-2">New password</label>
-        <input id="new-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" />
+        <label htmlFor="new-password" className="block mb-2 font-semibold">New password</label>
+        <input id="new-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3 py-2.5" />
       </div>
       <div>
-        <label htmlFor="confirm-password" className="text-sm font-bold block mb-2">Confirm new password</label>
-        <input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3.5 py-2.5 text-sm" />
+        <label htmlFor="confirm-password" className="block mb-2 font-semibold">Confirm new password</label>
+        <input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3 py-2.5" />
       </div>
-      {error && <p role="alert" className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+      {error && <p role="alert" className={css.authError}>{error}</p>}
       <button type="submit" disabled={saving} className="btn-primary w-full py-3">{saving ? 'Saving…' : 'Set new password'}</button>
     </form>
   )

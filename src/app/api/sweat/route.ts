@@ -78,6 +78,10 @@ export interface SweatResponse {
   locksAt: string | null
   /** Entries still alive — the denominator for every "% of the field" figure. */
   aliveCount: number
+  /** Entries with a stake today: alive ones, plus any already put out by
+   *  today's results. Live finals count as losses here before results are
+   *  graded; the official status changes only when they are. */
+  entriesToday: number
   hasLiveGames: boolean
   allRevealed: boolean
   games: SweatGame[]
@@ -105,6 +109,7 @@ const EMPTY: SweatResponse = {
   roundLabel: null,
   locksAt: null,
   aliveCount: 0,
+  entriesToday: 0,
   hasLiveGames: false,
   allRevealed: false,
   games: [],
@@ -356,6 +361,7 @@ export async function GET(request: NextRequest) {
         roundLabel: period?.roundLabel ?? null,
         locksAt: deadline?.toISOString() ?? null,
         aliveCount,
+        entriesToday: players.length,
         hasLiveGames,
         allRevealed: deadlinePassed,
         games: espnGames,

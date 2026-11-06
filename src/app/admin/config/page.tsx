@@ -9,7 +9,7 @@ import { getPoolConfig } from '@/lib/pool'
 import { capabilitiesFor, copyFor, normalizeRound, MODE_LABEL, STATUS_LABEL } from '@/lib/competition'
 import PoolConfigForm from './PoolConfigForm'
 
-export const metadata = { title: 'Pool Configuration — MADNESS Admin' }
+export const metadata = { title: 'Pool configuration' }
 
 export default async function PoolConfigPage() {
   const isAdmin = await getAdminSession()
@@ -81,7 +81,7 @@ export default async function PoolConfigPage() {
         </ul>
         <p className="mt-4 text-xs text-muted">
           Supporting line under the wordmark:{' '}
-          <span className="text-ink">MADNESS · {copy.tagline}</span>
+          <span className="text-ink">Pick and Pray: {copy.tagline}</span>
         </p>
       </section>
 

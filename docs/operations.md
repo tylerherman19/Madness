@@ -1,4 +1,4 @@
-# MADNESS deployment checks
+# Pick and Pray deployment checks
 
 - Set `NEXT_PUBLIC_APP_URL` to the primary HTTPS domain before building. Metadata, canonicals and sitemap entries use that origin (default: `https://madness-cyan.vercel.app`). Redirect alternate production domains to that primary domain in Vercel to avoid duplicate content.
 - `NEXT_PUBLIC_SUPPORT_EMAIL` can override the existing `pool@pickandpray.org` contact. Confirm it reaches the organizer. Fee/payment copy follows the current $25 / @griffinsell pool. Confirm and update refund/payout details before accepting payments if the organizer has different policies.

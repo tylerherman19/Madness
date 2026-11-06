@@ -187,7 +187,6 @@ export interface ContestCore {
   periods: PickPeriod[]
   currentPeriod: PickPeriod | null
   slateGames: Game[] // the active day's games, read live
-  slateIsToday: boolean
   players: SeasonPlayer[]
   aliveCount: number
   eliminatedCount: number
@@ -237,9 +236,6 @@ export const getContestCore = cache(async (): Promise<ContestCore | null> => {
     )
     const currentPeriod = slate ? periods.find((p) => p.id === slate.id) ?? null : null
 
-    // "TODAY" only when the active slate really is today in Central — the
-    // pool's own timezone. Every other day gets its own name.
-    const centralToday = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
     const alive = players.filter((p) => p.status === 'alive')
 
     return {
@@ -253,7 +249,6 @@ export const getContestCore = cache(async (): Promise<ContestCore | null> => {
       periods,
       currentPeriod,
       slateGames,
-      slateIsToday: slate ? String(slate.slate_date).slice(0, 10) === centralToday : false,
       players,
       aliveCount: alive.length,
       eliminatedCount: players.length - alive.length,

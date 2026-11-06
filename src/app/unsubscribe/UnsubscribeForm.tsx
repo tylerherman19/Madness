@@ -24,10 +24,10 @@ export default function UnsubscribeForm({ p, t }: { p: string; t: string }) {
 
   return (
     <div>
-      <p role="status" style={{ fontSize: 15 }}>
+      <p role="status" style={{ fontSize: 16 }}>
         {enabled === null ? 'Stop all pool emails to this address?' : enabled ? 'You are subscribed again.' : 'You are unsubscribed. You will get no more pool emails.'}
       </p>
-      {error && <p role="alert" style={{ color: '#B42318', marginTop: 8 }}>{error}</p>}
+      {error && <p role="alert" style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</p>}
       <button type="button" className="btn-primary w-full" style={{ marginTop: 16 }} disabled={busy} onClick={() => save(enabled === false)}>
         {busy ? 'Saving…' : enabled === false ? 'Resubscribe' : 'Unsubscribe'}
       </button>
