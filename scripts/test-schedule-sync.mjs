@@ -99,15 +99,45 @@ try {
   process.env.TOURNAMENT_RELIABILITY_ENABLED = String(!legacy)
   const client = fixture({legacy, games: [oldGame], slates: [{id: 'old-slate', slate_date: '2026-10-31'}], picks: [0,1,2].map(n => ({id: String(n), slate_id: 'old-slate', team: 'A'}))})
   const result = await run(client, [event()])
-  assert.equal(result.ok, false); assert.ok(result.partial.includes('schedule-review'))
+  assert.equal(result.ok, false); assert.deepEqual(result.reviewGames, ['game'])
   assert.deepEqual(client.state.games, [oldGame]); assert.equal(hooks.length, 0)
   assert.equal(legacy ? client.state.audit_log.length : client.incidents.length, 1)
   assert.equal(client.calls.filter(call => call.table === 'picks').length, 3, 'Pick review reads every capped page')
  }
  process.env.TOURNAMENT_RELIABILITY_ENABLED = 'true'
  const raced = fixture({games: [oldGame], slates: [{id: 'old-slate', slate_date: '2026-10-31'}], skipUpsert: true})
- assert.equal((await run(raced, [event()])).ok, false, 'A trigger-skipped concurrent move must never report success')
+ const racedResult = await run(raced, [event()])
+ assert.equal(racedResult.gamesSynced, 0)
+ assert.deepEqual(racedResult.reviewGames, ['game'], 'A trigger-skipped concurrent move is reported explicitly')
  assert.deepEqual(raced.state.games, [oldGame])
+ const current = {...oldGame, slate_id: 'new-slate'}
+ const picked = [{id: 'pick', slate_id: 'new-slate', team: 'A'}]
+ const currentDay = [{id: 'new-slate', slate_date: '2026-11-01', is_active: true}]
+ const reversed = event()
+ reversed.competitions[0].neutralSite = true
+ reversed.competitions[0].status.type = {state: 'post', completed: true}
+ reversed.competitions[0].competitors = [
+  {homeAway: 'home', team: {id: '2', abbreviation: 'B'}, score: '78', winner: true},
+  {homeAway: 'away', team: {id: '1', abbreviation: 'A'}, score: '72', winner: false},
+ ]
+ const safe = fixture({games: [current], slates: currentDay, picks: picked})
+ const reversedResult = await run(safe, [reversed])
+ assert.equal(reversedResult.gamesSynced, 1)
+ assert.equal(safe.incidents.length, 0)
+ assert.deepEqual(
+  [safe.state.games[0].home_team, safe.state.games[0].away_team, safe.state.games[0].home_score, safe.state.games[0].away_score, safe.state.games[0].result],
+  ['A', 'B', 72, 78, 'away_win'],
+  'A neutral-site flip preserves the pick linkage and credits the actual winner',
+ )
+ const changed = structuredClone(reversed)
+ changed.competitions[0].competitors[1].team = {id: '3', abbreviation: 'C'}
+ const unaffected = {...event(), id: 'unaffected'}
+ const conflict = fixture({games: [current], slates: currentDay, picks: picked})
+ const isolated = await run(conflict, [changed, unaffected])
+ assert.equal(isolated.gamesSynced, 1)
+ assert.deepEqual(isolated.reviewGames, ['game'])
+ assert.deepEqual(conflict.state.games.find(game => game.id === 'game'), current)
+ assert.equal(conflict.incidents.length, 1)
  const directory = fixture({directoryError: true})
  assert.match((await run(directory, [event()])).error, /Failed to save team directory/)
  const partial = fixture({games: [{...oldGame, id: 'other', espn_event_id: 'absent', slate_id: 'new-slate'}]})
@@ -149,6 +179,24 @@ for (const schema of ['public', 'sandbox']) {
  await db.exec(`update games set home_score=10,status_state='in' where espn_event_id='move'`)
  assert.equal(await scalar(`select home_score from games where espn_event_id='move'`), 10, 'Normal live score updates still work')
  assert.equal(await scalar(`select has_function_privilege('anon',$1,'EXECUTE')`, [`${schema}.guard_picked_schedule()`]), false)
+ await db.exec(`insert into operation_runs(key,status,attempts,next_attempt_at) values
+  ('recurring:results','review',8,now()+interval '1 hour'),('assignment:unsafe','review',8,now());`)
+ assert.equal(await scalar(`select claim_operation('recurring:results')`), null)
+ await db.exec(`update operation_runs set next_attempt_at=now() where key='recurring:results'`)
+ assert.ok(await scalar(`select claim_operation('recurring:results')`), 'A feed job probes again after backoff')
+ assert.equal(await scalar(`select claim_operation('recurring:results')`), null, 'A retry still has a single lease')
+ assert.equal(await scalar(`select claim_operation('assignment:unsafe')`), null)
+ await db.exec(`update slates set auto_assign_completed_at=now() where slate_number=1;
+  insert into games(espn_event_id,slate_id,home_team,away_team,tip_time) values
+  ('held','00000000-0000-4000-8000-000000000001','X','Y','2099-03-19T19:00:00Z');`)
+ const activation = `select activate_ready_slate('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',array(select id from games where espn_event_id='held'),true)`
+ await assert.rejects(db.query(activation), /Results incomplete/)
+ await db.exec(`update games set result='home_win' where espn_event_id='move'`)
+ await db.exec(`update slates set locks_at=now()-interval '1 hour' where slate_number=2`)
+ await assert.rejects(db.query(activation), /already locked/)
+ await db.exec(`update slates set locks_at='2099-03-20T18:00:00Z' where slate_number=2`)
+ await db.query(activation)
+ assert.equal(await scalar(`select slate_number from slates where is_active`), 2)
  console.log(`PASS ${schema}: idempotent 028, unpicked move snapshots, legacy stable-ID fill, protected period/team/provider/game identity and delete, preserved outcome/linkage, live scores and restricted trigger ACL`)
 }
 await db.close()

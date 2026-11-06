@@ -10,6 +10,7 @@ import { loadPicksForSlates } from '@/lib/seasonData'
 import { reportFailure } from '@/lib/alerts'
 import { getTeamBrandDirectory } from '@/lib/sharedData'
 import { cdnSeconds, feedCacheControl } from '@/lib/livePolling'
+import { centralClock } from '@/lib/operationPolicy'
 
 export interface LiveGame {
   id: string
@@ -105,18 +106,26 @@ export async function GET(request: NextRequest) {
     const testMode = await isTestMode()
     const uncached = testMode || request.nextUrl.searchParams.has('sandbox')
 
-    // Get active slate from our DB
-    const { data: slate } = await supabase
-      .from('slates')
-      .select('id, slate_number, slate_date, season_year, locks_at')
-      .eq('is_active', true)
-      .single()
+    const now = await getEffectiveNow()
+    const fields = 'id, slate_number, slate_date, season_year, locks_at, is_active'
+    const { data: active, error: activeError } = await supabase
+      .from('slates').select(fields).eq('is_active', true).maybeSingle()
+    if (activeError) throw activeError
+
+    let slate = active
+    const today = centralClock(now).date
+    if (!testMode && active && active.slate_date < today) {
+      const current = await supabase.from('slates').select(fields)
+        .eq('slate_date', today).eq('season_year', active.season_year).maybeSingle()
+      if (current.error) throw current.error
+      slate = current.data ?? active
+    }
 
     if (!slate) {
       return NextResponse.json(EMPTY, { headers: { 'Cache-Control': feedCacheControl(uncached ? null : NO_SLATE_SECONDS) } })
     }
 
-    const [dbGamesRes, teamsRes, events, now, directory] = await Promise.all([
+    const [dbGamesRes, teamsRes, events, directory] = await Promise.all([
       supabase.from('games').select('*').eq('slate_id', slate.id),
       supabase.from('teams').select('abbr, logo'),
       // Sandbox matchups are fabricated, so there is nothing to look up on the
@@ -133,7 +142,6 @@ export async function GET(request: NextRequest) {
         : fetchDayScoreboard(String(slate.slate_date).replace(/-/g, ''), 10)
             .then((r) => r.events)
             .catch(() => null),
-      getEffectiveNow(),
       getTeamBrandDirectory(),
     ])
 
@@ -142,6 +150,7 @@ export async function GET(request: NextRequest) {
     // response is sent; a no-op until the slate locks and once it's done.
     after(() => autoAssignIfDue(supabase, now))
 
+    if (dbGamesRes.error) throw dbGamesRes.error
     const dbGames = (dbGamesRes.data ?? []) as Game[]
     const teamRows = Object.fromEntries((teamsRes.data ?? []).map((team) => [team.abbr, team]))
 
@@ -158,6 +167,10 @@ export async function GET(request: NextRequest) {
       const homeAbbr = teams.home.team.abbreviation
       const awayAbbr = teams.away.team.abbreviation
       if (!homeAbbr || !awayAbbr) continue
+      const sameSides = homeAbbr === scheduled.home_team && awayAbbr === scheduled.away_team
+      const neutralSwap = event.competitions[0].neutralSite === true &&
+        homeAbbr === scheduled.away_team && awayAbbr === scheduled.home_team
+      if (!sameSides && !neutralSwap) continue
       games.push({
         id: event.id,
         homeTeam: homeAbbr,
@@ -200,7 +213,7 @@ export async function GET(request: NextRequest) {
     // The slate locks as a unit at its first tip, so picks go public as a
     // unit too — there is no longer a per-team reveal to compute.
     const revealedTeams = new Set<string>()
-    if (isPickRevealed(slate, dbGames, now)) {
+    if (slate.is_active && isPickRevealed(slate, dbGames, now)) {
       for (const g of dbGames) {
         revealedTeams.add(g.home_team)
         revealedTeams.add(g.away_team)
