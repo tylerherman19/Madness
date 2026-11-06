@@ -10,7 +10,8 @@ import type { Game } from '@/types'
 import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from '@/lib/seasonData'
 import PoolShell from '@/app/components/PoolShell'
 import TeamLogo from '@/app/components/TeamLogo'
-import { brandFor, getTeamBrandDirectory } from '@/lib/teamBrand'
+import { brandFor } from '@/lib/teamBrand'
+import { getTeamBrandDirectory } from '@/lib/sharedData'
 import { eventLabel, roundShort, weekdayDay } from '@/lib/poolTheme'
 import s from '@/app/components/pp.module.css'
 
@@ -171,14 +172,13 @@ export default async function GridPage() {
   })
 
   const teamBrands = await getTeamBrandDirectory()
-  const names = Object.fromEntries(Object.entries(teamBrands).map(([abbr, brand]) => [abbr, brand.shortName]))
   const columnLabel = (slateId: string, index: number) => {
     const period = periodById[slateId]
     return (caps.showTournamentRounds && roundShort(period?.round)) || `Day ${index + 1}`
   }
 
   return (
-    <PoolShell mode={mode} seasonYear={pool.season_year} names={names}>
+    <PoolShell mode={mode} seasonYear={pool.season_year}>
       <ContestRefresh />
       <div className={s.pickHeader}>
         <div>

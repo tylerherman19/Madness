@@ -3,6 +3,7 @@ import { requireAdmin, isUuid } from '@/lib/api'
 import { adminSessionId } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import { serverError } from '@/lib/alerts'
+import { revalidateContest } from '@/lib/revalidateContest'
 export async function POST(req: NextRequest) {
   const unauthorized = await requireAdmin()
   if (unauthorized) return unauthorized
@@ -88,6 +89,8 @@ export async function POST(req: NextRequest) {
       result = await db.rpc('reconcile_contest')
     else return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
     if (result.error) throw result.error
+    // Reconciliation can correct contest rows; every other action here is delivery.
+    if (body.action === 'reconcile') revalidateContest()
     return NextResponse.json({ ok: true, result: result.data })
   } catch (error) {
     return serverError('api/admin/system', error)

@@ -87,7 +87,34 @@ They create the `public` schema plus a mirrored `sandbox` schema used by Test Mo
   auto-assign stays off until it is applied (the daily cron still runs).
 
 Large reads (a season's games and picks) are paged through `src/lib/db.ts`:
-PostgREST silently caps every response at 1,000 rows by default.
+PostgREST silently caps every response at 1,000 rows by default. The first
+page asks for the exact row total, so the remaining pages are fetched together
+rather than one after another.
+
+## Caching
+
+Data that is the same for every visitor is cached on the server and shared:
+
+- **Season data** for Today and the sweat board (`src/lib/dashboard.ts`): an
+  outline (pool settings, game days, entries) and a compact history (picks and
+  results before the active day). Picks for the active day and later, and the
+  active day's games, are always read live.
+- **The signup cutoff** instant, **team conferences** and the trimmed **ESPN
+  team directory** (`src/lib/sharedData.ts`, `src/lib/season.ts`).
+
+Every write to contest data must call `revalidateContest()`
+(`src/lib/revalidateContest.ts`), which invalidates the `contest` cache tag.
+Saving a pick passes `{ picksOnly: true }`, because open-day picks are read
+live. Cached season data also expires after 60 seconds as a backstop, so a
+missed call means at most a minute of stale standings. Test mode (draft mode)
+never reads or writes these caches.
+
+The score ticker (`/api/live-scores`) and sweat board (`/api/sweat`) responses
+are cached by Vercel's CDN: 10 seconds while games are on, up to a minute
+before a tip but never past it (30 seconds for the sweat board), and 5 minutes
+once the day is done. Browsers keep a copy for 5 seconds. Test-mode browsers
+request `?sandbox=1`, which is never cached. Timing rules live in
+`src/lib/livePolling.ts`.
 
 ## Scheduled jobs
 

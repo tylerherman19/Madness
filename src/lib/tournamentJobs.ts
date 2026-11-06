@@ -11,6 +11,7 @@ import { getPoolConfig } from './pool'
 import { gradeSlatePicks } from './grading'
 import { loadAll, loadGamesForSlates } from './seasonData'
 import type { Slate } from '@/types'
+import { revalidateContest } from './revalidateContest'
 
 export const WORKLOADS = [
   'schedule',
@@ -156,6 +157,9 @@ export async function runTournamentJob(
       if (result.error) throw result.error
       progress = result.data
     }
+    // Grading, schedule sync and reconciliation change contest rows; the
+    // other contest workloads invalidate through the functions they call.
+    if (kind === 'grading' || kind === 'schedule' || kind === 'integrity') revalidateContest()
     const result = await db.rpc('finish_recurring_operation', {
       p_key: key,
       p_token: token,

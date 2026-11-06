@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
 import { serverError } from '@/lib/alerts'
+import { revalidateContest } from '@/lib/revalidateContest'
 
 // Accepts either YYYY-MM-DD or the bare YYYYMMDD that ESPN itself uses.
 function normalizeDate(input: unknown): string | null {
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: result.error }, { status })
     }
 
+    revalidateContest()
     await logAudit(supabase, {
       event_type: 'schedule-synced',
       actor: 'admin',

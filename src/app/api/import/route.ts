@@ -4,6 +4,7 @@ import { requireAdmin, escapeIlike } from '@/lib/api'
 import { hashPassword, passwordValidationError } from '@/lib/password'
 import { logAudit } from '@/lib/audit'
 import { serverError } from '@/lib/alerts'
+import { revalidateContest } from '@/lib/revalidateContest'
 
 // bcrypt cost-12 hashing is intentionally serial per row. Allow enough runtime
 // that a full-size batch cannot be killed halfway through credential creation.
@@ -105,6 +106,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (count > 0) revalidateContest()
     await logAudit(supabase, {
       event_type: 'players-imported',
       actor: 'admin',

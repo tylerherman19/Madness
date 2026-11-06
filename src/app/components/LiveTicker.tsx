@@ -4,6 +4,7 @@ import type { LiveScoresResponse } from '@/app/api/live-scores/route'
 import s from './pp.module.css'
 import TeamLogo from './TeamLogo'
 import { TickerSkeleton } from './PageSkeletons'
+import { RETRY_MS, nextPollMs } from '@/lib/livePolling'
 
 // The ticker is one continuous velocity, never a stop-and-restart. Left alone it
 // cruises; a swipe injects velocity; friction relaxes that velocity back toward
@@ -25,7 +26,7 @@ type Drag = {
   lastAt: number
 }
 
-export default function LiveTicker({ label, names }: { slateNumber?: number | null; season?: number | null; label?: string | null; names?: Record<string, string> }) {
+export default function LiveTicker({ label, sandbox = false }: { label?: string | null; sandbox?: boolean }) {
   const [data, setData] = useState<LiveScoresResponse | null>(null)
   const [paused, setPaused] = useState(false)
   const [settled, setSettled] = useState(false)
@@ -42,27 +43,34 @@ export default function LiveTicker({ label, names }: { slateNumber?: number | nu
   const cruising = useRef(true)
   const drag = useRef<Drag>({ active: false, pointerId: -1, lastX: 0, lastAt: 0 })
 
-  const hasLive = data?.hasLiveGames ?? false
-
+  // The browser may reuse a response for 5 seconds, so moving between pages
+  // shows the last scores straight away. Test-mode browsers read their own,
+  // never-cached address (see the route).
   useEffect(() => {
     let dead = false
+    let timer: number | undefined
+    // A failed request keeps the timing of the last good one.
+    let body: LiveScoresResponse | null = null
     const load = async () => {
       try {
-        const response = await fetch('/api/live-scores', { cache: 'no-store' })
-        if (response.ok && !dead) setData(await response.json())
+        const response = await fetch(sandbox ? '/api/live-scores?sandbox=1' : '/api/live-scores')
+        if (response.ok) body = await response.json()
+        if (response.ok && !dead) setData(body)
       } catch {
         // Keep the last successful scoreboard on a transient network failure.
       } finally {
-        if (!dead) setSettled(true)
+        if (!dead) {
+          setSettled(true)
+          timer = window.setTimeout(load, body ? nextPollMs(body.games, body.hasLiveGames) : RETRY_MS)
+        }
       }
     }
     load()
-    const id = setInterval(load, hasLive ? 30_000 : 300_000)
     return () => {
       dead = true
-      clearInterval(id)
+      window.clearTimeout(timer)
     }
-  }, [hasLive])
+  }, [sandbox])
 
   useEffect(() => {
     const query = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -170,7 +178,6 @@ export default function LiveTicker({ label, names }: { slateNumber?: number | nu
     if (element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId)
   }
 
-  const name = (team: string) => names?.[team] ?? team
   const status = (game: LiveScoresResponse['games'][number]) =>
     game.state === 'pre'
       ? game.timeTbd
@@ -251,7 +258,7 @@ export default function LiveTicker({ label, names }: { slateNumber?: number | nu
                   {(['away', 'home'] as const).map((side) => (
                     <span className={s.tickerTeam} data-result={result(game, side)} key={side}>
                       <TeamLogo team={side === 'away' ? game.awayTeam : game.homeTeam} src={side === 'away' ? game.awayLogo : game.homeLogo} size={18} />{' '}
-                      {name(side === 'away' ? game.awayTeam : game.homeTeam)}
+                      {side === 'away' ? game.awayName ?? game.awayTeam : game.homeName ?? game.homeTeam}
                       {game.state !== 'pre' && game.scoresKnown !== false
                         ? ` ${side === 'away' ? game.awayScore : game.homeScore}`
                         : ''}

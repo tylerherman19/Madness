@@ -19,8 +19,9 @@ import PickForm, { type GameRow, type SavedPick } from './PickForm'
 import PoolShell from '../components/PoolShell'
 import { slateDeadline } from '@/lib/deadline'
 import Link from 'next/link'
-import { getTeamBrandDirectory, type TeamBrandDirectory } from '@/lib/teamBrand'
-import { conferenceGroup, getTeamConferences } from '@/lib/teams'
+import { brandsFor, type TeamBrandDirectory } from '@/lib/teamBrand'
+import { conferenceGroup } from '@/lib/teams'
+import { getCachedTeamConferences, getTeamBrandDirectory } from '@/lib/sharedData'
 import { dayDate, pickDayTitle, teamTag, teamTagName, weekdayShort } from '@/lib/poolTheme'
 import s from '../components/pp.module.css'
 
@@ -62,20 +63,17 @@ async function loadPickData(
   const caps = capabilitiesFor(mode)
   try {
     const supabase = await getDb()
-    const { data: player } = await supabase
-      .from('players')
-      .select('id, full_name, status, paid')
-      .eq('id', playerId)
-      .single()
-    if (!player) return { kind: 'no-session' }
-
     const now = await getEffectiveNow()
-    // Fill in missed picks once first tip has passed — see lib/autoAssign.ts.
-    after(() => autoAssignIfDue(supabase, now))
-    const [window, teamBrands] = await Promise.all([
+    // Independent reads, made together.
+    const [{ data: player }, window, teamBrands, conferences] = await Promise.all([
+      supabase.from('players').select('id, full_name, status, paid').eq('id', playerId).single(),
       loadPickWindow(supabase, playerId, pool, now),
       getTeamBrandDirectory(),
+      caps.showRegions ? Promise.resolve({} as Record<string, string>) : getCachedTeamConferences(supabase),
     ])
+    if (!player) return { kind: 'no-session' }
+    // Fill in missed picks once first tip has passed — see lib/autoAssign.ts.
+    after(() => autoAssignIfDue(supabase, now))
     const slate = window.pickSlate
     if (!slate) return { kind: 'no-slate' }
     const pastPicks = window.picks
@@ -102,7 +100,6 @@ async function loadPickData(
     const lockTime = slateDeadline(slate, gamesData)
     const locked = lockTime ? now >= lockTime : false
 
-    const conferences = caps.showRegions ? {} : await getTeamConferences(supabase).catch(() => ({}))
     const usedLabel = (date: string) => (caps.showTournamentRounds ? weekdayShort(date) : formatPeriodDateShort(date))
 
     const sideOf = (team: string, g: Game, seed: number | null) => ({
@@ -178,7 +175,12 @@ async function loadPickData(
       sharedRound: sharedQuota != null,
       locked,
       serverNow: now.toISOString(),
-      teamBrands,
+      // Only the teams this board shows: the day's games and your used teams.
+      teamBrands: brandsFor([
+        ...gameRows.flatMap((row) => [row.away.team, row.home.team]),
+        ...usedTeams,
+        ...savedPicks.map((pick) => pick.team),
+      ], teamBrands),
     }
   } catch (err) {
     console.error('pick page load failed', err)
@@ -189,19 +191,16 @@ async function loadPickData(
 export const metadata = pageMetadata('Make Your Pick', 'Sign in to choose your team for the current Pick and Pray survivor pick day.', '/pick', false)
 
 export default async function PickPage() {
-  const session = await getSession()
+  // The pool settings don't depend on who is signed in, so read them together.
+  const [session, pool] = await Promise.all([getSession(), getPoolConfig()])
   if (!session) redirect('/login')
-
-  const pool = await getPoolConfig()
   const mode: CompetitionMode = pool.competition_mode
 
   const data = await loadPickData(session.player_id, pool)
   if (data.kind === 'no-session') redirect('/login')
 
-  const brands = data.kind === 'ok' ? data.teamBrands : {}
-  const names = Object.fromEntries(Object.entries(brands).map(([abbr, brand]) => [abbr, brand.shortName]))
   const shell = (children: React.ReactNode) => (
-    <PoolShell mode={mode} seasonYear={pool.season_year} account={session.full_name} names={names}>{children}</PoolShell>
+    <PoolShell mode={mode} seasonYear={pool.season_year} account={session.full_name}>{children}</PoolShell>
   )
 
   if (data.kind === 'failed') {

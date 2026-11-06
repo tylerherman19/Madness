@@ -18,7 +18,9 @@ interface EspnTeam {
   logos?: Array<{ href?: string; rel?: string[] }>
 }
 
-const DIRECTORY_URL =
+// Fetched and cached on the server (lib/sharedData.ts). This module stays free
+// of server code because client components use brandFor().
+export const TEAM_DIRECTORY_URL =
   'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=500'
 
 function safeHex(value: string | undefined, fallback: string): string {
@@ -32,34 +34,44 @@ export function fallbackTeamColor(team: string): string {
   return palette[hash % palette.length]
 }
 
-export async function getTeamBrandDirectory(): Promise<TeamBrandDirectory> {
-  try {
-    const response = await fetch(DIRECTORY_URL, { next: { revalidate: 86_400 }, signal: AbortSignal.timeout(8000) })
-    if (!response.ok) return {}
+// ESPN's /teams payload, reduced to the fields the pages show.
+export function parseTeamDirectory(payload: unknown): TeamBrandDirectory {
+  const teams = ((payload as { sports?: { leagues?: { teams?: unknown[] }[] }[] })?.sports?.[0]?.leagues?.[0]?.teams ?? []) as Array<{ team?: EspnTeam }>
+  const directory: TeamBrandDirectory = {}
 
-    const payload = await response.json()
-    const teams = (payload?.sports?.[0]?.leagues?.[0]?.teams ?? []) as Array<{ team?: EspnTeam }>
-    const directory: TeamBrandDirectory = {}
+  for (const row of teams) {
+    const team = row.team
+    const abbreviation = team?.abbreviation?.trim().toUpperCase()
+    if (!team || !abbreviation) continue
 
-    for (const row of teams) {
-      const team = row.team
-      const abbreviation = team?.abbreviation?.trim().toUpperCase()
-      if (!team || !abbreviation) continue
-
-      directory[abbreviation] = {
-        abbreviation,
-        name: team.displayName ?? abbreviation,
-        shortName: team.shortDisplayName ?? team.displayName ?? abbreviation,
-        logo: team.logos?.find((logo) => logo.rel?.includes('default'))?.href ?? team.logos?.[0]?.href ?? null,
-        primary: safeHex(team.color, fallbackTeamColor(abbreviation)),
-        secondary: safeHex(team.alternateColor, '#FFFFFF'),
-      }
+    directory[abbreviation] = {
+      abbreviation,
+      name: team.displayName ?? abbreviation,
+      shortName: team.shortDisplayName ?? team.displayName ?? abbreviation,
+      logo: team.logos?.find((logo) => logo.rel?.includes('default'))?.href ?? team.logos?.[0]?.href ?? null,
+      primary: safeHex(team.color, fallbackTeamColor(abbreviation)),
+      secondary: safeHex(team.alternateColor, '#FFFFFF'),
     }
-
-    return directory
-  } catch {
-    return {}
   }
+
+  return directory
+}
+
+// Only the teams a page actually shows, so the browser isn't sent all ~360.
+// A team missing from the directory is left out and renders through
+// brandFor()'s fallback, exactly as it would with the full directory.
+export function brandsFor(teams: Iterable<string | null | undefined>, directory: TeamBrandDirectory): TeamBrandDirectory {
+  const subset: TeamBrandDirectory = {}
+  for (const team of teams) {
+    const abbreviation = team?.trim().toUpperCase()
+    if (abbreviation && directory[abbreviation]) subset[abbreviation] = directory[abbreviation]
+  }
+  return subset
+}
+
+// Short display names for the same teams, for components that print names.
+export function shortNamesOf(directory: TeamBrandDirectory): Record<string, string> {
+  return Object.fromEntries(Object.entries(directory).map(([abbr, brand]) => [abbr, brand.shortName]))
 }
 
 export function brandFor(team: string, directory?: TeamBrandDirectory): TeamBrand {

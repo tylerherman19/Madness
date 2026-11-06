@@ -5,6 +5,7 @@ import { gradeSlatePicks } from '@/lib/grading'
 import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
 import { serverError } from '@/lib/alerts'
+import { revalidateContest } from '@/lib/revalidateContest'
 
 // Grading awaits a paced elimination email per eliminated player.
 export const maxDuration = 300
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    revalidateContest()
     return NextResponse.json({ ok: true, game, grading })
   } catch (err) {
     return serverError('api/results', err)

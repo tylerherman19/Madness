@@ -1,14 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { SweatGame, SweatResponse } from '@/app/api/sweat/route'
 import { tipTime } from '@/lib/poolTheme'
+import { RETRY_MS, nextPollMs } from '@/lib/livePolling'
 import { SweatBoardSkeleton } from '@/app/components/PoolLoading'
 import TeamLogo from '@/app/components/TeamLogo'
 import type { TeamBrandDirectory } from '@/lib/teamBrand'
 import s from '@/app/components/pp.module.css'
 
 type Side = 'away' | 'home'
+
+const sweatUrl = (sandbox: boolean) => (sandbox ? '/api/sweat?sandbox=1' : '/api/sweat')
 type Standing = 'safe' | 'lead' | 'trail' | 'wait' | 'out'
 
 const SUMMARY_COLORS: Record<Standing, string> = {
@@ -37,14 +40,15 @@ function clockOf(game: SweatGame): string {
 }
 
 export default function SweatBoard({
-  names,
-  teamBrands,
+  teamBrands: pageBrands,
   myTeams,
+  sandbox = false,
   kicker,
 }: {
-  names: Record<string, string>
   teamBrands: TeamBrandDirectory
   myTeams: string[] | null
+  // Test-mode browsers read a separate, never-cached address (see the route).
+  sandbox?: boolean
   kicker: string
 }) {
   const [data, setData] = useState<SweatResponse | null>(null)
@@ -56,22 +60,29 @@ export default function SweatBoard({
 
   useEffect(() => {
     let cancelled = false
+    let timer: number | undefined
+    // A failed request keeps the timing of the last good one.
+    let body: SweatResponse | null = null
     async function load() {
       try {
-        const res = await fetch('/api/sweat', { cache: 'no-store' })
+        const res = await fetch(sweatUrl(sandbox))
         if (!res.ok) throw new Error()
-        const body = await res.json()
+        body = await res.json()
         if (!cancelled) { setData(body); setUpdated(new Date()); setError(false) }
       } catch {
         if (!cancelled) setError(true)
       }
+      const schedule = (body?.games ?? []).map((game) => ({ state: game.state, kickoff: game.kickoff, timeTbd: game.statusText.toLowerCase().includes('tbd') }))
+      if (!cancelled) timer = window.setTimeout(load, body ? nextPollMs(schedule, body.hasLiveGames) : RETRY_MS)
     }
     load()
-    const timer = setInterval(load, live ? 30000 : 300000)
-    return () => { cancelled = true; clearInterval(timer) }
-  }, [live, retry])
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [retry, sandbox])
 
-  const name = (team: string) => names[team] ?? team
+  // The feed sends the brands for every game it shows; the page's own set
+  // covers the first paint.
+  const teamBrands = useMemo(() => ({ ...pageBrands, ...(data?.brands ?? {}) }), [pageBrands, data?.brands])
+  const name = (team: string) => teamBrands[team]?.shortName ?? team
   const revealed = data?.allRevealed ?? false
   const lockText = tipTime(data?.locksAt)
   const games = data?.games ?? []

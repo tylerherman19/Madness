@@ -1,140 +1,230 @@
-import { allRows } from '@/lib/db'
-import { publicPlayerLabels } from './playerLabels'
 import 'server-only'
+import { cache } from 'react'
+import { unstable_cache } from 'next/cache'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Game, Slate, StandingRow } from '@/types'
+import { allRows, selectAll } from './db'
+import { publicPlayerLabels } from './playerLabels'
 import { survivedPeriodsByPlayer } from './survival'
-import type { StandingRow, TeamStat, Slate, Game } from '@/types'
-import { computeInsights } from '@/lib/insights'
-import { getPoolConfig } from '@/lib/pool'
-import { buildPickPeriods, sharedRoundPickQuota, capabilitiesFor, type CompetitionMode, type PickPeriod } from '@/lib/competition'
-import { getTeamBrandDirectory } from '@/lib/teamBrand'
-import { compareBySeedTotal, seedTotalsByPlayer } from '@/lib/standings'
-import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from '@/lib/seasonData'
+import { readPoolConfig } from './pool'
+import {
+  buildPickPeriods,
+  capabilitiesFor,
+  sharedRoundPickQuota,
+  type CompetitionMode,
+  type PickPeriod,
+  type PickPeriodGame,
+  type PoolConfig,
+} from './competition'
+import { compareBySeedTotal, seedTotalsByPlayer } from './standings'
+import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from './seasonData'
+import { isPickRevealed } from './deadline'
+import { getDb, getEffectiveNow } from './testMode'
+import { CONTEST_TAG } from './cacheTags'
+import { clientFor, getTeamBrandDirectory, schemaOf, type Schema } from './sharedData'
+import type { TeamBrandDirectory } from './teamBrand'
 
-export async function getDashboardData() {
+// The pool's season, for the Today page and the sweat board.
+//
+// The same for every visitor, so most of it is cached on the server and
+// shared, in two pieces that load in parallel:
+//
+//   * the outline — pool settings, the season's game days, every entry and
+//     its status. Small; the top of Today is built from it.
+//   * the history — every pick and result from days before the active one.
+//     The bulk of the season; only the standings need it.
+//
+// Both are invalidated by every write to contest data (revalidateContest)
+// and expire after 60 seconds regardless. What changes minute to minute is
+// read live on every request instead: the active day's games, and picks for
+// the active day and any later day, which players are still making.
+
+const CACHE_SECONDS = 60
+
+type PlayerStatus = 'alive' | 'eliminated'
+export interface SeasonPlayer {
+  id: string
+  full_name: string // public label: name, plus an id suffix when names collide
+  status: PlayerStatus
+  elimination_slate: number | null
+  elimination_reason: string | null
+  paid: boolean
+}
+
+interface SeasonOutline {
+  pool: PoolConfig
+  slates: Slate[] // the season being played, from the pool's start date on
+  activeSlateId: string | null
+  players: SeasonPlayer[] // real entries only, by name
+  rounds: PickPeriodGame[] // tournament-labelled games, for naming pick periods
+}
+
+type SeasonPick = { player_id: string; slate_id: string; team: string; seed: number | null; loss_excused: boolean }
+type SeasonGame = Pick<Game, 'slate_id' | 'home_team' | 'away_team' | 'result' | 'tip_time' | 'time_tbd'>
+
+// The history is the largest cached item, and the data cache refuses items
+// over 2 MB, so it is stored as index-referenced tuples rather than objects.
+interface EncodedHistory {
+  openFrom: string | null // days on or after this date are not in it
+  slateIds: string[]
+  playerIds: string[]
+  picks: [player: number, slate: number, team: string, seed: number | null, lossExcused: 0 | 1][]
+  games: [slate: number, home: string, away: string, result: string, tip: string, tbd: 0 | 1][]
+}
+
+// The contest season, scoped exactly as before: slates from the pool's start
+// date on, then the season of the active slate (or the newest season).
+function seasonSlatesOf(weeks: Slate[], pool: PoolConfig): Slate[] {
+  const contestWeeks = weeks.filter((w) => !pool.starts_on || String(w.slate_date) >= pool.starts_on)
+  const seasonYear = seasonYearOf(contestWeeks)
+  return contestWeeks.filter((w) => w.season_year === seasonYear)
+}
+
+const internalAccount = (email: string | null) => !!email?.endsWith('@nflsurvivor.internal')
+
+async function readOutline(db: SupabaseClient): Promise<SeasonOutline> {
+  const [pool, weeks, playersRes, rounds] = await Promise.all([
+    readPoolConfig(db),
+    loadAll<Slate>(db, 'slates', '*'),
+    allRows(db.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name')),
+    // Only labelled games can name a round; unlabelled ones are ignored by
+    // the period builder, so they needn't be read.
+    selectAll<PickPeriodGame>((from, to) =>
+      db.from('games').select('slate_id, round_label').not('round_label', 'is', null).order('id').range(from, to)
+    ),
+  ])
+  const slates = seasonSlatesOf(weeks, pool)
+  const seasonIds = new Set(slates.map((s) => s.id))
+  const real = ((playersRes.data ?? []) as (SeasonPlayer & { email: string | null })[]).filter((p) => !internalAccount(p.email))
+  const labels = publicPlayerLabels(real)
+  return {
+    pool,
+    slates,
+    activeSlateId: slates.find((s) => s.is_active)?.id ?? null,
+    players: real.map((p) => ({
+      id: p.id,
+      full_name: labels.get(p.id) ?? p.full_name,
+      status: p.status,
+      elimination_slate: p.elimination_slate,
+      elimination_reason: p.elimination_reason,
+      paid: p.paid,
+    })),
+    rounds: rounds.filter((g) => seasonIds.has(g.slate_id)),
+  }
+}
+
+async function readHistory(db: SupabaseClient): Promise<EncodedHistory> {
+  const [pool, weeks] = await Promise.all([
+    readPoolConfig(db),
+    loadAll<Slate>(db, 'slates', 'id, slate_number, slate_date, season_year, is_active, locks_at'),
+  ])
+  const season = seasonSlatesOf(weeks, pool)
+  const active = season.find((s) => s.is_active)
+  const openFrom = active ? String(active.slate_date) : null
+  const past = season.filter((s) => openFrom === null || String(s.slate_date) < openFrom)
+  const ids = past.map((s) => s.id)
+  const [picks, games] = await Promise.all([
+    loadPicksForSlates<SeasonPick>(db, ids, 'player_id, slate_id, team, seed, loss_excused'),
+    loadGamesForSlates<SeasonGame>(db, ids, 'slate_id, home_team, away_team, result, tip_time, time_tbd'),
+  ])
+  const slateIndex = new Map(ids.map((id, i) => [id, i]))
+  const playerIds: string[] = []
+  const playerIndex = new Map<string, number>()
+  const indexOfPlayer = (id: string) => {
+    let i = playerIndex.get(id)
+    if (i === undefined) { i = playerIds.push(id) - 1; playerIndex.set(id, i) }
+    return i
+  }
+  return {
+    openFrom,
+    slateIds: ids,
+    playerIds,
+    picks: picks.map((p) => [indexOfPlayer(p.player_id), slateIndex.get(p.slate_id)!, p.team, p.seed ?? null, p.loss_excused ? 1 : 0]),
+    games: games.map((g) => [slateIndex.get(g.slate_id)!, g.home_team, g.away_team, g.result, g.tip_time, g.time_tbd ? 1 : 0]),
+  }
+}
+
+function decodeHistory(history: EncodedHistory): { picks: SeasonPick[]; games: SeasonGame[] } {
+  return {
+    picks: history.picks.map(([player, slate, team, seed, excused]) => ({
+      player_id: history.playerIds[player], slate_id: history.slateIds[slate], team, seed, loss_excused: excused === 1,
+    })),
+    games: history.games.map(([slate, home_team, away_team, result, tip_time, tbd]) => ({
+      slate_id: history.slateIds[slate], home_team, away_team, result: result as Game['result'], tip_time, time_tbd: tbd === 1,
+    })),
+  }
+}
+
+const cachedOutline = unstable_cache(
+  async (schema: Schema) => readOutline(clientFor(schema)),
+  ['contest-outline-v1'],
+  { tags: [CONTEST_TAG], revalidate: CACHE_SECONDS }
+)
+const cachedHistory = unstable_cache(
+  async (schema: Schema) => readHistory(clientFor(schema)),
+  ['contest-history-v1'],
+  { tags: [CONTEST_TAG], revalidate: CACHE_SECONDS }
+)
+
+// One history read per request, started as early as the page likes.
+const historyFor = cache((schema: Schema) => cachedHistory(schema))
+
+// Start reading the standings' data now, alongside everything else, so that
+// on a cached visit the standings are ready by the time the page is sent and
+// their placeholder never appears.
+export function preloadContestStandings(): void {
+  getDb().then((db) => historyFor(schemaOf(db))).catch(() => {})
+}
+
+export interface ContestCore {
+  db: SupabaseClient
+  schema: Schema
+  now: Date
+  pool: PoolConfig
+  mode: CompetitionMode
+  slates: Slate[]
+  slate: Slate | null
+  periods: PickPeriod[]
+  currentPeriod: PickPeriod | null
+  slateGames: Game[] // the active day's games, read live
+  slateIsToday: boolean
+  players: SeasonPlayer[]
+  aliveCount: number
+  eliminatedCount: number
+  totalPlayers: number
+  // Live picks for the active day and later: the ones still changing.
+  openFrom: string | null
+  openPicks: SeasonPick[]
+  currentPicks: Record<string, string[]> // active day only, real entries only
+  picksMade: number
+  teamBrands: TeamBrandDirectory
+}
+
+// Everything the top of Today and the sweat board need. Null when the
+// database can't be read, so the pages can say so instead of failing.
+export const getContestCore = cache(async (): Promise<ContestCore | null> => {
   try {
-    const { slateDeadline, isPickRevealed } = await import('@/lib/deadline')
+    const db = await getDb()
+    const schema = schemaOf(db)
+    const [outline, teamBrands, now] = await Promise.all([cachedOutline(schema), getTeamBrandDirectory(), getEffectiveNow()])
+    const { pool, slates, players } = outline
+    const mode = pool.competition_mode
+    const slate = slates.find((s) => s.id === outline.activeSlateId) ?? null
+    const openFrom = slate ? String(slate.slate_date) : null
+    const openIds = openFrom ? slates.filter((s) => String(s.slate_date) >= openFrom).map((s) => s.id) : []
 
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    let allWeeks: any[] | null = null
-    let allPlayers: any[] | null = null
-    let allPicks: any[] | null = null
-    let allGames: any[] | null = null
-    /* eslint-enable @typescript-eslint/no-explicit-any */
+    const [openPicks, gamesRes] = await Promise.all([
+      loadPicksForSlates<SeasonPick>(db, openIds, 'player_id, slate_id, team, seed, loss_excused'),
+      slate ? db.from('games').select('*').eq('slate_id', slate.id) : Promise.resolve({ data: [] as Game[], error: null }),
+    ])
+    if (gamesRes.error) throw gamesRes.error
+    const slateGames = (gamesRes.data ?? []) as Game[]
 
-    const {getEffectiveNow}=await import('./testMode')
-    const privacyNow=await getEffectiveNow()
-    const contestPool = await getPoolConfig()
-    {
-      const { getDb } = await import('@/lib/testMode')
-      const supabase = await getDb()
-
-      // Slates and players first; games and picks are then read for the
-      // season being played only, and paged — a season outgrows PostgREST's
-      // 1,000-row response cap (see lib/db.ts).
-      const [weeks, playersRes] = await Promise.all([
-        loadAll<{ id: string; season_year: number; is_active: boolean }>(supabase, 'slates', '*'),
-        allRows(supabase.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name')),
-      ])
-      if (playersRes.error) throw playersRes.error
-      const contestWeeks = weeks.filter(w => !contestPool.starts_on || (w as { slate_date?: string }).slate_date! >= contestPool.starts_on)
-      const seasonYear = seasonYearOf(contestWeeks)
-      const seasonIds = contestWeeks.filter((w) => w.season_year === seasonYear).map((w) => w.id)
-      const [picks, games] = await Promise.all([
-        loadPicksForSlates(supabase, seasonIds, 'player_id, slate_id, team, seed, loss_excused'),
-        loadGamesForSlates(supabase, seasonIds),
-      ])
-      allWeeks = contestWeeks
-      allPlayers = playersRes.data
-      allPicks = picks
-      allGames = games
-    }
-
-    if (!allPlayers) return null
-    const players = allPlayers.filter((p: { email: string }) => !p.email?.endsWith('@nflsurvivor.internal'))
-    const labels = publicPlayerLabels(players)
-    for (const player of players) player.full_name = labels.get(player.id) ?? player.full_name
-    const realPlayerIds = new Set(players.map((p: { id: string }) => p.id))
-
-    const totalPaid = players.filter((p: { paid: boolean }) => p.paid).length
-    const potSize = totalPaid * 25
-    const alive = players.filter((p: { status: string }) => p.status === 'alive')
-    const payoutPerSurvivor = alive.length > 0 ? Math.floor(potSize / alive.length) : 0
-
-    // Find active slate from allWeeks
-    const slate = (allWeeks || []).find((w: { is_active: boolean }) => w.is_active) || null
-
-    // The pool's own configuration decides how all of this is presented. It
-    // is read once here and threaded down — no component re-derives the mode.
-    const pool = contestPool
-    const mode: CompetitionMode = pool.competition_mode
-
-    // Everything derived below is scoped to the season currently being played
-    // (season_year), read off the active slate like getSignupCutoff does — a
-    // future season synced early, or last season's leftovers, must not get
-    // folded into this season's carnage cards, survival curve, or team stats.
-    // With no active slate there is nothing being played, so fall back to the
-    // newest season_year present.
-    const seasonAnchor =
-      slate ||
-      (allWeeks || [])
-        .slice()
-        .sort((a: { season_year: number }, b: { season_year: number }) => b.season_year - a.season_year)[0] ||
-      null
-
-    const seasonWeeks = (allWeeks || []).filter(
-      (w: { season_year: number }) => !seasonAnchor || w.season_year === seasonAnchor.season_year
-    )
-    const seasonWeekIds = new Set<string>(seasonWeeks.map((w: { id: string }) => w.id))
-    const seasonPicks = (allPicks || []).filter(
-      (p: { slate_id: string; player_id: string }) => seasonWeekIds.has(p.slate_id) && realPlayerIds.has(p.player_id)
-    )
-
+    const realIds = new Set(players.map((p) => p.id))
     const currentPicks: Record<string, string[]> = {}
-    // Subset of currentPicks that can be shown publicly — all of them, once
-    // the slate locks at its first tip.
-    const revealedPicks: Record<string, string> = {}
-    let nextDeadline: string | null = null
-    let nextDeadlineFormatted: string | null = null
-    let picksRevealed = false
-
-    if (slate) {
-      // Filter picks for current slate from allPicks
-      const picksData = (allPicks || []).filter((p: { slate_id: string }) => p.slate_id === slate.id)
-      if (picksData) {
-        for (const pick of picksData) {
-          if (!realPlayerIds.has(pick.player_id)) continue
-          currentPicks[pick.player_id] = [...(currentPicks[pick.player_id] ?? []), pick.team]
-        }
-      }
-
-      // Filter games for current slate from allGames
-      const gamesData = (allGames || []).filter((g: { slate_id: string }) => g.slate_id === slate.id)
-      if (gamesData) {
-        const { getEffectiveNow } = await import('@/lib/testMode')
-        const now = await getEffectiveNow()
-        const slateLockTime = slateDeadline(slate, gamesData)
-        if (slateLockTime && slateLockTime > now) {
-          nextDeadline = slateLockTime.toISOString()
-          nextDeadlineFormatted = slateLockTime.toLocaleString('en-US', {
-            timeZone: 'America/Chicago',
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            timeZoneName: 'short',
-          })
-        }
-        picksRevealed = slateLockTime ? slateLockTime <= now : false
-
-        // The slate reveals as a unit at its first tip, so this is one
-        // decision for every pick rather than a per-team lookup.
-        if (isPickRevealed(slate, gamesData, now)) {
-          for (const [playerId, teams] of Object.entries(currentPicks)) {
-            revealedPicks[playerId] = teams.join(', ')
-          }
-        }
-      }
+    for (const pick of openPicks) {
+      if (pick.slate_id !== slate?.id || !realIds.has(pick.player_id)) continue
+      currentPicks[pick.player_id] = [...(currentPicks[pick.player_id] ?? []), pick.team]
     }
 
     // Pick periods: the season's playing days, labelled for the active
@@ -142,84 +232,119 @@ export async function getDashboardData() {
     // tournament reads "First Round · Thursday".
     const periods = buildPickPeriods(
       mode,
-      seasonWeeks.map((w: { id: string; slate_number: number; slate_date: string; locks_at: string | null }) => ({
-        id: w.id,
-        slate_number: w.slate_number,
-        slate_date: String(w.slate_date),
-        locks_at: w.locks_at,
-      })),
-      (allGames || []).map((g: { slate_id: string; round_label: string | null }) => ({
-        slate_id: g.slate_id,
-        round_label: g.round_label,
-      }))
+      slates.map((w) => ({ id: w.id, slate_number: w.slate_number, slate_date: String(w.slate_date), locks_at: w.locks_at })),
+      outline.rounds
     )
     const currentPeriod = slate ? periods.find((p) => p.id === slate.id) ?? null : null
-    const periodByNumber: Record<number, PickPeriod> = {}
-    for (const p of periods) periodByNumber[p.number] = p
-
-    // Today's slate facts, for the "Today's Pool" strip.
-    const slateGames: Game[] = slate
-      ? ((allGames || []).filter((g: { slate_id: string }) => g.slate_id === slate.id) as Game[])
-      : []
-    const announcedTips = slateGames
-      .filter((g) => !g.time_tbd && !isNaN(new Date(g.tip_time).getTime()))
-      .map((g) => new Date(g.tip_time).getTime())
-      .sort((a, b) => a - b)
-    const firstTip = announcedTips.length > 0 ? new Date(announcedTips[0]).toISOString() : null
 
     // "TODAY" only when the active slate really is today in Central — the
     // pool's own timezone. Every other day gets its own name.
     const centralToday = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
-    const slateIsToday = slate ? String(slate.slate_date).slice(0, 10) === centralToday : false
+    const alive = players.filter((p) => p.status === 'alive')
 
-    const { getTeamAbbrs } = await import('@/lib/teams')
-    const { getDb } = await import('@/lib/testMode')
-    const [teamUniverse, teamBrands] = await Promise.all([
-      getTeamAbbrs(await getDb()),
-      getTeamBrandDirectory(),
-    ])
+    return {
+      db,
+      schema,
+      now,
+      pool,
+      mode,
+      slates,
+      slate,
+      periods,
+      currentPeriod,
+      slateGames,
+      slateIsToday: slate ? String(slate.slate_date).slice(0, 10) === centralToday : false,
+      players,
+      aliveCount: alive.length,
+      eliminatedCount: players.length - alive.length,
+      totalPlayers: players.length,
+      openFrom,
+      openPicks,
+      currentPicks,
+      picksMade: alive.filter((p) => (currentPicks[p.id]?.length ?? 0) > 0).length,
+      teamBrands,
+    }
+  } catch (error) {
+    console.error('contest data unavailable', error)
+    return null
+  }
+})
+
+// The standings: every entry's days survived, seed total and losing pick,
+// sorted. Needs the whole season's picks, so it comes from the history.
+export const getContestStandings = cache(async (core: ContestCore): Promise<StandingRow[] | null> => {
+  try {
+    const history = await historyFor(core.schema)
+    const { pool, mode, slates, slate, players, now } = core
+    const { picks: pastPicks, games: pastGames } = decodeHistory(history)
+
+    // What is live wins. If the two cached pieces were built either side of a
+    // day change, read any day neither of them covers.
+    const openIds = new Set(core.openFrom ? slates.filter((s) => String(s.slate_date) >= core.openFrom!).map((s) => s.id) : [])
+    const covered = new Set([...history.slateIds, ...openIds])
+    const gapIds = slates.filter((s) => !covered.has(s.id) && slate?.id !== s.id).map((s) => s.id)
+    const [gapPicks, gapGames] = gapIds.length
+      ? await Promise.all([
+          loadPicksForSlates<SeasonPick>(core.db, gapIds, 'player_id, slate_id, team, seed, loss_excused'),
+          loadGamesForSlates<SeasonGame>(core.db, gapIds, 'slate_id, home_team, away_team, result, tip_time, time_tbd'),
+        ])
+      : [[], []]
+
+    const seasonWeekIds = new Set(slates.map((s) => s.id))
+    const realPlayerIds = new Set(players.map((p) => p.id))
+    const seasonPicks = [...pastPicks.filter((p) => !openIds.has(p.slate_id)), ...gapPicks, ...core.openPicks]
+      .filter((p) => seasonWeekIds.has(p.slate_id) && realPlayerIds.has(p.player_id))
+    const allGames: SeasonGame[] = [...pastGames.filter((g) => g.slate_id !== slate?.id), ...gapGames, ...core.slateGames]
+    const gamesBySlate = new Map<string, SeasonGame[]>()
+    for (const game of allGames) gamesBySlate.set(game.slate_id, [...(gamesBySlate.get(game.slate_id) ?? []), game])
+
+    // The slate reveals as a unit at its first tip, so this is one decision
+    // for every pick rather than a per-team lookup.
+    const currentPicks = core.currentPicks
+    const revealedPicks: Record<string, string> = {}
+    if (slate && isPickRevealed(slate, (gamesBySlate.get(slate.id) ?? []) as Game[], now)) {
+      for (const [playerId, teams] of Object.entries(currentPicks)) revealedPicks[playerId] = teams.join(', ')
+    }
 
     // Count slates survived per player from this season's picks (including current slate)
-    const periodScopes = Object.fromEntries(periods.map(period => {
+    const periodScopes = Object.fromEntries(core.periods.map((period) => {
       const quota = sharedRoundPickQuota(mode, pool.pick_frequency, period.round)
       return [period.id, { key: quota ? period.round! : period.id, quota: quota ?? 1 }]
     }))
-    const weeksSurvivedByPlayer = survivedPeriodsByPlayer(seasonPicks, allGames ?? [], periodScopes)
-    const visibleSlateIds=new Set(seasonWeeks.filter((day: Slate)=>isPickRevealed(day,(allGames??[]).filter((g:Game)=>g.slate_id===day.id),privacyNow)).map((day:Slate)=>day.id))
-    const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks.filter((p:{slate_id:string})=>visibleSlateIds.has(p.slate_id)))
+    const weeksSurvivedByPlayer = survivedPeriodsByPlayer(seasonPicks, allGames, periodScopes)
+    const visibleSlateIds = new Set(slates.filter((day) => isPickRevealed(day, (gamesBySlate.get(day.id) ?? []) as Game[], now)).map((day) => day.id))
+    const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks.filter((p) => visibleSlateIds.has(p.slate_id)))
 
     // The team that knocked each eliminated entry out: their pick on the day
     // they were eliminated. That day is locked and graded, so it is public.
-    const slateNumberById = new Map<string, number>(seasonWeeks.map((w: { id: string; slate_number: number }) => [w.id, w.slate_number]))
+    const slateNumberById = new Map<string, number>(slates.map((w) => [w.id, w.slate_number]))
     const eliminationSlateByPlayer = new Map<string, number>(
       players
-        .filter((p: { status: string; elimination_slate: number | null }) => p.status === 'eliminated' && p.elimination_slate != null)
-        .map((p: { id: string; elimination_slate: number }) => [p.id, p.elimination_slate])
+        .filter((p) => p.status === 'eliminated' && p.elimination_slate != null)
+        .map((p) => [p.id, p.elimination_slate!])
     )
     const losingPicksByPlayer: Record<string, string[]> = {}
-    for (const pick of seasonPicks as { player_id: string; slate_id: string; team: string }[]) {
+    for (const pick of seasonPicks) {
       const out = eliminationSlateByPlayer.get(pick.player_id)
       if (out != null && slateNumberById.get(pick.slate_id) === out) {
         losingPicksByPlayer[pick.player_id] = [...(losingPicksByPlayer[pick.player_id] ?? []), pick.team]
       }
     }
 
-    const standings: StandingRow[] = players.map(
-      (p: { id: string; full_name: string; status: string; elimination_reason: string | null; elimination_slate: number | null }) => ({
-        player_id: p.id,
-        full_name: labels.get(p.id) ?? p.full_name,
-        status: p.status as 'alive' | 'eliminated',
-        slates_survived: weeksSurvivedByPlayer[p.id] || 0,
-        seed_total: seedTotalByPlayer[p.id] || 0,
-        current_pick: revealedPicks[p.id] ? currentPicks[p.id]?.[0] || null : null,
-        current_picks: revealedPicks[p.id] ? currentPicks[p.id] || [] : [],
-        pick_locked: (currentPicks[p.id]?.length ?? 0) > 0,
-        pick_revealed: !!revealedPicks[p.id],
-        elimination_reason: p.elimination_reason,
-        elimination_slate: p.elimination_slate,
-        losing_picks: losingPicksByPlayer[p.id] ?? [],
-      })
-    )
+    const standings: StandingRow[] = players.map((p) => ({
+      player_id: p.id,
+      full_name: p.full_name,
+      status: p.status,
+      slates_survived: weeksSurvivedByPlayer[p.id] || 0,
+      seed_total: seedTotalByPlayer[p.id] || 0,
+      current_pick: revealedPicks[p.id] ? currentPicks[p.id]?.[0] || null : null,
+      current_picks: revealedPicks[p.id] ? currentPicks[p.id] || [] : [],
+      pick_locked: (currentPicks[p.id]?.length ?? 0) > 0,
+      pick_revealed: !!revealedPicks[p.id],
+      elimination_reason: p.elimination_reason,
+      elimination_slate: p.elimination_slate,
+      losing_picks: losingPicksByPlayer[p.id] ?? [],
+    }))
 
     standings.sort((a, b) => {
       if (a.status !== b.status) return a.status === 'alive' ? -1 : 1
@@ -227,82 +352,9 @@ export async function getDashboardData() {
         ? compareBySeedTotal(a, b)
         : b.slates_survived - a.slates_survived || a.full_name.localeCompare(b.full_name)
     })
-
-    // Filter picks to exclude current slate for team stats
-    const allPicksWithTeam = seasonPicks.filter((p: { slate_id: string }) => visibleSlateIds.has(p.slate_id))
-
-    const teamMap: Record<string, { times_picked: number; wins: number; eliminations: number }> = {}
-    if (allPicksWithTeam) {
-      const winnersByWeek: Record<string, string[]> = {}
-      for (const g of allGames || []) {
-        if (g.result === 'home_win') winnersByWeek[g.slate_id] = [...(winnersByWeek[g.slate_id] || []), g.home_team]
-        else if (g.result === 'away_win') winnersByWeek[g.slate_id] = [...(winnersByWeek[g.slate_id] || []), g.away_team]
-      }
-      for (const pick of allPicksWithTeam) {
-        if (!teamMap[pick.team]) teamMap[pick.team] = { times_picked: 0, wins: 0, eliminations: 0 }
-        teamMap[pick.team].times_picked++
-        const winners = winnersByWeek[pick.slate_id] || []
-        if (winners.includes(pick.team)) teamMap[pick.team].wins++
-        else {
-          const game = (allGames ?? []).find((game: Game) => game.slate_id === pick.slate_id && (game.home_team === pick.team || game.away_team === pick.team))
-          if (game && game.result !== 'pending') teamMap[pick.team].eliminations++
-        }
-      }
-    }
-
-    const teamStats: TeamStat[] = Object.entries(teamMap)
-      .map(([team, stats]) => ({
-        team,
-        times_picked: stats.times_picked,
-        win_rate: stats.times_picked > 0 ? stats.wins / stats.times_picked : 0,
-        eliminations_caused: stats.eliminations,
-      }))
-      .sort((a, b) => b.times_picked - a.times_picked)
-
-    const picksMade = alive.filter((p: { id: string }) => (currentPicks[p.id]?.length ?? 0) > 0).length
-    const picksPending = alive.length - picksMade
-
-    // Everything the editorial modules need is already in hand — the insight
-    // layer is a pure function over it, and only ever sees revealed picks for
-    // the current slate.
-    const insights = computeInsights({
-      players,
-      picks: seasonPicks.filter((p:{slate_id:string})=>visibleSlateIds.has(p.slate_id)),
-      currentSlate: slate,
-      revealedCurrentPicks: revealedPicks,
-      potSize,
-      teamUniverse,
-    })
-
-    return {
-      pool,
-      mode,
-      periods,
-      currentPeriod,
-      periodByNumber,
-      slateIsToday,
-      gameCount: slateGames.length,
-      slateGames,
-      firstTip,
-      slate: slate as Slate | null,
-      standings,
-      teamStats,
-      potSize,
-      payoutPerSurvivor,
-      aliveCount: alive.length,
-      eliminatedCount: players.length - alive.length,
-      totalPlayers: players.length,
-      paidEntries: totalPaid,
-      pendingEntries: players.length - totalPaid,
-      nextDeadline,
-      nextDeadlineFormatted,
-      picksRevealed,
-      picksMade,
-      picksPending,
-      insights,
-      teamBrands,
-    }
-  } catch {
+    return standings
+  } catch (error) {
+    console.error('standings unavailable', error)
     return null
   }
-}
+})

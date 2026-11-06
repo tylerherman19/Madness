@@ -210,3 +210,37 @@ export function AdminSkeleton() {
     </SkeletonRegion>
   )
 }
+
+// Stands in for the standings table on Today while it streams in. Built from
+// the table's own rows and toolbar, one row per entry, so it is the same
+// height and nothing below it (the rules) moves when the names arrive.
+export function StandingsTableSkeleton({ alive, out, showSeedTotal }: { alive: number; out: number; showSeedTotal: boolean }) {
+  const tabs = ['Alphabetical', 'By team', ...(showSeedTotal ? ['Seed total'] : [])]
+  const row = (key: number, eliminated: boolean) => (
+    <div className={eliminated ? `${pp.stRow} ${pp.stOut}` : pp.stRow} key={key}>
+      <span><Bone w="45%" h={15} /></span>
+      <span><Bone w={90} h={13} /></span>
+      <span><Bone w={150} h={13} /></span>
+    </div>
+  )
+  return (
+    <SkeletonRegion label="Loading the standings">
+      <div className={pp.toolbar}>
+        <div className={pp.tabs} role="tablist" aria-label="Sort">{tabs.map((tab, i) => <button key={tab} type="button" role="tab" disabled aria-selected={i === 0} tabIndex={-1}>{tab}</button>)}</div>
+        <label className={pp.search}><span>Find an entry</span><input type="search" disabled placeholder="Name" tabIndex={-1} /></label>
+      </div>
+      <section className={pp.stSection}>
+        <div className={pp.stHead}><b className={pp.green}>{alive}</b><span>still alive</span></div>
+        <div className={`${pp.stRow} ${pp.stLabels}`}><span>Entry</span><span>Status</span><span>Pick</span></div>
+        {times(alive, (i) => row(i, false))}
+      </section>
+      {out > 0 && (
+        <section className={pp.stSection}>
+          <div className={pp.stHead}><b className={pp.red}>{out}</b><span>eliminated</span></div>
+          <div className={`${pp.stRow} ${pp.stLabels}`}><span>Entry</span><span>Out</span><span>Losing pick</span></div>
+          {times(out, (i) => row(i, true))}
+        </section>
+      )}
+    </SkeletonRegion>
+  )
+}

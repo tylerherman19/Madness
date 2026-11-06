@@ -1,5 +1,5 @@
 import {allRows} from '@/lib/db'
-import { NextResponse, after } from 'next/server'
+import { NextResponse, after, type NextRequest } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { isDeliverable } from '@/lib/email'
 import { fetchDayScoreboard, eventCompetitors, seedOf } from '@/lib/espn'
@@ -8,6 +8,8 @@ import { autoAssignIfDue } from '@/lib/autoAssign'
 import type { Game } from '@/types'
 import { loadPicksForSlates } from '@/lib/seasonData'
 import { reportFailure } from '@/lib/alerts'
+import { getTeamBrandDirectory } from '@/lib/sharedData'
+import { cdnSeconds, feedCacheControl } from '@/lib/livePolling'
 
 export interface LiveGame {
   id: string
@@ -24,6 +26,9 @@ export interface LiveGame {
   awaySeed?: number | null
   homeLogo?: string | null
   awayLogo?: string | null
+  // Short display names, so the ticker needn't be sent the whole directory.
+  homeName?: string
+  awayName?: string
   homeColor?: string | null
   awayColor?: string | null
   homePicks?: number
@@ -86,16 +91,19 @@ function gameFromSchedule(g: Game, now: Date, teams: Record<string, { logo: stri
   }
 }
 
-export async function GET() {
+// The CDN keeps a copy for up to a minute before a tip (never past it), 10
+// seconds during games and 5 minutes once the day is done; see lib/livePolling.
+// Test-mode browsers ask for ?sandbox=1, which is never stored, so a tester
+// never sees the real pool's copy and the real pool never sees the sandbox.
+const BEFORE_TIP_SECONDS = 60
+// With no active day, check back within a minute so a newly opened one shows.
+const NO_SLATE_SECONDS = 60
+
+export async function GET(request: NextRequest) {
   try {
     const supabase = await getDb()
     const testMode = await isTestMode()
-
-    // Sandbox responses must never land in the shared CDN cache
-    const cacheHeader = (maxAge: number, swr = 0) =>
-      testMode
-        ? 'private, no-store'
-        : `public, max-age=${maxAge}${swr > 0 ? `, stale-while-revalidate=${swr}` : ''}`
+    const uncached = testMode || request.nextUrl.searchParams.has('sandbox')
 
     // Get active slate from our DB
     const { data: slate } = await supabase
@@ -105,10 +113,10 @@ export async function GET() {
       .single()
 
     if (!slate) {
-      return NextResponse.json(EMPTY, { headers: { 'Cache-Control': cacheHeader(60) } })
+      return NextResponse.json(EMPTY, { headers: { 'Cache-Control': feedCacheControl(uncached ? null : NO_SLATE_SECONDS) } })
     }
 
-    const [dbGamesRes, teamsRes, events, now] = await Promise.all([
+    const [dbGamesRes, teamsRes, events, now, directory] = await Promise.all([
       supabase.from('games').select('*').eq('slate_id', slate.id),
       supabase.from('teams').select('abbr, logo'),
       // Sandbox matchups are fabricated, so there is nothing to look up on the
@@ -126,6 +134,7 @@ export async function GET() {
             .then((r) => r.events)
             .catch(() => null),
       getEffectiveNow(),
+      getTeamBrandDirectory(),
     ])
 
     // Every open page polls this ticker, so it is the heartbeat that fills in
@@ -181,6 +190,10 @@ export async function GET() {
     }
 
     games.sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
+    for (const game of games) {
+      game.homeName = directory[game.homeTeam]?.shortName ?? game.homeTeam
+      game.awayName = directory[game.awayTeam]?.shortName ?? game.awayTeam
+    }
 
     const hasLiveGames = games.some((g) => g.state === 'in')
 
@@ -226,10 +239,7 @@ export async function GET() {
       hasLiveGames,
       source,
     } satisfies LiveScoresResponse, {
-      headers: {
-        // Cache 30s during live games, 5min otherwise
-        'Cache-Control': hasLiveGames ? cacheHeader(30, 10) : cacheHeader(300, 60),
-      },
+      headers: { 'Cache-Control': feedCacheControl(uncached ? null : cdnSeconds(games, hasLiveGames, BEFORE_TIP_SECONDS)) },
     })
   } catch (err) {
     console.error('live-scores error', err)

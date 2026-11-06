@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
       if (/reason/i.test(saveError.message)) return NextResponse.json({error:'Administrator corrections require a reason.'},{status:400})
       throw saveError
     }
-    revalidateContest()
+    revalidateContest({ picksOnly: true })
     return NextResponse.json({ ok: true, ...receipt })
   } catch (err) {
     return serverError('api/picks', err)
