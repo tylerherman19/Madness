@@ -1,7 +1,11 @@
 import 'server-only'
+import { unstable_cache } from 'next/cache'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { getDb, getEffectiveNow } from './testMode'
 import { getPoolConfig } from './pool'
 import { slateDeadline } from './deadline'
+import { CONTEST_TAG } from './cacheTags'
+import { clientFor, schemaOf, type Schema } from './sharedData'
 import type { Game } from '@/types'
 
 export interface SignupCutoff {
@@ -17,8 +21,8 @@ export interface SignupCutoff {
 // Deriving it from the earliest kickoff across the whole games table instead
 // would let any extra synced slate — a future slate synced early, last season's
 // leftovers — silently drag the cutoff somewhere it doesn't belong.
-export async function getSignupCutoff(): Promise<SignupCutoff | null> {
-  const supabase = await getDb()
+export async function getSignupCutoff(db?: SupabaseClient): Promise<SignupCutoff | null> {
+  const supabase = db ?? (await getDb())
 
   const { data: activeSlate, error: activeError } = await supabase
     .from('slates')
@@ -75,4 +79,30 @@ export async function haveSignupsClosed(strict = false): Promise<boolean> {
 
   const now = await getEffectiveNow()
   return now >= anchor.cutoff
+}
+
+// The cutoff instant only moves when the schedule does, so pages read it from
+// the shared cache (invalidated with the rest of the contest data). The clock
+// comparison still happens on every request, so the pool closes on time.
+// Signing up itself goes through haveSignupsClosed(true), which reads live.
+const cachedCutoff = unstable_cache(
+  async (schema: Schema) => {
+    const anchor = await getSignupCutoff(clientFor(schema))
+    return anchor && { ...anchor, cutoff: anchor.cutoff.toISOString() }
+  },
+  ['signup-cutoff-v1'],
+  { tags: [CONTEST_TAG], revalidate: 60 }
+)
+
+export async function haveSignupsClosedCached(): Promise<boolean> {
+  let cutoff: Date | null
+  try {
+    const anchor = await cachedCutoff(schemaOf(await getDb()))
+    cutoff = anchor ? new Date(anchor.cutoff) : null
+  } catch {
+    // Same as haveSignupsClosed(): missing data closes registration.
+    return true
+  }
+  if (!cutoff) return false
+  return (await getEffectiveNow()) >= cutoff
 }

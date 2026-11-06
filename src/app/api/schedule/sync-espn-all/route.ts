@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/api'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
 import { serverError } from '@/lib/alerts'
+import { revalidateContest } from '@/lib/revalidateContest'
 
 // Each day is seven ESPN calls (six conferences + the tournament) issued in
 // parallel, then a handful of upserts. Thirty-odd days still fits, but the
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
     }
 
     const totalGames = synced.reduce((sum, s) => sum + s.games, 0)
+    if (synced.length) revalidateContest()
     await logAudit(supabase, {
       event_type: 'schedule-synced',
       actor: 'admin',

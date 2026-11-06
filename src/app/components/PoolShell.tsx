@@ -1,17 +1,18 @@
 import type { CompetitionMode } from '@/lib/competition'
 import { themeStyle } from '@/lib/poolTheme'
+import { isTestMode } from '@/lib/testMode'
 import SiteHeader from './SiteHeader'
 import LiveTicker from './LiveTicker'
 import TrustFooter from './TrustFooter'
 import s from './pp.module.css'
 
 // The frame every pool page shares: mode colors, header, score ticker, footer.
-export default function PoolShell({
+// The ticker reads team names from its own feed, so pages send none.
+export default async function PoolShell({
   mode,
   seasonYear,
   account,
   signupsClosed,
-  names,
   width = 'wide',
   children,
 }: {
@@ -19,15 +20,16 @@ export default function PoolShell({
   seasonYear?: number | null
   account?: string
   signupsClosed?: boolean
-  names?: Record<string, string>
   width?: 'wide' | 'mid' | 'narrow'
   children: React.ReactNode
 }) {
+  // Draft-mode gated, so cached pages stay cached.
+  const sandbox = await isTestMode()
   const widthClass = width === 'mid' ? s.mainMid : width === 'narrow' ? s.mainNarrow : ''
   return (
     <div className={s.shell} style={themeStyle(mode)} data-mode={mode}>
       <SiteHeader mode={mode} seasonYear={seasonYear} account={account} signupsClosed={signupsClosed} />
-      <LiveTicker names={names} />
+      <LiveTicker sandbox={sandbox} />
       <main id="main" className={`${s.main} ${widthClass}`}>{children}</main>
       <TrustFooter />
     </div>

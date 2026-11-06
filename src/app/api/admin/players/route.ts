@@ -1,10 +1,10 @@
-import { revalidatePath } from 'next/cache'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, escapeIlike } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { hashPassword, passwordValidationError } from '@/lib/password'
 import { getDb } from '@/lib/testMode'
 import { serverError } from '@/lib/alerts'
+import { revalidateContest } from '@/lib/revalidateContest'
 
 export async function POST(req: NextRequest) {
   const unauthorized = await requireAdmin()
@@ -66,9 +66,7 @@ export async function POST(req: NextRequest) {
       details: { email },
     })
 
-    revalidatePath('/')
-    revalidatePath('/')
-    revalidatePath('/admin/players')
+    revalidateContest()
     return NextResponse.json({ ok: true, playerId: player.id })
   } catch (err) {
     return serverError('api/admin/players', err)

@@ -1,14 +1,16 @@
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { pageMetadata } from '@/lib/site'
-import { getDashboardData } from '@/lib/dashboard'
-import { haveSignupsClosed } from '@/lib/season'
+import { getContestCore, getContestStandings, preloadContestStandings, type ContestCore } from '@/lib/dashboard'
+import { haveSignupsClosedCached } from '@/lib/season'
 import { getSession } from '@/lib/session'
 import { getPoolConfig } from '@/lib/pool'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline } from '@/lib/deadline'
 import { loadMyPicks, type MyPick } from '@/lib/myEntry'
 import { buildTimeline } from '@/lib/timeline'
-import { conferenceGroup, getTeamConferences } from '@/lib/teams'
+import { conferenceGroup } from '@/lib/teams'
+import { getCachedTeamConferences } from '@/lib/sharedData'
 import { brandFor } from '@/lib/teamBrand'
 import { capabilitiesFor } from '@/lib/competition'
 import { dayDate, eventLabel, pickDayTitle, teamTag, tipTime, weekdayMonthDay } from '@/lib/poolTheme'
@@ -17,8 +19,10 @@ import ContestRefresh from '../components/ContestRefresh'
 import LockCountdown from '../components/LockCountdown'
 import TeamLogo from '../components/TeamLogo'
 import StandingsTable from '../components/StandingsTable'
+import { StandingsTableSkeleton } from '../components/PageSkeletons'
 import RulesSection from '../components/RulesSection'
 import { buildStandingsRows } from '@/lib/standingsRows'
+import type { StandingRow } from '@/types'
 import s from '../components/pp.module.css'
 
 // Signed-in players see their own entry here, so the page renders per request.
@@ -27,13 +31,31 @@ export const dynamic = 'force-dynamic'
 export const metadata = pageMetadata('Today', 'Today in the Pick and Pray college basketball survivor pool.', '/', true)
 
 export default async function Today() {
-  const [data, closed, session] = await Promise.all([getDashboardData(), haveSignupsClosed(), getSession()])
+  preloadContestStandings()
+  // Your own picks are read as soon as the session is known, alongside the
+  // pool's data rather than after it.
+  const sessionRead = getSession()
+  const [data, closed, session, allMyPicks, conferenceMap] = await Promise.all([
+    getContestCore(),
+    haveSignupsClosedCached(),
+    sessionRead,
+    sessionRead.then((current) => (current ? loadMyPicks(current.player_id) : [])),
+    getDb().then(getCachedTeamConferences),
+  ])
+  // The standings started loading with everything else. When they are
+  // already in hand — the usual, cached case — they render with the page;
+  // only when they are still loading does the table stream in behind its
+  // placeholder.
+  const standingsRead = data ? getContestStandings(data) : Promise.resolve(null)
+  const ready = await Promise.race([
+    standingsRead.then((standings) => ({ standings })),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 0)),
+  ])
   const pool = data?.pool ?? (await getPoolConfig())
   const mode = pool.competition_mode
   const tournament = capabilitiesFor(mode).showTournamentRounds
   const brands = data?.teamBrands ?? {}
   const name = (team: string) => brandFor(team, brands).shortName
-  const names = Object.fromEntries(Object.entries(brands).map(([abbr, brand]) => [abbr, brand.shortName]))
 
   const slate = data?.slate ?? null
   const periods = data?.periods ?? []
@@ -43,32 +65,26 @@ export default async function Today() {
   const lock = slate ? slateDeadline(slate, games) : null
   const lockIso = lock?.toISOString() ?? null
   const lockText = tipTime(lockIso)
-  const now = await getEffectiveNow()
+  const now = data?.now ?? (await getEffectiveNow())
   const locked = lock ? lock <= now : false
 
-  const conferences = !tournament && games.length ? await getTeamConferences(await getDb()).catch(() => ({})) : {}
+  const conferences = !tournament && games.length ? conferenceMap : {}
 
   // The signed-in player's own entry.
-  const me = session ? data?.standings.find((row) => row.player_id === session.player_id) ?? null : null
-  const myPicks: MyPick[] = session && data ? await loadMyPicks(session.player_id, periods.map((p) => p.id)) : []
+  const me = session ? data?.players.find((player) => player.id === session.player_id) ?? null : null
+  const seasonIds = new Set(periods.map((p) => p.id))
+  const myPicks: MyPick[] = session && data ? allMyPicks.filter((p) => seasonIds.has(p.slateId)) : []
   const todayPicks = myPicks.filter((p) => p.slateId === slate?.id)
   const used = new Set(myPicks.filter((p) => p.slateId !== slate?.id).map((p) => p.team))
   const mine = new Set(todayPicks.map((p) => p.team))
-  const standingsRows = buildStandingsRows({
-    standings: data?.standings ?? [],
-    periods,
-    meId: session?.player_id,
-    myTeams: todayPicks.map((p) => p.team),
-    brands,
-  })
 
   const alive = data?.aliveCount ?? 0
   const total = data?.totalPlayers ?? 0
   const submitted = data?.picksMade ?? 0
   const eliminatedBySlate = new Map<number, number>()
-  for (const row of data?.standings ?? []) {
-    if (row.status === 'eliminated' && row.elimination_slate != null) {
-      eliminatedBySlate.set(row.elimination_slate, (eliminatedBySlate.get(row.elimination_slate) ?? 0) + 1)
+  for (const player of data?.players ?? []) {
+    if (player.status === 'eliminated' && player.elimination_slate != null) {
+      eliminatedBySlate.set(player.elimination_slate, (eliminatedBySlate.get(player.elimination_slate) ?? 0) + 1)
     }
   }
   const timeline = buildTimeline({ periods, currentId: slate?.id ?? null, totalEntries: total, aliveCount: alive, eliminatedBySlate, tournament })
@@ -95,10 +111,17 @@ export default async function Today() {
         ? { href: '/sweat', label: 'Open sweat board' }
         : { href: '/pick', label: todayPicks.length ? 'Change your pick' : 'Make your pick' }
 
-  const winner = pool.status === 'completed' && standingsRows.alive.length === 1 ? standingsRows.alive[0] : null
+  const survivors = (data?.players ?? []).filter((player) => player.status === 'alive')
+  const winner = pool.status === 'completed' && survivors.length === 1 ? survivors[0].full_name : null
+  const standingsProps = {
+    dayLabel: period ? `Day ${dayNumber}` : 'Today',
+    hiddenUntil: slate && !locked ? lockText : null,
+    showSeedTotal: capabilitiesFor(mode).showSeedTotal,
+    signupsClosed: closed,
+  }
 
   return (
-    <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name} signupsClosed={closed} names={names}>
+    <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name} signupsClosed={closed}>
       <ContestRefresh />
       <div className={s.kicker}>{period ? `${dayDate(period.date)} · ` : ''}{eventLabel(mode, pool.season_year)}</div>
       <h1 className={s.title}>{period ? pickDayTitle(period.round, period.date, dayNumber) : 'No games scheduled'}</h1>
@@ -181,19 +204,41 @@ export default async function Today() {
 
       <section id="standings" className={s.homeSection} aria-label="Standings">
         <div className={s.sectionHead}><h2>Standings</h2><span>{period ? `Through day ${dayNumber}` : ''}</span></div>
-        {winner && <div className={s.winner}><span className={s.cellLabel}>Winner</span><b>{winner.name}</b></div>}
-        <StandingsTable
-          alive={standingsRows.alive}
-          out={standingsRows.out}
-          teamBrands={standingsRows.teamBrands}
-          dayLabel={period ? `Day ${dayNumber}` : 'Today'}
-          hiddenUntil={slate && !locked ? lockText : null}
-          showSeedTotal={capabilitiesFor(mode).showSeedTotal}
-          signupsClosed={closed}
-        />
+        {winner && <div className={s.winner}><span className={s.cellLabel}>Winner</span><b>{winner}</b></div>}
+        {data && ready ? (
+          <StandingsBlock standings={ready.standings} core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
+        ) : data ? (
+          // Everything above is built from today's data; the table needs the
+          // whole season, so it streams in behind a same-size placeholder.
+          <Suspense fallback={<StandingsTableSkeleton alive={alive} out={total - alive} showSeedTotal={standingsProps.showSeedTotal} />}>
+            <TodayStandings core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
+          </Suspense>
+        ) : (
+          <StandingsTable alive={[]} out={[]} teamBrands={{}} {...standingsProps} />
+        )}
       </section>
 
       <RulesSection pool={pool} />
     </PoolShell>
   )
+}
+
+type StandingsTableProps = {
+  core: ContestCore
+  meId: string | undefined
+  myTeams: string[]
+  dayLabel: string
+  hiddenUntil: string | null
+  showSeedTotal: boolean
+  signupsClosed: boolean
+}
+
+function StandingsBlock({ standings, core, meId, myTeams, ...table }: StandingsTableProps & { standings: StandingRow[] | null }) {
+  if (!standings) return <p role="status" className={s.notice}>Standings are unavailable. Refresh to try again.</p>
+  const rows = buildStandingsRows({ standings, periods: core.periods, meId, myTeams, brands: core.teamBrands })
+  return <StandingsTable alive={rows.alive} out={rows.out} teamBrands={rows.teamBrands} {...table} />
+}
+
+async function TodayStandings(props: StandingsTableProps) {
+  return <StandingsBlock standings={await getContestStandings(props.core)} {...props} />
 }

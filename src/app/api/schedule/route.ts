@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/api'
 import { getOrCreateSlate, renumberSlates, refreshLockTime } from '@/lib/slates'
 import { fromZonedTime } from 'date-fns-tz'
 import { serverError } from '@/lib/alerts'
+import { revalidateContest } from '@/lib/revalidateContest'
 
 const CHICAGO_TZ = 'America/Chicago'
 
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
     }
 
     await renumberSlates(supabase, season_year)
+    revalidateContest()
 
     return NextResponse.json({ ok: true, dates: touched, games_saved: games.length })
   } catch (err) {
@@ -108,6 +110,7 @@ export async function DELETE(req: NextRequest) {
   if (error) return serverError('api/schedule', error, error.message)
 
   if (game?.slate_id) await refreshLockTime(supabase, game.slate_id)
+  revalidateContest()
 
   return NextResponse.json({ ok: true })
 }

@@ -1,10 +1,11 @@
 import { pageMetadata } from '@/lib/site'
 import SweatBoard from './SweatBoard'
 import PoolShell from '@/app/components/PoolShell'
-import { getDashboardData } from '@/lib/dashboard'
+import { getContestCore } from '@/lib/dashboard'
 import { getPoolConfig } from '@/lib/pool'
 import { getSession } from '@/lib/session'
-import { getDb } from '@/lib/testMode'
+import { getDb, isTestMode } from '@/lib/testMode'
+import { brandsFor } from '@/lib/teamBrand'
 import { dayDate, pickDayTitle } from '@/lib/poolTheme'
 
 // The board polls /api/sweat on its own; the shell is per request because it
@@ -14,11 +15,9 @@ export const dynamic = 'force-dynamic'
 export const metadata = pageMetadata('Sweat Board', 'Follow every pick in the Pick and Pray survivor pool as the games are played.', '/sweat', true)
 
 export default async function SweatPage() {
-  const [data, session] = await Promise.all([getDashboardData(), getSession()])
+  const [data, session, sandbox] = await Promise.all([getContestCore(), getSession(), isTestMode()])
   const pool = data?.pool ?? (await getPoolConfig())
   const mode = pool.competition_mode
-  const brands = data?.teamBrands ?? {}
-  const names = Object.fromEntries(Object.entries(brands).map(([abbr, brand]) => [abbr, brand.shortName]))
   const period = data?.currentPeriod ?? null
   const dayNumber = period ? (data?.periods ?? []).findIndex((p) => p.id === period.id) + 1 : 0
 
@@ -36,12 +35,17 @@ export default async function SweatPage() {
     }
   }
 
+  // Only today's teams: the board's own feed carries the brands for every
+  // game it shows, so nothing is lost if the slate changes while it is open.
+  const games = data?.slateGames ?? []
+  const brands = brandsFor([...games.flatMap((g) => [g.home_team, g.away_team]), ...(myTeams ?? [])], data?.teamBrands ?? {})
+
   return (
-    <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name} names={names}>
+    <PoolShell mode={mode} seasonYear={pool.season_year} account={session?.full_name}>
       <SweatBoard
-        names={names}
         teamBrands={brands}
         myTeams={myTeams}
+        sandbox={sandbox}
         kicker={period ? `${dayDate(period.date)} · ${pickDayTitle(period.round, period.date, dayNumber)}` : ''}
       />
     </PoolShell>

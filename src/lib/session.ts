@@ -76,10 +76,14 @@ export const getSession = cache(async (): Promise<SessionPayload | null> => {
     // Sessions are scoped to the environment they were created in — a sandbox
     // session is invisible in production and vice versa.
     if ((payload.test_mode === true) !== (await isTestMode())) return null
-    if (await isRevoked(token)) return null
     if (payload.purpose !== 'player' || typeof payload.player_id !== 'string' || typeof payload.credential_version !== 'string') return null
     const db = await getDb()
-    const { data: player, error } = await db.from('players').select('pin_hash').eq('id', payload.player_id).maybeSingle()
+    // Independent checks, read together: both must pass.
+    const [revoked, { data: player, error }] = await Promise.all([
+      isRevoked(token),
+      db.from('players').select('pin_hash').eq('id', payload.player_id).maybeSingle(),
+    ])
+    if (revoked) return null
     if (error || !player) return null
     const expected = Buffer.from(credentialVersion(player.pin_hash))
     const actual = Buffer.from(payload.credential_version)

@@ -1,4 +1,5 @@
 import 'server-only'
+import { cache } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getDb } from './testMode'
 import {
@@ -48,15 +49,18 @@ function normalize(row: Record<string, unknown>): PoolConfig {
   } as PoolConfig
 }
 
+// One read of the active pool row per render, however many components ask.
+// (Outside a render, such as in a Route Handler, React's cache does not
+// memoize and every call reads fresh.)
+const readActivePool = cache(async (supabase: SupabaseClient) =>
+  supabase.from('pools').select('*').eq('is_active', true).maybeSingle()
+)
+
 // The active pool, or the regular-season default when none is configured.
 export async function getPoolConfig(db?: SupabaseClient, strict = false): Promise<PoolConfig> {
   try {
     const supabase = db ?? (await getDb())
-    const { data, error } = await supabase
-      .from('pools')
-      .select('*')
-      .eq('is_active', true)
-      .maybeSingle()
+    const { data, error } = await readActivePool(supabase)
     if (error || !data) {
       if (strict) throw new Error('Competition rules are unavailable. Please contact support.')
       return DEFAULT_POOL_CONFIG
@@ -68,6 +72,15 @@ export async function getPoolConfig(db?: SupabaseClient, strict = false): Promis
     // the pages that call this must still render.
     return DEFAULT_POOL_CONFIG
   }
+}
+
+// For loaders whose result is cached and shared: a database error throws, so
+// a momentary outage is never stored as the regular-season default. A pool
+// table with no active row is a real state and does fall back to the default.
+export async function readPoolConfig(db: SupabaseClient): Promise<PoolConfig> {
+  const { data, error } = await readActivePool(db)
+  if (error) throw error
+  return data ? normalize(data) : DEFAULT_POOL_CONFIG
 }
 
 export type PoolConfigPatch = Partial<

@@ -1,6 +1,6 @@
 import { allRows } from '@/lib/db'
 import { publicPlayerLabels } from '@/lib/playerLabels'
-import { NextResponse, after } from 'next/server'
+import { NextResponse, after, type NextRequest } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline, isPickRevealed } from '@/lib/deadline'
 import { isDeliverable } from '@/lib/email'
@@ -17,7 +17,10 @@ import {
 import type { Game } from '@/types'
 import { loadPicksForSlates } from '@/lib/seasonData'
 import { reportFailure } from '@/lib/alerts'
-import { conferenceGroup, getTeamConferences } from '@/lib/teams'
+import { conferenceGroup } from '@/lib/teams'
+import { getCachedTeamConferences, getTeamBrandDirectory } from '@/lib/sharedData'
+import { brandsFor, type TeamBrandDirectory } from '@/lib/teamBrand'
+import { cdnSeconds, feedCacheControl } from '@/lib/livePolling'
 
 export type SweatStatus =
   | 'won' // final, team won
@@ -61,6 +64,8 @@ export interface SweatGame {
 }
 
 export interface SweatResponse {
+  // Names, logos and colors for every team on the board.
+  brands?: TeamBrandDirectory
   slateNumber: number | null
   season: number | null
   /** The active competition, so the board can label itself correctly. */
@@ -107,10 +112,19 @@ const EMPTY: SweatResponse = {
   summary: { safe: 0, winning: 0, losing: 0, out: 0, notStarted: 0, hidden: 0, pending: 0, noPick: 0 },
 }
 
-export async function GET() {
+// The CDN keeps a copy for up to 30 seconds before the first tip (never past
+// it), 10 during games and 5 minutes once the day is done; see lib/livePolling.
+// Test-mode browsers ask for ?sandbox=1, which is never stored, so a tester
+// never sees the real pool's copy and the real pool never sees the sandbox.
+const BEFORE_TIP_SECONDS = 30
+// With no active day, check back within a minute so a newly opened one shows.
+const NO_SLATE_SECONDS = 60
+
+export async function GET(request: NextRequest) {
   try {
     const supabase = await getDb()
     const testMode = await isTestMode()
+    const uncached = testMode || request.nextUrl.searchParams.has('sandbox')
     const [{ data: slate }, pool] = await Promise.all([
       supabase
         .from('slates')
@@ -125,11 +139,11 @@ export async function GET() {
     if (!slate) {
       return NextResponse.json(
         { ...EMPTY, mode },
-        { headers: { 'Cache-Control': testMode ? 'private, no-store' : 'public, max-age=300' } }
+        { headers: { 'Cache-Control': feedCacheControl(uncached ? null : NO_SLATE_SECONDS) } }
       )
     }
 
-    const [playersRes, picksRes, dbGamesRes, events] = await Promise.all([
+    const [playersRes, picksRes, dbGamesRes, events, directory] = await Promise.all([
       allRows(supabase
         .from('players')
         .select('id, full_name, email, status, elimination_slate')
@@ -146,6 +160,7 @@ export async function GET() {
         : fetchDayScoreboard(String(slate.slate_date).replace(/-/g, ''), 10)
             .then((r) => r.events)
             .catch(() => null),
+      getTeamBrandDirectory(),
     ])
 
     const labels = publicPlayerLabels((playersRes.data ?? []).filter(player => isDeliverable(player.email)))
@@ -172,7 +187,7 @@ export async function GET() {
     // the same two teams twice.
     const metaByPair = new Map<string, Game>()
     for (const g of dbGames) metaByPair.set(`${g.away_team}@${g.home_team}`, g)
-    const conferences = caps.showRegions || !dbGames.length ? {} : await getTeamConferences(supabase).catch(() => ({}))
+    const conferences = caps.showRegions || !dbGames.length ? {} : await getCachedTeamConferences(supabase)
     const bracketOf = (awayTeam: string, homeTeam: string) => {
       const g = metaByPair.get(`${awayTeam}@${homeTeam}`)
       return {
@@ -321,6 +336,16 @@ export async function GET() {
     )
 
     const aliveCount = players.filter((p: { status: string }) => p.status === 'alive').length
+    // How long the CDN may keep this response comes from the pool's own
+    // schedule, with ESPN's status where it has one, so an ESPN outage that
+    // empties the board is never cached for long.
+    const espnByPair = new Map(espnGames.map((game) => [`${game.awayTeam}@${game.homeTeam}`, game]))
+    const schedule = dbGames.map((g) => ({
+      state: espnByPair.get(`${g.away_team}@${g.home_team}`)?.state
+        ?? (g.result !== 'pending' ? 'post' : !g.time_tbd && now >= new Date(g.tip_time) ? 'in' : 'pre'),
+      kickoff: g.tip_time,
+      timeTbd: g.time_tbd,
+    }))
 
     return NextResponse.json(
       {
@@ -336,15 +361,11 @@ export async function GET() {
         games: espnGames,
         players: sweatPlayers,
         summary,
+        brands: brandsFor(espnGames.flatMap((game) => [game.homeTeam, game.awayTeam]), directory),
       } satisfies SweatResponse,
       {
         headers: {
-          // Sandbox responses must never land in the shared CDN cache
-          'Cache-Control': testMode
-            ? 'private, no-store'
-            : hasLiveGames
-            ? 'public, max-age=30, stale-while-revalidate=10'
-            : 'public, max-age=300, stale-while-revalidate=60',
+          'Cache-Control': feedCacheControl(uncached ? null : cdnSeconds(schedule, hasLiveGames, BEFORE_TIP_SECONDS)),
         },
       }
     )

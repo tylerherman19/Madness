@@ -8,7 +8,8 @@ import {
   type CompetitionMode,
   type TournamentRound,
 } from '@/lib/competition'
-import { getTeamBrandDirectory } from '@/lib/teamBrand'
+import { brandsFor } from '@/lib/teamBrand'
+import { getTeamBrandDirectory } from '@/lib/sharedData'
 import ScheduleBoard from './ScheduleBoard'
 import { fetchDayScoreboard, eventCompetitors, toEspnDate, isTimeTbd, parseRound } from '@/lib/espn'
 import { fetchNcaabOdds, matchOdds, type GameOdds } from '@/lib/odds'
@@ -212,10 +213,11 @@ export default async function SchedulePage() {
       ),
     })),
   }))
-  const names = Object.fromEntries(Object.entries(teamBrands).map(([abbr, brand]) => [abbr, brand.shortName]))
+  // Only the teams on the schedule, not ESPN's whole directory.
+  const brands = brandsFor(days.flatMap((day) => day.games.flatMap((game) => [game.homeAbbr, game.awayAbbr])), teamBrands)
   return (
-    <PoolShell mode={pool.competition_mode} seasonYear={pool.season_year} names={names}>
-      <ScheduleBoard days={enriched} brands={teamBrands} tournament={capabilitiesFor(pool.competition_mode).showSeeds} />
+    <PoolShell mode={pool.competition_mode} seasonYear={pool.season_year}>
+      <ScheduleBoard days={enriched} brands={brands} tournament={capabilitiesFor(pool.competition_mode).showSeeds} />
     </PoolShell>
   )
 }

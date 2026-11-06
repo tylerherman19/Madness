@@ -8,6 +8,7 @@ import { escapeIlike } from '@/lib/api'
 import { haveSignupsClosed } from '@/lib/season'
 import { logAudit } from '@/lib/audit'
 import { serverError } from '@/lib/alerts'
+import { revalidateContest } from '@/lib/revalidateContest'
 
 export async function POST(req: NextRequest) {
   try {
@@ -92,6 +93,9 @@ export async function POST(req: NextRequest) {
       }
       return serverError('api/signup', insertError, 'Failed to create account')
     }
+
+    // A new entry changes the standings and the entry count everywhere.
+    revalidateContest()
 
     await logAudit(supabase, {
       event_type: 'player-signed-up',

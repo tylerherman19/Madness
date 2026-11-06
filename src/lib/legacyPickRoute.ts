@@ -208,7 +208,7 @@ export async function legacyPickPost(req: NextRequest) {
     // Never contact the provider from a pick request. Once 025 is applied,
     // its trigger records notification intent even before the new RPC is enabled.
 
-    revalidateContest()
+    revalidateContest({ picksOnly: true })
     return NextResponse.json({ ok: true, pick: savedPick })
   } catch (err) {
     return serverError('api/picks', err)

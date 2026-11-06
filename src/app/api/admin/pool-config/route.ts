@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
+import { invalidateContestData } from '@/lib/revalidateContest'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
@@ -138,8 +139,10 @@ export async function POST(req: NextRequest) {
       details: { pool_id: poolId, changed: patch, previous: current },
     })
 
-    // The mode reaches the cached marketing-side pages, so bust them all.
-    for (const path of ['/', '/grid', '/schedule', '/sweat', '/pick']) {
+    // The mode reaches the cached marketing-side pages, so bust them all,
+    // along with the cached season data and the pre-built info pages.
+    invalidateContestData()
+    for (const path of ['/', '/grid', '/schedule', '/sweat', '/pick', '/login', '/privacy', '/terms', '/contact']) {
       revalidatePath(path)
     }
 
