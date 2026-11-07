@@ -83,19 +83,18 @@ export default async function Today() {
   const timeline = buildTimeline({ periods, currentId: slate?.id ?? null, totalEntries: total, aliveCount: alive, eliminatedBySlate, tournament })
   const timelineMax = Math.max(1, total)
 
-  const pickLabel = period ? `Day ${dayNumber} pick` : 'Next pick'
   const entryState = !me
     ? null
     : me.status === 'eliminated'
-      ? { text: 'Out', tone: s.red }
+      ? { text: 'Eliminated', tone: s.red }
       : todayPicks.length === 0
-        ? { text: locked ? 'No pick at lock' : 'Not submitted', tone: s.amber }
+        ? { text: locked ? 'No pick at lock' : 'No pick submitted', tone: s.amber }
         : todayPicks.some((p) => p.autoAssigned)
           ? { text: 'Auto-assigned at lock', tone: s.amber }
           : locked
-            ? { text: `Locked at ${lockText}`, tone: s.gray }
-            : { text: `Submitted, change until ${lockText}`, tone: s.gray }
-  const myTeamText = todayPicks.length ? todayPicks.map((p) => name(p.team)).join(', ') : me?.status === 'eliminated' ? 'Eliminated' : 'No pick yet'
+            ? { text: 'Pick locked', tone: s.gray }
+            : { text: todayPicks.length === 1 ? 'Pick saved' : 'Picks saved', tone: s.gray }
+  const myTeamText = todayPicks.map((p) => name(p.team)).join(', ')
   // The same names the header uses for the same actions.
   const pick = session
     ? pickStateOf({ hasSlate: !!slate, eliminated: me?.status === 'eliminated', locked, hasPick: todayPicks.length > 0 })
@@ -105,6 +104,9 @@ export default async function Today() {
     : pick === 'eliminated' || pick === 'locked'
       ? { href: '/sweat', label: 'View picks' }
       : { href: '/pick', label: pick === 'submitted' ? 'Change pick' : 'Make your pick' }
+  const entryDeadline = lockIso && me && (pick === 'open' || pick === 'submitted')
+    ? pick === 'submitted' ? `Change until ${lockText} CT` : `Picks lock at ${lockText} CT`
+    : null
 
   const survivors = (data?.players ?? []).filter((player) => player.status === 'alive')
   const winner = pool.status === 'completed' && survivors.length === 1 ? survivors[0].full_name : null
@@ -140,19 +142,26 @@ export default async function Today() {
           <div className={s.meter}><span style={{ width: `${alive ? (submitted / alive) * 100 : 0}%` }} /></div>
         </div>
         <div className={s.scoreCell}>
-          <div className={s.cellLabel}>{lockIso ? <>Locks<span className={s.liveExtra}> at first tip,</span> {lockText}</> : 'Lock time'}</div>
+          <div className={s.cellLabel}>{entryDeadline ? 'Time to lock' : lockIso ? <>Locks<span className={s.liveExtra}> at first tip,</span> {lockText}</> : 'Lock time'}</div>
           <div className={s.cellValue}>{lockIso ? <LockCountdown deadline={lockIso} soonClassName={s.clockSoon} /> : 'TBD'}</div>
         </div>
       </section>
 
-      {session && me && action ? (
+      {session && entryState && action ? (
         <section className={s.entryStrip} aria-label="Your pick">
           <span>
-            <small>{pickLabel}: <span className={entryState?.tone}>{entryState?.text}</span></small>
-            <span className={s.cardTeamRow}>
-              {todayPicks.length === 1 && <TeamLogo team={todayPicks[0].team} brands={brands} size={30} />}
-              <b className={s.cardTeam}>{myTeamText}</b>
-            </span>
+            {myTeamText ? (
+              <>
+                <small className={entryState.tone}>{entryState.text}</small>
+                <span className={s.cardTeamRow}>
+                  {todayPicks.length === 1 && <TeamLogo team={todayPicks[0].team} brands={brands} size={30} />}
+                  <b className={s.cardTeam}>{myTeamText}</b>
+                </span>
+              </>
+            ) : (
+              <b className={`${s.cardTeam} ${entryState.tone}`}>{entryState.text}</b>
+            )}
+            {entryDeadline && <small className={s.gray}>{entryDeadline}</small>}
           </span>
           <Link className={s.cta} href={action.href}>{action.label}</Link>
         </section>

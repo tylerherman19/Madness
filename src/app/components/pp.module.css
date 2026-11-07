@@ -237,13 +237,6 @@
 .pickCard[data-submitted=true] .cardLabel, .pickCard[data-submitted=true] .pickLine { color: var(--pp-on-dark-2); }
 .pickCard .cardTeam { font-size: var(--pp-text-xl); }
 .pickLine { margin-top: 4px; font-size: var(--pp-text-sm); color: var(--pp-ink-2); }
-.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 14px; font-size: var(--pp-text-xs); font-weight: var(--pp-semibold); }
-.step { padding-top: 6px; border-top: 3px solid var(--pp-line); color: var(--pp-ink-2); }
-.step[data-on=true] { border-color: var(--pp-ink); color: var(--pp-ink); }
-.pickCard[data-submitted=true] .step { border-color: var(--pp-on-dark-line); color: var(--pp-on-dark-2); }
-.pickCard[data-submitted=true] .step[data-on=true] { border-color: var(--pp-on-dark); color: var(--pp-on-dark); }
-.pickMsg { margin-top: 10px; font-size: var(--pp-text-sm); }
-.pickCard[data-submitted=true] .pickMsg { color: var(--pp-on-dark-2); }
 .slots { display: grid; gap: 8px; margin-bottom: 12px; }
 .slot { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--pp-radius); border: 1px solid var(--pp-line); background: var(--pp-surface); font-size: var(--pp-text-sm); }
 .slot b { flex: 1; font-size: var(--pp-text-md); }
