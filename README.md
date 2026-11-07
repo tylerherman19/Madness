@@ -101,8 +101,8 @@ One set of values carries every screen: the `.shell` tokens at the top of
   numbers; Source Sans 3 for everything else. Seven sizes (12, 14, 16, 20, 28,
   40, 52px) and three weights (400, 600, 800). Tailwind's size and weight
   utilities are remapped onto the same scale.
-- **Color:** warm off-white page, white surfaces, charcoal header and
-  scoreboard, one warm-gray family (primary ink, secondary ink, dividers,
+- **Color:** cool off-white page (`#F6F7F9`), white surfaces, charcoal header and
+  scoreboard, one cool-gray family (primary ink, secondary ink, dividers,
   faint fills), and one accent per season, set by `themeStyle()` in
   `src/lib/poolTheme.ts` (burnt orange `#B84A12` in the regular season, blue
   `#1A66D2` in March Madness). Green, red and amber are statuses only and
