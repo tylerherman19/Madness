@@ -6,8 +6,8 @@ import { normalizeRound, seedToShow, type CompetitionMode, type TournamentRound 
 // module only turns it into colors and labels. No database, no clock, so both
 // server and client components import it.
 
-// The season changes one thing: the accent. Neutrals (warm off-white, white,
-// charcoal and the warm grays in pp.module.css) are the same all year.
+// The season changes one thing: the accent. Neutrals (cool off-white, white,
+// charcoal and the cool grays in pp.module.css) are the same all year.
 export interface PoolTheme {
   accent: string // actions, links, selection: 4.5:1+ with white text and on the page
   accent2: string // the accent drawn on charcoal: 6:1+ there

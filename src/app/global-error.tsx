@@ -3,7 +3,7 @@
 import Link from 'next/link'
 
 export default function GlobalError({ unstable_retry }: { unstable_retry: () => void }) {
-  return <html lang="en"><body style={{ margin: 0, padding: '48px 24px', background: '#F7F7F4', color: '#1E2227', fontFamily: "'Source Sans 3', system-ui, sans-serif" }}>
+  return <html lang="en"><body style={{ margin: 0, padding: '48px 24px', background: '#F6F7F9', color: '#1E2227', fontFamily: "'Source Sans 3', system-ui, sans-serif" }}>
     <title>Page unavailable | Pick and Pray</title>
     <h1>The pool didn’t load</h1>
     <p role="alert">Something went wrong on our end. Try again in a moment.</p>

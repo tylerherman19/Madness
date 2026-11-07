@@ -2,20 +2,20 @@
 
 /* Shared tokens for everything outside the pool pages' own stylesheet
    (components/pp.module.css): admin, form controls, skeletons, the footer.
-   The same palette as the pool pages: warm off-white, white, charcoal, one
-   warm-gray family, and one accent per season (set by themeStyle() on a
+   The same palette as the pool pages: cool off-white, white, charcoal, one
+   cool-gray family, and one accent per season (set by themeStyle() on a
    shell; the default below is the regular-season orange). Every text pair
    meets WCAG AA (4.5:1). */
 :root {
   /* Neutrals */
   --ink: #1e2227;              /* primary text */
-  --ink-2: #3b3d38;            /* strong secondary text */
-  --muted: #595b55;            /* secondary text: 6.4:1 on --paper */
-  --line: #dcdcd5;             /* dividers and card borders */
-  --line-strong: #86877f;      /* form-control borders: 3.6:1 on white */
-  --paper: #f7f7f4;            /* page background */
+  --ink-2: #3a3f47;            /* strong secondary text */
+  --muted: #575c66;            /* secondary text: 6.3:1 on --paper */
+  --line: #dde1e6;             /* dividers and card borders */
+  --line-strong: #858b95;      /* form-control borders: 3.4:1 on white */
+  --paper: #f6f7f9;            /* page background */
   --surface: #ffffff;          /* cards, panels, inputs */
-  --surface-sunken: #eeeee9;   /* table heads, wells, hover rows */
+  --surface-sunken: #eef0f3;   /* table heads, wells, hover rows */
   --surface-inverse: #1e2227;  /* charcoal panels and tooltips */
   --on-inverse: #ffffff;
   --on-inverse-muted: #bdbebf; /* secondary text on charcoal: 8.6:1 */

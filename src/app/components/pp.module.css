@@ -3,15 +3,15 @@
    out/trailing, amber pending, gray secondary text. */
 
 .shell {
-  /* Neutrals: the same in every season. One warm family with four jobs. */
-  --pp-paper: #F7F7F4;                      /* page */
+  /* Neutrals: the same in every season. One cool gray family with four jobs. */
+  --pp-paper: #F6F7F9;                      /* page */
   --pp-surface: #FFFFFF;                    /* cards, panels, inputs */
   --pp-head: #1E2227;                       /* charcoal: header, scoreboard, dark panels */
   --pp-ink: #1E2227;                        /* primary text */
-  --pp-ink-2: #595B55;                      /* secondary text: 6.4:1 on paper, 5.9:1 on fills */
-  --pp-line: #DCDCD5;                       /* dividers */
-  --pp-fill: #EEEEE9;                       /* faint fills: hover, tracks, disabled */
-  --pp-control: #86877F;                    /* form-control borders: 3.6:1 on white */
+  --pp-ink-2: #575C66;                      /* secondary text: 6.3:1 on paper, 5.9:1 on fills */
+  --pp-line: #DDE1E6;                       /* dividers */
+  --pp-fill: #EEF0F3;                       /* faint fills: hover, tracks, disabled */
+  --pp-control: #858B95;                    /* form-control borders: 3.4:1 on white */
   --pp-on-dark: #FFFFFF;                    /* text on charcoal */
   --pp-on-dark-2: rgba(255,255,255,.72);    /* secondary text on charcoal: 8.6:1 */
   --pp-on-dark-line: rgba(255,255,255,.16); /* dividers on charcoal */
