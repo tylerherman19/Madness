@@ -61,7 +61,7 @@ interface Props {
   tagName: string
 }
 
-// Pick states: Selected (chosen here, not saved), Submitted (saved, can still
+// Pick states: Selected (chosen here, not saved), Saved (can still
 // change until lock), Locked (after first tip). The server enforces every rule
 // again on save; this form only presents them.
 export default function PickForm({
@@ -220,45 +220,38 @@ export default function PickForm({
   }
 
   const target = targetPick()
-  const replacing = selected ? target : null
+  const activeSelection = locked ? null : selected
+  const replacing = activeSelection ? target : null
   const slotIndex = target ? picks.findIndex((pick) => pick.id === target.id) : picks.length
-  const shownTeam = selected ?? target?.team ?? (requiredPicks === 1 ? picks[0]?.team : null) ?? null
-  const shownPick = !selected ? picks.find((pick) => pick.team === shownTeam) ?? null : null
-  const submittedView = !!shownPick && !selected
+  const shownTeam = activeSelection ?? target?.team ?? (requiredPicks === 1 ? picks[0]?.team : null) ?? null
+  const shownPick = !activeSelection ? picks.find((pick) => pick.team === shownTeam) ?? null : null
+  const submittedView = !!shownPick
   const gameOf = (team: string | null) => games.find((game) => game.away.team === team || game.home.team === team)
   const shownGame = gameOf(shownTeam)
   const opponent = shownGame ? (shownGame.away.team === shownTeam ? shownGame.home.team : shownGame.away.team) : null
   const cardLabel = requiredPicks > 1 ? `${dayLabel} · pick ${Math.min(slotIndex, requiredPicks - 1) + 1} of ${requiredPicks}` : `${dayLabel} pick`
-  const steps = [
-    { label: 'Selected', on: !!shownTeam },
-    { label: 'Submitted', on: submittedView },
-    { label: `Locked at ${lockText}`, on: locked && submittedView },
-  ]
-  const message = locked
-    ? picks.length
-      ? shownPick?.autoAssigned ? `Auto-assigned at ${lockText}.` : `Locked at ${lockText}.`
-      : 'Locked. No pick was submitted.'
-    : selected
-      ? 'Selected, not submitted yet.'
+  const pickStatus = locked
+    ? !picks.length ? 'No pick at lock' : shownPick?.autoAssigned ? 'Auto-assigned at lock' : 'Locked'
+    : activeSelection
+      ? 'Selected'
       : submittedView
-        ? `Submitted. You can change it until ${lockText}.`
-        : `No team selected yet. Picks lock at ${lockText}.`
-  const messageTone = !locked && selected ? s.amber : !submittedView && !locked ? s.gray : undefined
-  const dockState = locked
-    ? { text: 'Locked', tone: s.gray }
-    : selected
-      ? { text: 'Selected, not submitted', tone: s.amber }
-      : submittedView
-        ? { text: 'Submitted', tone: s.gray }
-        : { text: 'No team selected', tone: s.gray }
+        ? 'Pick saved'
+        : picks.length ? `${picks.length} of ${requiredPicks} picks saved` : 'No team selected'
+  const teamName = shownTeam ? name(shownTeam) : null
+  const receipt = !teamName
+    ? pickStatus
+    : activeSelection || pickStatus === 'Locked'
+      ? `${teamName} ${pickStatus.toLowerCase()}`
+      : `${pickStatus}: ${teamName}`
+  const changeDeadline = !locked && deadline && shownPick?.editable ? `Change until ${lockText} CT` : null
 
   function sideState(side: GameSide, game: GameRow): { state?: string; note: string } {
     if (side.used) return { state: 'used', note: `Used${side.usedOn ? ` ${side.usedOn}` : ''}` }
-    if (selected === side.team) return { state: 'selected', note: 'Selected' }
+    if (activeSelection === side.team) return { state: 'selected', note: '' }
     if (savedTeams.has(side.team)) {
       const being = replacing?.team === side.team
       const index = picks.findIndex((pick) => pick.team === side.team)
-      if (!being) return { state: 'submitted', note: locked ? 'Locked' : requiredPicks > 1 ? `Pick ${index + 1}` : 'Submitted' }
+      if (!being) return { state: 'submitted', note: requiredPicks > 1 ? `Pick ${index + 1}` : '' }
     }
     if (locked || game.locked) return { state: 'locked', note: '' }
     return { note: '' }
@@ -283,6 +276,7 @@ export default function PickForm({
 
   return (
     <div className={s.withDock}>
+      <div className="sr-only" role="status">{receipt}</div>
       <div className={s.pickHeader}>
         <div>
           <div className={s.kicker}>{dateLabel} · {titleLabel}</div>
@@ -290,7 +284,7 @@ export default function PickForm({
         </div>
         {deadline && (
           <div className={s.lockBox}>
-            <span>Locks at {lockText}</span>
+            <span>Locks at {lockText} CT</span>
             <LockCountdown deadline={deadline} className={s.lockClock} soonClassName={s.clockSoon} />
           </div>
         )}
@@ -298,7 +292,7 @@ export default function PickForm({
       <p className={s.availLine}><b>{available.length}</b> of {teams.length} teams available{sharedRound ? ` · ${requiredPicks} picks this round` : ''}</p>
       <div className={s.mobileLock}>
         <span>{available.length} of {teams.length} teams available</span>
-        {deadline && <span>Locks {lockText} · <b><LockCountdown deadline={deadline} /></b></span>}
+        {deadline && <span>Locks {lockText} CT · <b><LockCountdown deadline={deadline} /></b></span>}
       </div>
       {error && <p role="alert" className={s.alert}>{error}</p>}
       {uncertain && <div><button className={s.cta} onClick={()=>void checkReceipt()} disabled={submitting}>Check saved pick</button>{!locked&&<button className={s.cta} onClick={()=>void submit()} disabled={submitting}>Retry same selection</button>}</div>}
@@ -321,7 +315,7 @@ export default function PickForm({
                       key={side.team}
                       type="button"
                       role="radio"
-                      aria-checked={selected === side.team || state === 'submitted'}
+                      aria-checked={activeSelection === side.team || state === 'submitted'}
                       className={s.teamBtn}
                       data-state={state}
                       disabled={disabled}
@@ -366,15 +360,12 @@ export default function PickForm({
               <div className={s.cardLabel}>{cardLabel}</div>
               <div className={s.cardTeamRow}>
                 {shownTeam && <TeamLogo team={shownTeam} brands={teamBrands} size={38} />}
-                <div className={s.cardTeam}>{shownTeam ? name(shownTeam) : 'No team selected'}</div>
+                <div className={s.cardTeam}>{receipt}</div>
               </div>
               {shownGame && opponent && (
                 <div className={s.pickLine}>vs {name(opponent)} · {shownGame.timeTbd ? 'TBD' : tipTime(shownGame.kickoff)}{shownGame.tv ? ` · ${shownGame.tv}` : ''}</div>
               )}
-              <div className={s.steps}>
-                {steps.map((step) => <span className={s.step} data-on={step.on} key={step.label}>{step.label}</span>)}
-              </div>
-              <div className={`${s.pickMsg} ${messageTone ?? ''}`} aria-live="polite">{message}</div>
+              {changeDeadline && <div className={s.pickLine}>{changeDeadline}</div>}
             </div>
             {primary}
           </div>
@@ -396,8 +387,8 @@ export default function PickForm({
 
       <div className={s.dock}>
         <span>
-          <small className={dockState.tone}>{dockState.text}</small>
-          <b>{shownTeam ? name(shownTeam) : 'Choose a team'}</b>
+          {teamName && <small className={activeSelection ? s.amber : s.gray}>{pickStatus}</small>}
+          <b>{teamName ?? pickStatus}</b>
         </span>
         {locked ? (
           <Link className={`${s.cta} ${s.ctaQuiet}`} href="/sweat">View picks</Link>

@@ -261,7 +261,7 @@ export default function SweatBoard({
               <div className={s.segs} aria-hidden="true">
                 {STANDINGS.map((key) => <span key={key} data-k={key} style={{ flex: counts[key] }} />)}
               </div>
-              {counts.out > 0 && <p className={s.sumNote}>Lost today counts finished games. Standings change when the day’s results are graded.</p>}
+              {counts.out > 0 && <p className={s.sumNote}>Standings update once today’s results are official.</p>}
             </div>
           </section>
 
