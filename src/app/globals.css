@@ -9,7 +9,7 @@
 :root {
   /* Neutrals */
   --ink: #1e2227;              /* primary text */
-  --ink-2: #3a3f47;            /* strong secondary text */
+  --ink-2: var(--ink);         /* strong secondary text: the ink itself */
   --muted: #575c66;            /* secondary text: 6.3:1 on --paper */
   --line: #dde1e6;             /* dividers and card borders */
   --line-strong: #858b95;      /* form-control borders: 3.4:1 on white */
@@ -18,32 +18,25 @@
   --surface-sunken: #eef0f3;   /* table heads, wells, hover rows */
   --surface-inverse: #1e2227;  /* charcoal panels and tooltips */
   --on-inverse: #ffffff;
-  --on-inverse-muted: #bdbebf; /* secondary text on charcoal: 8.6:1 */
+  --on-inverse-muted: rgba(255, 255, 255, 0.72); /* secondary text on charcoal: 8.9:1 */
 
   /* Accent: links, primary actions, selection, focus. */
-  --accent: #b84a12;           /* 5.2:1 under white text, 4.9:1 on --paper */
-  --accent-strong: #b84a12;
-  --accent-tint: #fcede3;
+  --accent: #1a66d2;           /* 5.4:1 under white text, 5.1:1 on --paper */
+  --accent-strong: var(--accent);
+  --accent-tint: var(--surface-sunken); /* selection is neutral; no tinted accent */
   --on-accent: #ffffff;
 
   /* States. Success = alive / won / saved. Danger = out / lost / destructive.
      Warning = needs attention (no pick yet, pending). */
   --success: #1b7a43;
-  --success-tint: #e8f3ec;
+  --success-tint: var(--surface-sunken);
   --danger: #b42318;
-  --danger-strong: #962016;
+  --danger-strong: var(--danger);
   --danger-tint: #fbeae8;
   --warning: #7f6000;
-  --warning-tint: #f6f0dc;
-  --warning-solid: #c99a1e;    /* non-text marks only */
+  --warning-tint: var(--surface-sunken);
+  --warning-solid: var(--warning);
 
-  /* Data viz: "how spent is this team" ramp on the admin board. */
-  --burn-0: #e7ebe7;
-  --burn-1: #f0d7cd;
-  --burn-2: #e7aa94;
-  --burn-3: #da7a5a;
-  --burn-4: #c65331;
-  --burn-5: #963519;
 
   /* Shape, depth, motion: the same scale as the pool pages. */
   --radius: 6px;               /* buttons and panels */
@@ -164,7 +157,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .trust-footer-top p { margin: 0; }
 .trust-footer-top strong { color: var(--ink); font-size: 20px; font-weight: 600; }
 .trust-footer nav { display: flex; flex-wrap: wrap; gap: 4px 20px; }
-.trust-footer a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.trust-footer a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .trust-footer nav a { display: inline-flex; align-items: center; min-height: 44px; }
 .trust-footer > p { max-width: 100ch; margin: 12px 0 0; font-size: 12px; }
 

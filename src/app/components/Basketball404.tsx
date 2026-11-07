@@ -3,8 +3,8 @@ import styles from './basketball404.module.css'
 // The 404 illustration: one still frame of a possession (a step-back jumper
 // over a contest, the ball in the air). Each pose is a pure function of time,
 // so any moment of the play can be drawn; STILL picks the one shown. Drawn on
-// the server with the pool's neutrals and the season's accent for the ball;
-// the page's action ("Back to the pool") stays the focal point.
+// the server in the pool's grays only, so the page's one colored element is
+// its action ("Back to the pool").
 const T = 6.4
 const FLOOR = 256
 const BALL_FLOOR = FLOOR - 12
@@ -198,11 +198,11 @@ export default function Basketball404() {
         <circle cx={n(f[name].head[0])} cy={n(f[name].head[1])} r="12" style={{ fill: 'var(--pp-surface)' }} />
       </g>)}
       <g transform={f.ball}>
-        <circle r="12" strokeWidth="2" style={{ fill: 'var(--pp-accent)', stroke: 'var(--pp-ink)' }} />
+        <circle r="12" strokeWidth="2" style={{ fill: 'var(--pp-control)', stroke: 'var(--pp-ink)' }} />
         <path d="M-12 0H12M0 -12V12M-8 -9Q5 0 -8 9M8 -9Q-5 0 8 9" fill="none" strokeWidth="1.5" style={{ stroke: 'var(--pp-ink)' }} />
       </g>
       <path d={f.net} fill="none" strokeWidth="2" strokeLinejoin="round" style={{ stroke: 'var(--pp-control)' }} />
-      <path d="M416 98H449" strokeWidth="5" strokeLinecap="round" style={{ stroke: 'var(--pp-accent)' }} />
+      <path d="M416 98H449" strokeWidth="5" strokeLinecap="round" style={{ stroke: 'var(--pp-ink)' }} />
     </svg>
   </div>
 }

@@ -94,7 +94,7 @@ export default async function Today() {
           ? { text: 'Auto-assigned at lock', tone: s.amber }
           : locked
             ? { text: `Locked at ${lockText}`, tone: s.gray }
-            : { text: `Submitted, change until ${lockText}`, tone: s.green }
+            : { text: `Submitted, change until ${lockText}`, tone: s.gray }
   const myTeamText = todayPicks.length ? todayPicks.map((p) => name(p.team)).join(', ') : me?.status === 'eliminated' ? 'Eliminated' : 'No pick yet'
   // The same names the header uses for the same actions.
   const pick = session
