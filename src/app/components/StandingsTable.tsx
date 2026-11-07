@@ -68,8 +68,8 @@ export default function StandingsTable({
         groups.set(key, visible
           ? { key, team: row.teams[0], label: teamsText(row.teams), rows: [] }
           : key === '~none'
-            ? { key, team: null, label: 'No pick yet', tone: s.amber, rows: [] }
-            : { key, team: null, label: hiddenUntil ? `Locked in · hidden until ${hiddenUntil}` : 'Locked in', tone: s.green, rows: [] })
+            ? { key, team: null, label: 'No pick yet', tone: s.gray, rows: [] }
+            : { key, team: null, label: hiddenUntil ? `Locked in · hidden until ${hiddenUntil}` : 'Locked in', tone: s.gray, rows: [] })
       }
       groups.get(key)!.rows.push(row)
     }
@@ -86,9 +86,10 @@ export default function StandingsTable({
   }
 
   const status = (row: AliveRow) =>
-    row.status === 'locked' || row.status === 'picked' ? { text: 'Locked in', tone: s.green }
-      : row.status === 'submitted' ? { text: 'Submitted', tone: s.green }
-        : { text: row.me ? 'Not submitted' : 'No pick yet', tone: s.amber }
+    // Neutral unless it's your own missing pick, the one thing to act on.
+    row.status === 'locked' || row.status === 'picked' ? { text: 'Locked in', tone: s.gray }
+      : row.status === 'submitted' ? { text: 'Submitted', tone: s.gray }
+        : row.me ? { text: 'Not submitted', tone: s.amber } : { text: 'No pick yet', tone: s.gray }
 
   const sorts: [SortMode, string][] = [['alphabetical', 'Alphabetical'], ['team', 'By team'], ...(showSeedTotal && !compact ? [['seeds', 'Seed total'] as [SortMode, string]] : [])]
 
@@ -166,7 +167,7 @@ export default function StandingsTable({
       </div>
 
       <section className={s.stSection} aria-label="Still alive">
-        <div className={s.stHead}><b className={s.green}>{alive.length}</b><span>still alive</span></div>
+        <div className={s.stHead}><b>{alive.length}</b><span>still alive</span></div>
         {!compact && <div className={`${s.stRow} ${s.stLabels}`}><span>Entry</span><span>Status</span><span>{sort === 'seeds' ? 'Seed total' : `${dayLabel} pick`}</span></div>}
         {grouped
           ? groupAlive(aliveRows).flatMap((group) => [groupHead(group), ...group.rows.map((row) => aliveRow(row, true))])
@@ -176,7 +177,7 @@ export default function StandingsTable({
 
       {out.length > 0 && (
         <section className={s.stSection} aria-label="Eliminated">
-          <div className={s.stHead}><b className={s.red}>{out.length}</b><span>eliminated</span></div>
+          <div className={s.stHead}><b>{out.length}</b><span>eliminated</span></div>
           {!compact && <div className={`${s.stRow} ${s.stLabels}`}><span>Entry</span><span>Out</span><span>{sort === 'seeds' ? 'Seed total' : 'Losing pick'}</span></div>}
           {grouped
             ? groupOut(outRows).flatMap((group) => [groupHead({ ...group, tone: s.red }), ...group.rows.map((row) => outRow(row, true))])

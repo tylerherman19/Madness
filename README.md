@@ -101,12 +101,15 @@ One set of values carries every screen: the `.shell` tokens at the top of
   numbers; Source Sans 3 for everything else. Seven sizes (12, 14, 16, 20, 28,
   40, 52px) and three weights (400, 600, 800). Tailwind's size and weight
   utilities are remapped onto the same scale.
-- **Color:** cool off-white page (`#F6F7F9`), white surfaces, charcoal header and
-  scoreboard, one cool-gray family (primary ink, secondary ink, dividers,
-  faint fills), and one accent per season, set by `themeStyle()` in
-  `src/lib/poolTheme.ts` (burnt orange `#B84A12` in the regular season, blue
-  `#1A66D2` in March Madness). Green, red and amber are statuses only and
-  always come with a text label.
+- **Color:** cool off-white page (`#F6F7F9`), white cards with a 1px divider
+  border, charcoal header and scoreboard, and one cool-gray family (ink,
+  secondary text, dividers, fills, control borders). One accent all year,
+  blue `#1A66D2`, set by `themeStyle()` in `src/lib/poolTheme.ts`: it marks the
+  main button on a screen and focus rings, nothing else. Links, tabs and
+  today markers are ink; your own Standings row is outlined in gray. Green
+  means won or alive, red lost or out, amber only your own missing pick, and
+  each always sits next to a word. No tinted backgrounds except the red behind
+  error messages.
 - **Shape:** data rows are square; buttons and panels use 6px corners, inputs
   4px. Dividers are 1px. The one shadow is for floating surfaces.
 - **Focus and motion:** every control shows a 3px focus ring in the accent (the light accent on charcoal); inputs a 2px one. Transitions are

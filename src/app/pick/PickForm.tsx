@@ -249,7 +249,7 @@ export default function PickForm({
     : selected
       ? { text: 'Selected, not submitted', tone: s.amber }
       : submittedView
-        ? { text: 'Submitted', tone: s.green }
+        ? { text: 'Submitted', tone: s.gray }
         : { text: 'No team selected', tone: s.gray }
 
   function sideState(side: GameSide, game: GameRow): { state?: string; note: string } {

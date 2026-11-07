@@ -7,8 +7,8 @@ export default function GlobalError({ unstable_retry }: { unstable_retry: () => 
     <title>Page unavailable | Pick and Pray</title>
     <h1>The pool didn’t load</h1>
     <p role="alert">Something went wrong on our end. Try again in a moment.</p>
-    <button style={{ padding: '12px 20px', fontSize: 16, fontWeight: 600, color: '#FFFFFF', background: '#B84A12', border: 0, borderRadius: 6, cursor: 'pointer' }} onClick={() => unstable_retry()}>Try again</button>
-    <p><Link href="/" style={{ color: '#B84A12' }}>Back to the pool</Link></p>
-    <p><Link href="/contact" style={{ color: '#B84A12' }}>Contact the organizer</Link></p>
+    <button style={{ padding: '12px 20px', fontSize: 16, fontWeight: 600, color: '#FFFFFF', background: '#1A66D2', border: 0, borderRadius: 6, cursor: 'pointer' }} onClick={() => unstable_retry()}>Try again</button>
+    <p><Link href="/" style={{ color: '#1A66D2' }}>Back to the pool</Link></p>
+    <p><Link href="/contact" style={{ color: '#1A66D2' }}>Contact the organizer</Link></p>
   </body></html>
 }

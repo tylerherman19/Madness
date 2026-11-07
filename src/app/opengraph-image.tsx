@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og'
 
-// The link preview: the P& mark and the name on charcoal, with the regular
-// season's accent as a rule along the bottom.
+// The link preview: the P& mark and the name on charcoal, with the accent
+// blue as a rule along the bottom.
 export const alt = 'Pick and Pray, a college basketball survivor pool: one pick every game day.'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
@@ -12,7 +12,7 @@ const MARK = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3
 
 export default function Image() {
   return new ImageResponse(
-    <div style={{ display: 'flex', width: '100%', height: '100%', background: '#1E2227', color: '#FFFFFF', padding: '0 88px', alignItems: 'center', borderBottom: '16px solid #B84A12' }}>
+    <div style={{ display: 'flex', width: '100%', height: '100%', background: '#1E2227', color: '#FFFFFF', padding: '0 88px', alignItems: 'center', borderBottom: '16px solid #1A66D2' }}>
       <div style={{ display: 'flex', position: 'relative', width: 260, height: 260, flexShrink: 0 }}>
         {/* eslint-disable-next-line jsx-a11y/alt-text */}
         <img src={MARK} width={260} height={260} />

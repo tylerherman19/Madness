@@ -6,17 +6,18 @@ import { normalizeRound, seedToShow, type CompetitionMode, type TournamentRound 
 // module only turns it into colors and labels. No database, no clock, so both
 // server and client components import it.
 
-// The season changes one thing: the accent. Neutrals (cool off-white, white,
-// charcoal and the cool grays in pp.module.css) are the same all year.
+// One accent all year: blue marks the main action and focus. Neutrals (cool
+// off-white, white, charcoal and the cool grays in pp.module.css) are the same
+// all year too. A season can still be given its own accent here.
 export interface PoolTheme {
-  accent: string // actions, links, selection: 4.5:1+ with white text and on the page
+  accent: string // main buttons and focus: 4.5:1+ with white text and on the page
   accent2: string // the accent drawn on charcoal: 6:1+ there
-  tint: string // the accent's palest fill: your own row, today's column
 }
 
+const BLUE: PoolTheme = { accent: '#1A66D2', accent2: '#5AA2FF' }
 export const POOL_THEMES: Record<CompetitionMode, PoolTheme> = {
-  'march-madness': { accent: '#1A66D2', accent2: '#5AA2FF', tint: '#EAF2FE' },
-  'regular-season': { accent: '#B84A12', accent2: '#FF9A5C', tint: '#FCEDE3' },
+  'march-madness': BLUE,
+  'regular-season': BLUE,
 }
 
 export function themeFor(mode: CompetitionMode | undefined): PoolTheme {
@@ -24,17 +25,15 @@ export function themeFor(mode: CompetitionMode | undefined): PoolTheme {
 }
 
 // The theme as CSS custom properties, set once on a page shell. The shared
-// stylesheet's names (--accent, --accent-tint) follow the season too, so
-// admin and form styles inside the shell pick up the same accent.
+// stylesheet's --accent follows it too, so admin and form styles inside the
+// shell pick up the same accent.
 export function themeStyle(mode: CompetitionMode | undefined): CSSProperties {
   const t = themeFor(mode)
   return {
     '--pp-accent': t.accent,
     '--pp-accent2': t.accent2,
-    '--pp-tint': t.tint,
     '--accent': t.accent,
     '--accent-strong': t.accent,
-    '--accent-tint': t.tint,
   } as CSSProperties
 }
 
