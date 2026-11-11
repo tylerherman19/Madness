@@ -169,7 +169,7 @@ export default async function Today() {
         {data ? (
           <StandingsBlock standings={data.standings} core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
         ) : (
-          <StandingsTable alive={[]} out={[]} teamBrands={{}} {...standingsProps} />
+          <StandingsTable alive={[]} out={[]} outLabels={{}} teamBrands={{}} {...standingsProps} />
         )}
       </section>
 
@@ -190,6 +190,6 @@ type StandingsTableProps = {
 
 function StandingsBlock({ standings, core, meId, myTeams, ...table }: StandingsTableProps & { standings: StandingRow[] | null }) {
   if (!standings) return <p role="status" className={s.notice}>Standings are unavailable. Refresh to try again.</p>
-  const rows = buildStandingsRows({ standings, periods: core.periods, meId, myTeams, brands: core.teamBrands })
-  return <StandingsTable alive={rows.alive} out={rows.out} teamBrands={rows.teamBrands} {...table} />
+  const rows = buildStandingsRows({ standings, periods: core.periods, meId, myTeams, brands: core.teamBrands, showSeedTotal: table.showSeedTotal })
+  return <StandingsTable alive={rows.alive} out={rows.out} outLabels={rows.outLabels} teamBrands={rows.teamBrands} {...table} />
 }

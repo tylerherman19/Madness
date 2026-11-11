@@ -1,9 +1,10 @@
 import { allRows } from '@/lib/db'
 import writeExcelFile, { type Cell, type SheetData } from 'write-excel-file/node'
 import { buildPickPeriods } from '@/lib/competition'
-import { isPickRevealed } from '@/lib/deadline'
+import { isPickRevealed, slateDeadline } from '@/lib/deadline'
 import { getPoolConfig } from '@/lib/pool'
-import { getDb, getEffectiveNow } from '@/lib/testMode'
+import { getDb, getEffectiveNow, isTestMode } from '@/lib/testMode'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { loadAll } from '@/lib/seasonData'
 import type { Game } from '@/types'
 import { serverError } from '@/lib/alerts'
@@ -46,9 +47,18 @@ const headerCell = (value: string, align: 'left' | 'center' = 'center'): Cell =>
   height: 28,
 })
 
-export async function GET() {
-  try {
-    const supabase = await getDb()
+// The workbook is the same for every visitor and only ever holds revealed
+// picks (unrevealed ones read "Hidden"), so one build is shared for a few
+// seconds instead of being rebuilt from every player, pick and game on each
+// request. A copy never outlives the next lock it was built before, so the
+// picks that reveal at a lock are in the very next download. Sandbox
+// (test-mode) requests are never shared.
+const SHARE_SECONDS = 10
+type Built = { body: Uint8Array; filename: string; until: number }
+const shared = new Map<string, { built: Built } | { pending: Promise<Built> }>()
+
+async function build(supabase: SupabaseClient): Promise<Built> {
+  {
     const [slatesRes, playersRes, picksRes, gamesRes, pool] = await Promise.all([
       supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active, locks_at').order('slate_number'),
       allRows(supabase
@@ -129,6 +139,13 @@ export async function GET() {
       gamesBySlate.set(game.slate_id, games)
     }
     const now = await getEffectiveNow()
+    // The soonest moment this copy would read differently: the next lock.
+    let until = now.getTime() + SHARE_SECONDS * 1000
+    for (const slate of includedSlates) {
+      const lock = slateDeadline(slate, gamesBySlate.get(slate.id) ?? [])
+      if (lock && lock > now) until = Math.min(until, lock.getTime())
+      if (!lock) until = Math.min(until, now.getTime() + 2000) // times still being announced
+    }
 
     const sheetData: SheetData = [
       [
@@ -178,11 +195,43 @@ export async function GET() {
     const modeLabel = pool.competition_mode === 'march-madness' ? 'march-madness' : 'regular-season'
     const through = finalSlateNumber > 0 ? `-through-${periodById.get(includedSlates.at(-1)?.id ?? '')?.shortLabel ?? `slate-${finalSlateNumber}`}` : ''
     const safeThrough = through.toLowerCase().replace(/[^a-z0-9-]+/g, '-')
-    return new Response(new Uint8Array(workbook), {
+    return {
+      body: new Uint8Array(workbook),
+      filename: `madness-${pool.season_year}-${modeLabel}${safeThrough}.xlsx`,
+      until,
+    }
+  }
+}
+
+export async function GET() {
+  try {
+    const testMode = await isTestMode()
+    const supabase = await getDb()
+    let built: Built
+    if (testMode) {
+      built = await build(supabase)
+    } else {
+      const entry = shared.get('public')
+      if (entry && 'built' in entry && entry.built.until > Date.now()) built = entry.built
+      else if (entry && 'pending' in entry) built = await entry.pending
+      else {
+        const pending = build(supabase)
+        shared.set('public', { pending })
+        try {
+          built = await pending
+          shared.set('public', { built })
+        } catch (error) {
+          shared.delete('public')
+          throw error
+        }
+      }
+    }
+    const seconds = Math.max(0, Math.floor((built.until - Date.now()) / 1000))
+    return new Response(built.body.slice(), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="madness-${pool.season_year}-${modeLabel}${safeThrough}.xlsx"`,
-        'Cache-Control': 'private, no-store',
+        'Content-Disposition': `attachment; filename="${built.filename}"`,
+        'Cache-Control': testMode || seconds < 1 ? 'private, no-store' : `public, max-age=0, s-maxage=${seconds}`,
       },
     })
   } catch (error) {
