@@ -1,8 +1,8 @@
+import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { RESET_TOKEN_PATTERN, hashPassword, hashResetToken, isMissingFunction, passwordValidationError } from '@/lib/password'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
-import { firstExceeded, resetLinkLimits } from '@/lib/rateLimitPolicy'
 import { logAudit } from '@/lib/audit'
 import { serverError } from '@/lib/alerts'
 
@@ -17,15 +17,19 @@ export async function POST(req: NextRequest) {
     const ip = await getIP()
     const body = await req.json().catch(() => null)
     const token = typeof body?.token === 'string' ? body.token : ''
-    // Keyed by the token's hash; the token itself never reaches the limiter, logs or audit rows.
+    const tooMany = () => NextResponse.json({ error: 'Too many attempts. Try again in an hour.' }, { status: 429, headers: { 'Retry-After': '3600' } })
+    if (!(await checkRateLimit(`reset-password:${ip}`, 10, 60 * 60)).allowed) return tooMany()
+
+    // Policy is checked first so weak-password rejections never use up a link's attempts.
     const wellFormed = RESET_TOKEN_PATTERN.test(token)
-    if (await firstExceeded(resetLinkLimits(wellFormed ? hashResetToken(token) : null, ip), checkRateLimit)) {
-      return NextResponse.json({ error: 'Too many attempts. Try again in an hour.' }, { status: 429, headers: { 'Retry-After': '3600' } })
-    }
     const passwordError = passwordValidationError(body?.password)
     if (!wellFormed || passwordError) {
       return NextResponse.json({ error: passwordError || MESSAGES.invalid }, { status: 400 })
     }
+    // Per-link attempt cap, keyed by a value unrelated to the stored hash so the
+    // hash is never duplicated into rate_limits; the token itself is never stored.
+    const linkKey = createHash('sha256').update('rl:' + token).digest('hex')
+    if (!(await checkRateLimit(`reset-link:${linkKey}`, 5, 60 * 60)).allowed) return tooMany()
 
     const supabase = await getDb()
     const tokenHash = hashResetToken(token)

@@ -5,28 +5,20 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 import { decryptBackup, snapshotDigest } from './backup.mjs'
-// Column types copied from a backup's own catalogue may be used to recreate a
-// table or column absent from this revision's migrations (isolated fixture only).
-const SAFE_TYPE = /^[a-z][a-z0-9 _]*(\(\d+(,\d+)?\))?(\[\])?$/
-const SAFE_NAME = /^[_a-z][_a-z0-9]*$/
-// `inspect(db)` runs inside the isolated restore, after reconciliation and
-// before the rollback, so a drill can exercise logins and SQL functions.
-export async function restoreCheck(snapshot, { inspect } = {}) {
+export async function restoreCheck(snapshot) {
  const db = new PGlite()
  try {
   await db.exec('create role anon; create role authenticated; create role service_role; create role authenticator;')
   for (const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort()) await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
   const allowed = ['teams','pools','slates','players','games','picks','audit_log','notification_outbox','contest_archives','revoked_sessions','operation_runs','email_suppressions']
   const optional=['rate_limits','clock','player_accounts','notification_preferences','push_devices','delivery_settings','email_campaigns','campaign_recipients','notification_attempts','provider_events','pick_revisions','pick_requests','rule_versions','integrity_checks','incidents']
-  // Tables added after this list (by later migrations) are accepted when the
-  // backup carries their column catalogue, so new tables are never dropped.
-  const extra=Object.keys(snapshot.tables??{}).filter(table=>!allowed.includes(table)&&(optional.includes(table)||Array.isArray(snapshot.columns?.[table])))
-  if (![1,2].includes(snapshot.version) || !snapshot.tables || allowed.some(table=>!Array.isArray(snapshot.tables[table])) || Object.keys(snapshot.tables).some(table=>!allowed.includes(table)&&!extra.includes(table)) || extra.some(table=>!SAFE_NAME.test(table)||!Array.isArray(snapshot.tables[table]))) throw new Error('Incomplete or unsupported backup')
-  for(const table of extra) {
+  if (![1,2].includes(snapshot.version) || !snapshot.tables || allowed.some(table=>!Array.isArray(snapshot.tables[table])) || Object.keys(snapshot.tables).some(table=>!allowed.includes(table)&&!optional.includes(table))) throw new Error('Incomplete or unsupported backup')
+  for(const table of optional.filter(table=>table in snapshot.tables)) {
    const exists=(await db.query('select to_regclass($1) as relation',[`public.${table}`])).rows[0].relation
    if(!exists) {
     const columns=snapshot.columns?.[table]
-    if(!Array.isArray(columns)||!columns.length||columns.some(column=>!SAFE_NAME.test(column.name)||!SAFE_TYPE.test(column.type)))throw new Error(`Missing/unsupported schema for ${table}; restore with its matching source revision`)
+    const types=new Set(['uuid','text','boolean','integer','bigint','timestamp with time zone','timestamp without time zone','jsonb','date','inet'])
+    if(!Array.isArray(columns)||!columns.length||columns.some(column=>!/^[_a-z][_a-z0-9]*$/.test(column.name)||!types.has(column.type)))throw new Error(`Missing/unsupported schema for ${table}; restore with its matching source revision`)
     await db.exec(`create table public.${table} (${columns.map(column=>'"'+column.name+'" '+column.type).join(',')})`)
    }
    allowed.push(table)
@@ -40,7 +32,8 @@ export async function restoreCheck(snapshot, { inspect } = {}) {
    const backedColumns=Object.keys(snapshot.tables[table][0])
    for(const name of backedColumns.filter(name=>!columns.includes(name))) {
     const definition=snapshot.columns?.[table]?.find(column=>column.name===name)
-    if(!SAFE_NAME.test(name)||!definition||!SAFE_TYPE.test(definition.type))throw new Error(`Missing/unsupported extra column in ${table}; use its matching source revision`)
+    const types=new Set(['uuid','text','boolean','integer','bigint','timestamp with time zone','timestamp without time zone','jsonb','date','inet','uuid[]','text[]'])
+    if(!/^[_a-z][_a-z0-9]*$/.test(name)||!definition||!types.has(definition.type))throw new Error(`Missing/unsupported extra column in ${table}; use its matching source revision`)
     // Preserve additional deployed fields in this isolated data-recovery fixture.
     // Production schema/policies still require their authoritative migrations.
     await db.exec(`alter table public.${table} add column "${name}" ${definition.type}`)
@@ -62,9 +55,8 @@ export async function restoreCheck(snapshot, { inspect } = {}) {
   const orphans=(await db.query(`select count(*)::int as n from public.picks p left join public.players r on r.id=p.player_id left join public.slates s on s.id=p.slate_id where r.id is null or s.id is null`)).rows[0].n
   assert.equal(orphans,0,'Restored picks must retain their entries and slates')
   assert.equal((await db.query(`select count(*)::int as n from public.games g left join public.slates s on s.id=g.slate_id where s.id is null`)).rows[0].n,0,'Restored games must retain their slates')
-  const inspected = inspect ? await inspect(db) : undefined
   await db.exec('rollback;')
-  return { tables: allowed.length, rows: Object.values(snapshot.tables).reduce((n,rows)=>n+rows.length,0), ...(inspect ? { inspected } : {}) }
+  return { tables: allowed.length, rows: Object.values(snapshot.tables).reduce((n,rows)=>n+rows.length,0) }
  } finally { await db.close() }
 }
 if (process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {

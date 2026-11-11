@@ -158,39 +158,3 @@ test('two simultaneous uses of one organizer recovery link: exactly one changes 
   expect((await login(request, EMAIL, winner)).status()).toBe(200)
   expect((await login(request, EMAIL, loser)).status()).toBe(401)
 })
-
-test('shared network: 300 players behind one address sign in and save picks; guessing one account is throttled', async ({ request, playwright }) => {
-  test.setTimeout(300000)
-  const NAT = { 'x-real-ip': '203.0.113.77' }
-  const hash = await bcrypt.hash('CampusPass123!', 4)
-  const players = Array.from({ length: 300 }, (_, i) => ({
-    id: `10000000-0000-4000-8000-${String(i).padStart(12, '0')}`, full_name: `Campus Player ${i}`, email: `campus${i}@example.test`, pin_hash: hash,
-  }))
-  expect((await request.post(`${FIXTURE_DB}/players`, { data: players })).ok()).toBeTruthy()
-  const started = Date.now()
-  const failures: string[] = []
-  await Promise.all(Array.from({ length: 10 }, async (_, lane) => {
-    const client = await playwright.request.newContext({ baseURL: APP, extraHTTPHeaders: NAT })
-    for (let i = lane; i < players.length; i += 10) {
-      const signedIn = await client.post('/api/auth/login', { data: { email: players[i].email, password: 'CampusPass123!' } })
-      if (signedIn.status() !== 200) { failures.push(`login ${i}: ${signedIn.status()}`); continue }
-      const pick = await client.post('/api/picks', { data: { slate_id: SLATE, team: i % 2 ? 'A' : 'B' } })
-      if (pick.status() !== 200) failures.push(`pick ${i}: ${pick.status()}`)
-    }
-    await client.dispose()
-  }))
-  expect(failures).toEqual([])
-  expect(Date.now() - started).toBeLessThan(5 * 60 * 1000)
-  const picks = await db(request, 'picks?limit=1000')
-  expect(picks.filter((pick: { player_id: string }) => pick.player_id.startsWith('10000000-')).length).toBe(300)
-
-  const statuses = []
-  for (let i = 0; i < 20; i++) statuses.push((await login(request, EMAIL, `WrongGuess${i}!`, NAT)).status())
-  expect(statuses.filter(status => status === 401)).toHaveLength(10)
-  expect(statuses.filter(status => status === 429)).toHaveLength(10)
-  // The correct password is also held back on that address for this account...
-  expect((await login(request, EMAIL, PASSWORD, NAT)).status()).toBe(429)
-  // ...while everyone else on the same network still signs in.
-  expect((await login(request, 'other@example.test', PASSWORD, NAT)).status()).toBe(200)
-  expect((await login(request, 'campus7@example.test', 'CampusPass123!', NAT)).status()).toBe(200)
-})

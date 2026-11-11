@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'node:crypto'
 import { supabase } from '@/lib/supabase'
+import { sessionSecretStatus } from '@/lib/sessionSecret'
 import { centralClock, operationIsStale } from '@/lib/operationPolicy'
 export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
@@ -33,6 +34,6 @@ export async function GET(req: NextRequest) {
   const { count, error: outboxError } = await supabase.from('notification_outbox').select('id', { count: 'exact', head: true }).eq('status','review').gte('attempts',6)
   if (outboxError) throw outboxError
   if (process.env.OUTBOX_DELIVERY_ENABLED === 'true' && count) problems.push('notifications-need-review')
-  return NextResponse.json({ ok: !problems.length, automationEnabled: enabled, problems, checkedAt: now.toISOString() }, { status: problems.length ? 503 : 200, headers: { 'Cache-Control': 'no-store' } })
+  return NextResponse.json({ ok: !problems.length, automationEnabled: enabled, problems, sessionSecret: sessionSecretStatus(), checkedAt: now.toISOString() }, { status: problems.length ? 503 : 200, headers: { 'Cache-Control': 'no-store' } })
  } catch { return NextResponse.json({ ok: false, problems: ['operations-schema-or-database-unavailable'] }, { status: 503, headers: { 'Cache-Control': 'no-store' } }) }
 }

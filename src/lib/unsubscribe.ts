@@ -13,7 +13,8 @@ function sign(playerId: string): string {
 
 export function verifyUnsubscribe(playerId: unknown, token: unknown): playerId is string {
   if (typeof playerId !== 'string' || typeof token !== 'string' || !playerId || !token) return false
-  const expected = Buffer.from(sign(playerId))
+  let expected: Buffer
+  try { expected = Buffer.from(sign(playerId)) } catch { return false } // enforce mode with a weak secret: treat links as invalid, not a 500
   const given = Buffer.from(token)
   return expected.length === given.length && timingSafeEqual(expected, given)
 }

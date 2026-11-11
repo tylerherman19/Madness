@@ -6,7 +6,6 @@ import { createSession } from '@/lib/session'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
 import { serverError } from '@/lib/alerts'
-import { firstExceeded, loginLimits } from '@/lib/rateLimitPolicy'
 import { SessionSecretError } from '@/lib/sessionSecret'
 
 export async function POST(req: NextRequest) {
@@ -29,7 +28,11 @@ export async function POST(req: NextRequest) {
     const identity = email.trim().toLowerCase()
     const ip = await getIP()
     const accountKey = createHash('sha256').update(identity).digest('hex')
-    if (await firstExceeded(loginLimits(accountKey, ip), checkRateLimit)) return NextResponse.json(
+    const limits = await Promise.all([
+      checkRateLimit(`login-account-network:${accountKey}:${ip}`, 10, 15 * 60),
+      checkRateLimit(`login-network:${ip}`, 1000, 15 * 60),
+    ])
+    if (limits.some(limit => !limit.allowed)) return NextResponse.json(
       { error: 'Too many login attempts. Try again in 15 minutes.' },
       { status: 429, headers: { 'Retry-After': '900' } }
     )
