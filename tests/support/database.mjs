@@ -18,6 +18,8 @@ async function seed(){
 }
 await seed()
 const ident=value=>{if(!/^[a-z_]+$/.test(value))throw new Error('Invalid fixture identifier');return '"'+value+'"'}
+// Counting mode: every PostgREST-style request the app makes is one database round trip.
+let stats={total:0,byTable:{}}
 createServer(async(req,res)=>{
  try{
   const url=new URL(req.url,`http://127.0.0.1:${PORT}`)
@@ -25,9 +27,12 @@ createServer(async(req,res)=>{
   const body=raw?JSON.parse(raw):{}
   const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value))}
   if(url.pathname==='/ready')return send(200,{ok:true})
+  if(url.pathname==='/__test/stats')return send(200,stats)
+  if(url.pathname==='/__test/stats/reset'){stats={total:0,byTable:{}};return send(200,{ok:true})}
   if(url.pathname==='/__test/reset'){await seed();return send(200,{ok:true})}
   if(url.pathname==='/__test/lock'){await db.exec("update public.slates set locks_at=now()-interval '1 second' where is_active;update public.games set tip_time=now()-interval '1 second'");return send(200,{ok:true})}
   const parts=url.pathname.split('/').filter(Boolean),table=parts.at(-1)
+  stats.total++;{const label=`${req.method} ${parts.includes('rpc')?'rpc:':''}${table}`;stats.byTable[label]=(stats.byTable[label]??0)+1}
   const schema=req.headers['accept-profile']??req.headers['content-profile']??'public'
   const namespace=ident(schema)
   if(parts.includes('rpc')){
@@ -42,6 +47,7 @@ createServer(async(req,res)=>{
    const dot=value.indexOf('.'),op=value.slice(0,dot),val=value.slice(dot+1)
    if(op==='in'){const items=val.slice(1,-1).split(',').filter(Boolean).map(v=>v.replace(/^"|"$/g,''));const list=items.map(v=>{values.push(v);return '$'+values.length});where.push(list.length?`${ident(key)} in (${list.join(',')})`:'false')}
    else if(op==='is')where.push(`${ident(key)} is ${val==='null'?'null':val==='true'?'true':'false'}`)
+   else if(op==='not'&&val.startsWith('like.')){values.push(val.slice(5));where.push(`${ident(key)} not like $${values.length}`)}
    else if(op==='not'&&val.startsWith('is.'))where.push(`${ident(key)} is not ${val==='is.null'?'null':val==='is.true'?'true':'false'}`)
    else{const sqlop={eq:'=',neq:'<>',gt:'>',gte:'>=',lt:'<',lte:'<=',ilike:'ilike'}[op];if(!sqlop)throw new Error('Unsupported fixture filter '+op);values.push(val);where.push(`${ident(key)} ${sqlop} $${values.length}`)}
   }
@@ -63,7 +69,11 @@ createServer(async(req,res)=>{
    offset=range?.[0]??Number(url.searchParams.get('offset')??0)
    query+=` limit ${limit} offset ${offset}`
   }
-  const result=await db.query(query,values),rows=result.rows
+  // Bulk seeding only (scripts/measure-queries.mjs): skip row triggers such as "pick period is not open".
+  const seeding=req.headers['x-fixture-seed']==='1'
+  if(seeding)await db.exec('set session_replication_role=replica')
+  let result;try{result=await db.query(query,values)}finally{if(seeding)await db.exec('set session_replication_role=origin')}
+  const rows=result.rows
   if(url.searchParams.get('select')?.includes('players('))for(const row of rows)row.players=(await db.query(`select * from ${namespace}.players where id=$1`,[row.player_id])).rows[0]??null
   // Like PostgREST: the total is reported only when a count was requested, and
   // for reads it is the whole filtered table, not the page served.
