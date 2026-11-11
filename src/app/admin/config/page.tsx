@@ -8,7 +8,6 @@ import { getAdminSession } from '@/lib/session'
 import { getPoolConfig } from '@/lib/pool'
 import { capabilitiesFor, copyFor, normalizeRound, MODE_LABEL, STATUS_LABEL } from '@/lib/competition'
 import PoolConfigForm from './PoolConfigForm'
-import DeleteArchivedContest, { type ArchivedContestSummary } from './DeleteArchivedContest'
 
 export const metadata = { title: 'Pool configuration' }
 
@@ -26,13 +25,6 @@ export default async function PoolConfigPage() {
     const schedule = games.filter(game => game.slate_id === day.id)
     return schedule.length > 0 && schedule.every(game => normalizeRound(game.round_label) && game.result === 'pending' && game.status_state === 'pre')
   }).sort((a, b) => a.slate_date.localeCompare(b.slate_date))
-  // Archived contests and exactly what deleting each would remove.
-  const db = await getDb()
-  const { data: archivedPools } = await db.from('pools').select('id').eq('is_active', false).eq('status', 'archived')
-  const archived = (await Promise.all((archivedPools ?? []).map(async ({ id }: { id: string }) => {
-    const { data } = await db.rpc('delete_archived_contest_preview', { p_pool_id: id })
-    return data as (ArchivedContestSummary & { found: boolean }) | null
-  }))).filter((row): row is ArchivedContestSummary & { found: boolean } => !!row?.found)
   const caps = capabilitiesFor(pool.competition_mode)
   const copy = copyFor(pool.competition_mode)
 
@@ -68,8 +60,6 @@ export default async function PoolConfigPage() {
       )}
 
       {pool.id && <StartTournament poolId={pool.id} slates={futureSlates} />}
-
-      <DeleteArchivedContest contests={archived} />
 
       {/* What the current format turns on. Reading the capability table back
           to the administrator is the fastest way to answer "what does this

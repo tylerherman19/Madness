@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { getActivePoolId } from '@/lib/pool'
 import { revalidateContest } from '@/lib/revalidateContest'
 import { syncSlateFromEspn } from '@/lib/espnSync'
 import { logAudit } from '@/lib/audit'
@@ -44,7 +43,7 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
     await gradeSlatePicks(supabase, slate.id, slate.slate_number, finals)
     const complete = currentGames.length > 0 && finals.length === currentGames.length
     if (!complete) {
-      const picks = await loadPicksForSlates<{team: string; loss_excused: boolean}>(supabase, [slate.id], 'team, loss_excused', await getActivePoolId(supabase))
+      const picks = await loadPicksForSlates<{team: string; loss_excused: boolean}>(supabase, [slate.id], 'team, loss_excused')
       const resolvedTeams = new Set(finals.flatMap(game => [game.home_team, game.away_team]))
       const allUnresolvedHeld = currentGames.length > 0 && currentGames.every(game =>
         held.has(game.id) || game.result !== 'pending')

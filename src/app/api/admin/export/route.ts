@@ -1,8 +1,8 @@
-import { allRows, selectAll } from '@/lib/db'
-import { getActivePoolId, contestFilter } from '@/lib/pool'
+import { allRows } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { requireAdmin, isUuid } from '@/lib/api'
+import { requireAdmin } from '@/lib/api'
+import { loadAll } from '@/lib/seasonData'
 import { serverError } from '@/lib/alerts'
 
 function csvField(value: unknown): string {
@@ -32,15 +32,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = await getDb()
-    // The active contest by default; ?pool=<id> exports an archived contest.
-    const requestedPool = req.nextUrl.searchParams.get('pool')
-    if (requestedPool && !isUuid(requestedPool)) return NextResponse.json({ error: 'Invalid pool' }, { status: 400 })
-    const poolId = requestedPool ?? await getActivePoolId(supabase)
     if (type === 'players') {
       const { data: players, error } = await allRows(supabase
         .from('players')
         .select('full_name, email, phone, venmo_handle, paid, status, elimination_slate')
-        .match(contestFilter(poolId))
         .order('full_name'))
       if (error) throw error
 
@@ -60,10 +55,10 @@ export async function GET(req: NextRequest) {
     // type === 'picks'
     // Paged read; a failure throws into the catch below.
     const [{ data: picks }, { data: players }, { data: slates }] = await Promise.all([
-      selectAll<{ player_id: string; slate_id: string; team: string; auto_assigned: boolean; submitted_by_admin: boolean; created_at: string }>((from, to) =>
-        supabase.from('picks').select('player_id, slate_id, team, auto_assigned, submitted_by_admin, created_at').match(contestFilter(poolId)).order('id').range(from, to)
+      loadAll<{ player_id: string; slate_id: string; team: string; auto_assigned: boolean; submitted_by_admin: boolean; created_at: string }>(
+        supabase, 'picks', 'player_id, slate_id, team, auto_assigned, submitted_by_admin, created_at'
       ).then((data) => ({ data })),
-      allRows(supabase.from('players').select('id, full_name').match(contestFilter(poolId))),
+      allRows(supabase.from('players').select('id, full_name')),
       supabase.from('slates').select('id, slate_number, season_year'),
     ])
 

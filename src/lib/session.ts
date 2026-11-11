@@ -8,7 +8,6 @@ import { cookies } from 'next/headers'
 import type { SessionPayload } from '@/types'
 import { isTestMode } from './testMode'
 import { sessionSecretKey } from './sessionSecret'
-import { contestFilter, getActivePoolId } from './pool'
 
 const SESSION_COOKIE = 'survivor_session'
 const ADMIN_COOKIE = 'survivor_admin'
@@ -80,8 +79,7 @@ export const getSession = cache(async (): Promise<SessionPayload | null> => {
     // Independent checks, read together: both must pass.
     const [revoked, { data: player, error }] = await Promise.all([
       isRevoked(token),
-      // An entry in an archived contest is not a current session (migration 030).
-      getActivePoolId(db).then((scope) => db.from('players').select('pin_hash').eq('id', payload.player_id).match(contestFilter(scope)).maybeSingle()),
+      db.from('players').select('pin_hash').eq('id', payload.player_id).maybeSingle(),
     ])
     if (revoked) return null
     if (error || !player) return null

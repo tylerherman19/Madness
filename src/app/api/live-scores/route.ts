@@ -1,5 +1,4 @@
 import {allRows} from '@/lib/db'
-import { getActivePoolId, contestFilter } from '@/lib/pool'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { isDeliverable } from '@/lib/email'
@@ -222,7 +221,7 @@ export async function GET(request: NextRequest) {
     }
     if (revealedTeams.size > 0) {
       // Fetch pick counts from DB, excluding test accounts
-      const { data: allPlayers } = await allRows(supabase.from('players').select('id,email').match(contestFilter(await getActivePoolId(supabase))))
+      const { data: allPlayers } = await allRows(supabase.from('players').select('id,email'))
 
       const realPlayerIds = new Set(
         (allPlayers || [])

@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
 import { formatCentralTime, slateDeadline } from './deadline'
-import { getPoolConfig, poolScope, contestFilter } from './pool'
-import { selectAll } from './db'
+import { getPoolConfig } from './pool'
 import { buildPickPeriods, sharedRoundPickQuota } from './competition'
-import { loadGamesForSlates } from './seasonData'
+import { loadAll, loadGamesForSlates } from './seasonData'
 import type { Game, Slate } from '@/types'
 import { serverError } from './alerts'
 const REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -27,8 +26,7 @@ export async function queueReminders(db: import('@supabase/supabase-js').Supabas
     const period = periods.find(row => row.id === slate.id)
     const sharedQuota = sharedRoundPickQuota(pool.competition_mode, pool.pick_frequency, period?.round ?? null)
     const periodIds = sharedQuota ? periods.filter(row => row.round === period?.round).map(row => row.id) : [slate.id]
-    const players = await selectAll<{ id: string; email: string; status: string; full_name: string }>((from, to) =>
-      db.from('players').select('id, email, status, full_name').match(contestFilter(poolScope(pool))).order('id').range(from, to))
+    const players = await loadAll<{ id: string; email: string; status: string; full_name: string }>(db, 'players', 'id, email, status, full_name')
     let queued = 0
     // One RPC per 200 entries; Postgres checks eligibility and deadline at insert time.
     // Durable, idempotent events replace a 0.6-second-per-recipient send loop.

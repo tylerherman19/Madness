@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { contestFilter, getActivePoolId } from '@/lib/pool'
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid, escapeIlike } from '@/lib/api'
@@ -33,8 +31,6 @@ export async function PATCH(
   if ('status' in updates && updates.status !== 'alive' && updates.status !== 'eliminated') {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
-  const guard = await activeContestEntry(supabase, id)
-  if (guard.response) return guard.response
 
   // full_name is the login key but doesn't have to be unique — login tries
   // every same-named candidate's password (see /api/auth/login). Email stays
@@ -53,7 +49,6 @@ export async function PATCH(
     const { data: byEmail } = await supabase
       .from('players')
       .select('id')
-      .match(contestFilter(guard.scope))
       .ilike('email', escapeIlike(email))
       .neq('id', id)
       .limit(1)
@@ -110,9 +105,6 @@ export async function DELETE(
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
   }
   const supabase = await getDb()
-  // Deleting a finished contest's entries goes through delete_archived_contest (snapshot first).
-  const guard = await activeContestEntry(supabase, id)
-  if (guard.response) return guard.response
 
   // Snapshot the name before the row disappears — the audit trail is the
   // only place a deleted player remains visible.
@@ -136,20 +128,4 @@ export async function DELETE(
 
   revalidateContest()
   return NextResponse.json({ ok: true })
-}
-
-// Archived contests are read-only (migration 030): their entries keep their
-// final state and are removed only with the guarded archived-contest deletion.
-async function activeContestEntry(supabase: SupabaseClient, id: string): Promise<{ scope: string | null; response: NextResponse | null }> {
-  const scope = await getActivePoolId(supabase)
-  const { data, error } = await supabase.from('players').select('id').eq('id', id).match(contestFilter(scope)).maybeSingle()
-  if (error) return { scope, response: await serverError('api/players/[id]', error, 'Could not load player') }
-  if (data) return { scope, response: null }
-  const { data: anywhere } = await supabase.from('players').select('id').eq('id', id).maybeSingle()
-  return {
-    scope,
-    response: anywhere
-      ? NextResponse.json({ error: 'This entry belongs to an archived contest and cannot be changed.' }, { status: 409 })
-      : NextResponse.json({ error: 'Player not found' }, { status: 404 }),
-  }
 }

@@ -1,11 +1,11 @@
-import { allRows, selectAll } from '@/lib/db'
-import { getActivePoolId, contestFilter } from '@/lib/pool'
+import { allRows } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import PlayersManager from './PlayersManager'
 import type { Player } from '@/types'
 import { getTeamAbbrs } from '@/lib/teams'
+import { loadAll } from '@/lib/seasonData'
 
 export const metadata = { title: 'Manage Players', description: 'Pick and Pray administration: manage players.' }
 
@@ -13,13 +13,10 @@ export default async function PlayersPage() {
   const isAdmin = await getAdminSession()
   if (!isAdmin) redirect('/admin/login')
   const supabase = await getDb()
-  // The active contest's entries; archived contests are under /history.
-  const poolId = await getActivePoolId(supabase)
 
   const { data: players } = await allRows(supabase
     .from('players')
     .select('id, full_name, email, phone, venmo_handle, paid, status, elimination_slate, elimination_reason')
-    .match(contestFilter(poolId))
     .order('status')
     .order('full_name'))
 
@@ -30,12 +27,12 @@ export default async function PlayersPage() {
     .single()
 
   const { data: picksData } = activeSlate
-    ? await allRows(supabase.from('picks').select('id,player_id,team,updated_at').eq('slate_id', activeSlate.id).match(contestFilter(poolId)))
+    ? await allRows(supabase.from('picks').select('id,player_id,team,updated_at').eq('slate_id', activeSlate.id))
     : { data: [] }
 
   const teams = await getTeamAbbrs(supabase)
 
-  const allPicks = await selectAll<{ player_id: string }>((from, to) => supabase.from('picks').select('player_id').match(contestFilter(poolId)).order('id').range(from, to))
+  const allPicks = await loadAll<{ player_id: string }>(supabase, 'picks', 'player_id')
   const weeksSurvived: Record<string, number> = {}
   for (const p of allPicks || []) {
     weeksSurvived[p.player_id] = (weeksSurvived[p.player_id] || 0) + 1

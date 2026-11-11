@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getActivePoolId, contestFilter } from '@/lib/pool'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { requireAdmin, requireCron } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
@@ -53,7 +52,7 @@ async function run(db: SupabaseClient, actor: 'system' | 'admin') {
         .in('event_type', failureTypes)
         .gte('created_at', since)
         .limit(200),
-      db.from('players').select('id', { count: 'exact', head: true }).match(contestFilter(await getActivePoolId(db))).eq('status', 'alive'),
+      db.from('players').select('id', { count: 'exact', head: true }).eq('status', 'alive'),
     ])
 
     const sources = [

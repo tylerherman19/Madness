@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { contestFilter, contestScopeOf } from './pool'
 import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
@@ -59,8 +58,6 @@ export async function legacyPickPost(req: NextRequest) {
       .from('players')
       .select('id, email, full_name, status, notifications_enabled')
       .eq('id', playerId)
-      // Entries belong to one contest; an archived contest's entry is not found here.
-      .match(contestFilter(contestScopeOf(pool)))
       .single()
 
     if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
