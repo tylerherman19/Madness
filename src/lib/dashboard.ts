@@ -78,6 +78,7 @@ type SeasonGame = Pick<Game, 'slate_id' | 'home_team' | 'away_team' | 'result' |
 interface SlateFacts {
   tip: string | null // earliest announced tip: the day's lock, when none is stored
   picks: [player: string, team: string, seed: number | null, won: 0 | 1][]
+  games: [home: string, away: string, result: string, tip: string, tbd: 0 | 1][] // for naming the losing pick
 }
 
 // The contest season, scoped exactly as before: slates from the pool's start
@@ -131,14 +132,16 @@ async function readSlateFacts(schema: Schema, slateId: string): Promise<SlateFac
   const won = new Map<string, boolean>()
   let tip: number | null = null
   for (const game of games) {
-    won.set(game.home_team, game.result === 'home_win')
-    won.set(game.away_team, game.result === 'away_win')
+    // A voided game is resolved with no loser: its picks are excused, never losses.
+    won.set(game.home_team, game.result === 'home_win' || game.result === 'void')
+    won.set(game.away_team, game.result === 'away_win' || game.result === 'void')
     const at = new Date(game.tip_time).getTime()
     if (!game.time_tbd && !isNaN(at) && (tip === null || at < tip)) tip = at
   }
   return {
     tip: tip === null ? null : new Date(tip).toISOString(),
     picks: picks.map((p) => [p.player_id, p.team, p.seed ?? null, p.loss_excused || won.get(p.team) === true ? 1 : 0]),
+    games: games.map((g) => [g.home_team, g.away_team, g.result, g.tip_time, g.time_tbd ? 1 : 0]),
   }
 }
 
@@ -173,7 +176,7 @@ const cachedOutline = coalesced('outline', unstable_cache(
 
 const cachedSlateFacts = coalesced('facts', unstable_cache(
   shared(readSlateFacts),
-  ['contest-slate-facts-v1'],
+  ['contest-slate-facts-v2'],
   { tags: [CONTEST_TAG], revalidate: FACTS_SECONDS }
 ))
 
@@ -296,8 +299,8 @@ async function buildBoard(key: string, schema: Schema, epoch: string, outline: S
     )
     const gameOutcome = new Map<string, boolean>()
     for (const game of today?.games ?? []) {
-      gameOutcome.set(game.home_team, game.result === 'home_win')
-      gameOutcome.set(game.away_team, game.result === 'away_win')
+      gameOutcome.set(game.home_team, game.result === 'home_win' || game.result === 'void')
+      gameOutcome.set(game.away_team, game.result === 'away_win' || game.result === 'void')
     }
 
     // Every pick the standings count, with whether it won, flattened from the
@@ -315,6 +318,13 @@ async function buildBoard(key: string, schema: Schema, epoch: string, outline: S
       visibleSlateIds.add(slate.id)
       for (const pick of todayPicks) seasonPicks.push({ ...pick, won: pick.loss_excused || gameOutcome.get(pick.team) === true })
     }
+
+    // Each day's games, for deciding which losing picks may be named. Finished
+    // days come from the facts; the active day's picks are only in seasonPicks
+    // once it has locked, and revealedLosingPicks re-checks the reveal itself.
+    const gamesBySlate = new Map<string, { home_team: string; away_team: string; result: string; tip_time?: string; time_tbd?: boolean }[]>()
+    past.forEach((day, i) => gamesBySlate.set(day.id, facts[i].games.map(([home_team, away_team, result, tip_time, tbd]) => ({ home_team, away_team, result, tip_time, time_tbd: tbd === 1 }))))
+    if (slate && today) gamesBySlate.set(slate.id, today.games)
 
     const revealedPicks: Record<string, string> = {}
     if (slateRevealed) {

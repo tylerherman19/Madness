@@ -19,7 +19,7 @@ async function bustCache(request: APIRequestContext) {
   const game = (await (await request.get(`${FIXTURE_DB}/games`)).json())[0]
   const bust = await request.post('/api/results', {
     headers: { Cookie: `${cookie.name}=${cookie.value}` },
-    data: { game_id: game.id, result: 'pending' },
+    data: { game_id: game.id, result: 'pending', reason: 'Refresh cache' },
   })
   expect(bust.ok(), await bust.text()).toBeTruthy()
 }
