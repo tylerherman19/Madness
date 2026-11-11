@@ -98,3 +98,14 @@ test('events match stored games on stable team ids, falling back to abbreviation
   assert.equal(flipped?.flipped, true)
   assert.equal(flipped?.home.team.abbreviation, 'DUKE')
 })
+
+test('an event that is not exactly one home and one away competitor is never graded', () => {
+  const clean = event(FINAL, { score: '70', winner: true }, { score: '60', winner: false })
+  assert.equal(resultOf(clean), 'home_win')
+  const comp = clean.competitions[0]
+  const third = { homeAway: 'away', score: '90', winner: true, team: { id: '3', abbreviation: 'THIRD' } }
+  assert.equal(resultOf({ ...clean, competitions: [{ ...comp, competitors: [...comp.competitors, third] }] }), 'pending')
+  const twoHomes = comp.competitors.map((c) => ({ ...c, homeAway: 'home' }))
+  assert.equal(resultOf({ ...clean, competitions: [{ ...comp, competitors: twoHomes }] }), 'pending')
+  assert.equal(resultOf({ ...clean, competitions: [{ ...comp, competitors: [comp.competitors[0]] }] }), 'pending')
+})

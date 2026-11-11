@@ -5,7 +5,7 @@ import { getPoolConfig } from '@/lib/pool'
 import { getSession, getAdminSession } from '@/lib/session'
 import { isUuid } from '@/lib/api'
 import { isSlateLocked, seedForTeam } from '@/lib/deadline'
-import { loadPickWindow } from '@/lib/pickWindow'
+import { loadPickWindow, UNSTORED_DAY } from '@/lib/pickWindow'
 import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
 import { pickWriteError } from '@/lib/pickErrors'
 import type { Game } from '@/types'
@@ -15,7 +15,7 @@ import { serverError } from '@/lib/alerts'
 export async function legacyPickPost(req: NextRequest) {
   try {
     const body = await req.json()
-    const { slate_id, team, pick_id, expected_version, player_id_override, submitted_by_admin } = body
+    const { slate_id: requestedSlate, team, pick_id, expected_version, player_id_override, submitted_by_admin } = body
 
     // Allow admin to submit on behalf of a player
     const isAdmin = submitted_by_admin ? await getAdminSession() : false
@@ -35,7 +35,7 @@ export async function legacyPickPost(req: NextRequest) {
     const { allowed } = await checkRateLimit(`pick:${playerId}`, 30, 60)
     if (!allowed) return NextResponse.json({ error: 'Too many pick changes. Try again in a minute.' }, { status: 429, headers: { 'Retry-After': '60' } })
 
-    if (!slate_id || typeof team !== 'string' || !team || team.length > 80) {
+    if (!requestedSlate || typeof team !== 'string' || !team || team.length > 80) {
       return NextResponse.json({ error: 'Missing slate_id or team' }, { status: 400 })
     }
 
@@ -43,7 +43,10 @@ export async function legacyPickPost(req: NextRequest) {
     // listed, and the only legal picks are teams playing on this slate. The
     // "is not playing this slate" check further down enforces both at once.
 
-    if (!isUuid(slate_id)) {
+    // `espn:YYYY-MM-DD` names a next day the player was shown from ESPN
+    // before it was stored; saving the pick stores it first.
+    const unstoredDate = typeof requestedSlate === 'string' ? UNSTORED_DAY.exec(requestedSlate)?.[1] ?? null : null
+    if (!unstoredDate && !isUuid(requestedSlate)) {
       return NextResponse.json({ error: 'Invalid slate_id' }, { status: 400 })
     }
     if (pick_id && !isUuid(pick_id)) {
@@ -66,7 +69,10 @@ export async function legacyPickPost(req: NextRequest) {
     }
 
     const now = await getEffectiveNow()
-    const window = await loadPickWindow(supabase, playerId, pool, now, !isAdmin)
+    const window = await loadPickWindow(supabase, playerId, pool, now, !isAdmin, isAdmin ? null : unstoredDate)
+    const slate_id: string = unstoredDate
+      ? window.seasonSlates.find((row) => row.slate_date === unstoredDate && row.id === window.pickSlate?.id)?.id ?? requestedSlate
+      : requestedSlate
     const retry = window.picks.find(pick => pick.slate_id === slate_id && pick.team === team && (!pick_id || pick.id === pick_id))
     if (retry) return NextResponse.json({ ok: true, pick: retry })
     const slate = window.seasonSlates.find((row) => row.id === slate_id)

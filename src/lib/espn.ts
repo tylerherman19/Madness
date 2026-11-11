@@ -274,6 +274,11 @@ export function resultOf(
   const type = event.competitions?.[0]?.status?.type
   if (!type || type.completed !== true || type.state !== 'post') return 'pending'
   if (!type.name || !FINAL_STATUS_NAMES.has(type.name)) return 'pending'
+  // Exactly two competitors, one home and one away. A third entry means the
+  // feed is not describing a plain two-team game, so nothing is graded.
+  const competitors = event.competitions[0].competitors ?? []
+  if (competitors.length !== 2 || competitors.filter((c) => c.homeAway === 'home').length !== 1 ||
+      competitors.filter((c) => c.homeAway === 'away').length !== 1) return 'pending'
   const teams = eventCompetitors(event)
   if (!teams) return 'pending'
   const { home, away } = teams
