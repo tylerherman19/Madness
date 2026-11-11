@@ -258,34 +258,108 @@ test('public feeds never write under any flag combination', async () => {
   }
 })
 
-test('the pick window only reads, even for a winner whose next day is not synced yet', async () => {
+// The pick window: a player whose pick has won may take the next day early.
+// A page view only reads; the pick submission stores the day first.
+const NEXT_TIP = '2099-03-20T23:00:00.000Z'
+const nextEvent = { id: 'n1', date: NEXT_TIP, competitions: [{ timeValid: true, status: { type: status.pre }, competitors: [
+  { homeAway: 'home', team: { id: '5', abbreviation: 'NHOME' } }, { homeAway: 'away', team: { id: '6', abbreviation: 'NAWAY' } }] }] }
+const WINNER = firstGame(status.final, '70', '60', true)
+const LOSER = firstGame(status.final, '60', '70', false)
+const nextSlate = { id: 'next', slate_number: 5, slate_date: '2099-03-20', season_year: 2099, locks_at: NEXT_TIP, is_active: false }
+const nextRow = { ...games[0], id: 'ng', slate_id: 'next', espn_event_id: 'n1', home_team: 'NHOME', away_team: 'NAWAY', tip_time: NEXT_TIP }
+const regular = { competition_mode: 'regular-season', pick_frequency: 'every-game-day', starts_on: null }
+
+function pickWindowHarness(events: Record<string, unknown[]>, { failedNext = false } = {}) {
+  const writes: string[] = [], synced: string[] = []
+  const stored = { slates: [slate] as Record<string, unknown>[], games: [...games] as Record<string, unknown>[] }
+  const pickRows = [{ id: 'k', player_id: 'p-viewer', team: 'HOME', slate_id: 'slate', auto_assigned: false, loss_excused: false, updated_at: LOCK }]
+  const db = {
+    from(table: string) {
+      const filters: [string, unknown][] = []
+      const rows = () => ((table === 'slates' ? stored.slates : table === 'picks' ? pickRows : []) as Record<string, unknown>[])
+        .filter((row) => filters.every(([key, value]) => row[key] === value))
+      const query: Record<string, unknown> = {
+        select: () => query,
+        eq: (key: string, value: unknown) => { filters.push([key, value]); return query },
+        maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
+        then: (resolve: (value: unknown) => void) => resolve({ data: rows(), error: null }),
+      }
+      for (const write of ['insert', 'update', 'upsert', 'delete', 'rpc']) query[write] = () => { writes.push(`${table}.${write}`); return query }
+      return query
+    },
+    rpc() { writes.push('rpc'); return Promise.resolve({}) },
+  }
   const pickWindow = load('./pickWindow.ts', {
     'server-only': {},
     './competition': competition,
     './deadline': deadline,
-    './espn': { ...espnModule, fetchDayScoreboard: async () => ({ events: [firstGame(status.final, '70', '60', true)], failedGroups: [] }) },
-    './seasonData': { loadGamesForSlates: async () => games },
+    './espn': { ...espnModule, fetchDayScoreboard: async (date: string) => ({ events: events[date] ?? [], failedGroups: date === '20990320' && failedNext ? ['SEC'] : [] }) },
+    './espnSync': { syncSlateFromEspn: async (_db: unknown, date: string) => {
+      synced.push(date)
+      if (!(events[date] ?? []).length) return { ok: false, error: 'No games found for the day' }
+      stored.slates.push(nextSlate); stored.games.push(nextRow)
+      return { ok: true, slateId: 'next' }
+    } },
+    './seasonData': { loadGamesForSlates: async (_db: unknown, ids: string[]) => stored.games.filter((game) => ids.includes(game.slate_id as string)) },
     './testMode': { isTestMode: async () => false },
     './teams': teams,
-  }) as { loadPickWindow: (db: unknown, player: string, pool: unknown, now: Date) => Promise<{ pickSlate: { id: string } | null }> }
-  const reads: string[] = []
-  const readOnly = {
-    from(table: string) {
-      reads.push(table)
-      const rows: Record<string, unknown[]> = { slates: [slate], picks: [{ id: 'k', team: 'HOME', slate_id: 'slate', auto_assigned: false, loss_excused: false, updated_at: LOCK }] }
-      const query = {
-        select: () => query, eq: () => query,
-        maybeSingle: async () => ({ data: rows[table]?.[0] ?? null, error: null }),
-        then: (resolve: (value: unknown) => void) => resolve({ data: rows[table] ?? [], error: null }),
-      }
-      return query
-    },
-  }
+  }) as { loadPickWindow: (db: unknown, player: string, pool: unknown, now: Date, allowEarly?: boolean, storeDate?: string | null) => Promise<{ pickSlate: { id: string } | null; games: { slate_id: string; home_team: string }[] }> }
+  return { writes, synced, stored, window: (storeDate: string | null = null) => pickWindow.loadPickWindow(db, 'p-viewer', regular, AFTER, true, storeDate) }
+}
+
+test('a page view never writes: a winner is shown a next day that is not stored yet, from ESPN in memory', async () => {
   for (const [reliable, automation] of FLAGS) {
     await withFlags(reliable, automation, async () => {
-      const window = await pickWindow.loadPickWindow(readOnly, 'p-viewer', { competition_mode: 'regular-season', pick_frequency: 'every-game-day', starts_on: null }, AFTER)
-      assert.equal(window.pickSlate?.id, 'slate', 'No next day is created from a page view')
+      const h = pickWindowHarness({ '20990319': [WINNER, secondGame], '20990320': [nextEvent] })
+      const window = await h.window()
+      assert.equal(window.pickSlate?.id, 'espn:2099-03-20')
+      assert.ok(window.games.some((game) => game.slate_id === 'espn:2099-03-20' && game.home_team === 'NHOME'))
+      assert.deepEqual(h.writes, [])
+      assert.deepEqual(h.synced, [])
     })
   }
-  assert.deepEqual([...new Set(reads)].sort(), ['picks', 'slates'])
+})
+
+test('a loser is not offered the next day', async () => {
+  const h = pickWindowHarness({ '20990319': [LOSER, secondGame], '20990320': [nextEvent] })
+  assert.equal((await h.window()).pickSlate?.id, 'slate')
+  assert.equal((await h.window('2099-03-20')).pickSlate?.id, 'slate')
+  assert.deepEqual(h.synced, [], 'Nothing is stored for a player who may not pick it')
+})
+
+test('the pick submission stores the next day through the guarded sync, then the winner may pick it', async () => {
+  const h = pickWindowHarness({ '20990319': [WINNER, secondGame], '20990320': [nextEvent] })
+  const window = await h.window('2099-03-20')
+  assert.deepEqual(h.synced, ['20990320'])
+  assert.equal(window.pickSlate?.id, 'next', 'The real stored slate replaces the placeholder')
+})
+
+test('a next day with an incomplete feed is refused, in memory and on submission', async () => {
+  const failed = pickWindowHarness({ '20990319': [WINNER, secondGame], '20990320': [nextEvent] }, { failedNext: true })
+  assert.equal((await failed.window()).pickSlate?.id, 'slate')
+  const tbd = pickWindowHarness({ '20990319': [WINNER, secondGame], '20990320': [{ ...nextEvent, competitions: [{ ...nextEvent.competitions[0], timeValid: false }] }] })
+  assert.equal((await tbd.window()).pickSlate?.id, 'slate', 'A day with no announced tip has no deadline and cannot be picked')
+  const wrongDay = pickWindowHarness({ '20990319': [WINNER, secondGame], '20990320': [{ ...nextEvent, date: '2099-03-22T18:00:00.000Z' }] })
+  assert.equal((await wrongDay.window()).pickSlate?.id, 'slate')
+})
+
+test('a neutral-site game listed the other way round still credits the real winner', async () => {
+  // Stored: HOME(1) is the home side, AWAY(2) the away side; the pick is HOME.
+  // On a neutral court ESPN lists AWAY first, as the "home" competitor.
+  const reversed = (homeScore: string, awayScore: string) => {
+    const event = espnEvent('e1', status.final, ['AWAY', '2', awayScore, Number(awayScore) > Number(homeScore)], ['HOME', '1', homeScore, Number(homeScore) > Number(awayScore)])
+    event.competitions[0] = { ...event.competitions[0], neutralSite: true } as typeof event.competitions[0]
+    return event
+  }
+  const winner = pickWindowHarness({ '20990319': [reversed('70', '60'), secondGame], '20990320': [nextEvent] })
+  assert.equal((await winner.window()).pickSlate?.id, 'espn:2099-03-20', 'HOME won although ESPN lists it as the away side')
+  const loser = pickWindowHarness({ '20990319': [reversed('60', '70'), secondGame], '20990320': [nextEvent] })
+  assert.equal((await loser.window()).pickSlate?.id, 'slate', 'HOME lost although ESPN lists it as the away side')
+  // The same final in the stored orientation behaves the same way.
+  const plain = pickWindowHarness({ '20990319': [firstGame(status.final, '70', '60', true), secondGame], '20990320': [nextEvent] })
+  assert.equal((await plain.window()).pickSlate?.id, 'espn:2099-03-20')
+  // A non-neutral reversal is a different game: its result is not applied.
+  const other = reversed('70', '60')
+  other.competitions[0] = { ...other.competitions[0], neutralSite: false } as typeof other.competitions[0]
+  assert.equal((await pickWindowHarness({ '20990319': [other, secondGame], '20990320': [nextEvent] }).window()).pickSlate?.id, 'slate')
 })
