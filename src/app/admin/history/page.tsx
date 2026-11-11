@@ -142,6 +142,8 @@ export default async function AdminHistoryPage() {
                       <td className="py-1.5 text-right">
                         {g.result === 'pending' ? (
                           <span className="text-xs text-warning">pending</span>
+                        ) : g.result === 'void' ? (
+                          <span className="text-xs text-warning">voided</span>
                         ) : g.result === 'tie' ? (
                           <span className="text-xs font-semibold text-danger">TIE</span>
                         ) : (

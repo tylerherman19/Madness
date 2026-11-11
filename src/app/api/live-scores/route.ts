@@ -68,7 +68,7 @@ function gameFromSchedule(g: Game, now: Date, teams: Record<string, { logo: stri
   if (state === 'post') {
     const winner =
       g.result === 'home_win' ? g.home_team : g.result === 'away_win' ? g.away_team : null
-    statusText = scoresKnown ? 'Final' : winner ? `Final · ${winner}` : 'Final · tie'
+    statusText = g.result === 'void' ? 'Postponed' : scoresKnown ? 'Final' : winner ? `Final · ${winner}` : 'Final · tie'
   } else {
     statusText = state === 'in' ? 'In progress' : 'Scheduled'
   }

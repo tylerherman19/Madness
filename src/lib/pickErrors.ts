@@ -7,6 +7,7 @@ export function pickWriteError(error: { code?: string; message: string }): { sta
   if (/outside the active contest/i.test(error.message)) return { status: 409, message: 'The active contest changed. Refresh before making a pick.' }
   if (/Pick quota reached/i.test(error.message)) return { status: 409, message: 'Your required picks are already saved. Refresh to see them.' }
   if (/Team already used/i.test(error.message)) return { status: 409, message: 'You already used this team. Refresh and choose another team.' }
+  if (/no entries left alive/i.test(error.message)) return { status: 409, message: 'No entries are alive, so picks are closed.' }
   if (/previous pick lost|You are eliminated/i.test(error.message)) return { status: 403, message: 'Your entry is no longer eligible. Refresh to see its status.' }
   if (/This team is unavailable/i.test(error.message)) return { status: 409, message: 'This team is no longer available. Refresh the game day.' }
   return null

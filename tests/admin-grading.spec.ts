@@ -64,12 +64,20 @@ test('Grade button shows the server error instead of failing silently', async ({
   await expect(page.getByText('No completed games found for this slate')).toBeVisible()
 })
 
-test('setting a result in the form saves it and grades the slate immediately', async ({ page, request }) => {
+test('setting a result in the form asks for a reason, saves it as manual, audits it and grades the slate', async ({ page, request }) => {
   await admin(page)
   await page.goto('/admin/results')
   await page.getByRole('button', { name: 'Away Win' }).click()
+  const confirm = page.getByRole('button', { name: 'Confirm' })
+  await expect(confirm).toBeDisabled() // a reason is required
+  await page.getByLabel('Reason (required)').fill('Official box score')
+  await expect(confirm).toBeEnabled()
+  await confirm.dblclick() // a fast double-click applies once
   await expect(page.getByRole('button', { name: 'Away Win' })).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(async () => (await rows(request, '/games?result=eq.away_win')).length).toBe(1)
+  const game = (await rows(request, '/games'))[0]
+  expect(game.result_source).toBe('admin')
+  expect(game.result_note).toBe('Official box score')
   expect((await rows(request, '/audit_log?event_type=eq.result-set')).length).toBe(1)
   await page.getByRole('button', { name: /Grade All Picks/ }).click()
   await expect(page.getByText('Graded 1. 0 eliminated.')).toBeVisible()
