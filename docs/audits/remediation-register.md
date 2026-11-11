@@ -108,3 +108,12 @@ Status values: Fixed and independently verified / Fixed but not fully verified /
 | UX-6 | Rules copy vs behaviour | — | Report only; rules not edited | | | | |
 | UX-7 | Safer admin actions | H | Not started | | | | |
 | 7.5 | Backup restore drill | C | Not started | | | | |
+
+## Production facts gathered read-only (2026-11-11, Supabase dashboard, catalog SELECTs only)
+
+- All 20 mobile-API functions in production (`public.submit_pick`, `get_slate_picks`, `get_entry_picks`, `get_standings`, `get_my_entries`, `get_pool_summary`, `auth_user_id_by_email`, `register_push_device`, `unregister_push_device`, `get_notification_preferences`, `save_notification_preferences`, `server_now`, and eight `app_private.*` helpers) have bodies identical, ignoring whitespace and comments, to `supabase/migrations/020_native_app.sql` and `021_pool_summary_own_entries.sql` on the `native-ios` branch (checksum comparison of `pg_proc.prosrc`). The source exists; it was never merged to `main`, and its numbers collide with main's 020/021.
+- `public.rls_auto_enable()` is an event-trigger function (trigger `ensure_rls`, `ddl_command_end`) that enables RLS on new `public` tables. It returns `event_trigger`, so it cannot be called as an RPC even though `anon` holds EXECUTE.
+- `anon` and `authenticated` have no USAGE on schema `app_private`.
+- Execute grants: the ten client RPCs are granted to `authenticated` and `service_role`; `auth_user_id_by_email` to `service_role` only; `madness_intelligence_snapshot` to `anon` (not inspected further, out of scope).
+- Supabase Auth: "Allow new users to sign up" is OFF, anonymous sign-ins OFF, confirm email ON.
+- Row counts: `auth.users` 1, `player_accounts` 0, `push_devices` 0, `notification_preferences` 0, `players` 1, `picks` 4, `contest_archives` 0, one pool (`MADNESS`, regular-season, live, active).
