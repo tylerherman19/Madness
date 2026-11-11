@@ -38,7 +38,7 @@ import type { TeamBrandDirectory } from './teamBrand'
 //     after it. The unlocked copy is read without any pick's team at all.
 //   * one small entry per finished day: that day's picks reduced to who
 //     picked what and whether it won. A finished day does not change, so each
-//     lasts an hour and is read from the database once per invalidation.
+//     lasts 15 minutes and is read from the database once per invalidation.
 //   * the lock lookup: the active day's id and lock instant, BOARD_SECONDS.
 //     The decision now >= lock is made on every request; it picks the key
 //     above, so the page flips at the lock instant.
@@ -50,7 +50,7 @@ import type { TeamBrandDirectory } from './teamBrand'
 
 const BOARD_SECONDS = 10
 const OUTLINE_SECONDS = 30
-const FACTS_SECONDS = 3600
+const FACTS_SECONDS = 900
 
 type PlayerStatus = 'alive' | 'eliminated'
 export interface SeasonPlayer {
@@ -245,7 +245,6 @@ const cachedActiveDay = coalesced('active', unstable_cache(
 ))
 
 interface ContestBoard {
-  picksMade: number // alive entries with a pick on the active day
   standings: StandingRow[]
 }
 
@@ -287,8 +286,6 @@ async function buildBoard(key: string, schema: Schema, epoch: string, outline: S
   const submitted = new Set(today?.submitters ?? [])
   const currentPicks: Record<string, string[]> = {}
   for (const pick of todayPicks) currentPicks[pick.player_id] = [...(currentPicks[pick.player_id] ?? []), pick.team]
-  const alive = players.filter((p) => p.status === 'alive')
-  const picksMade = alive.filter((p) => submitted.has(p.id)).length
 
   let board: ContestBoard
   try {
@@ -369,11 +366,10 @@ async function buildBoard(key: string, schema: Schema, epoch: string, outline: S
         ? compareBySeedTotal(a, b)
         : b.slates_survived - a.slates_survived || a.full_name.localeCompare(b.full_name)
     })
-    board = { picksMade, standings }
+    board = { standings }
   } catch (error) {
-    // The counts are still good; only the table is missing.
     console.error('standings unavailable', error)
-    return { picksMade, standings: [] }
+    throw error
   }
   boardMemo.set(key, board)
   while (boardMemo.size > 6) boardMemo.delete(boardMemo.keys().next().value!)
@@ -381,6 +377,8 @@ async function buildBoard(key: string, schema: Schema, epoch: string, outline: S
 }
 
 export interface ContestCore {
+  // What the standings table is built from; see getContestStandings.
+  board: { schema: Schema; epoch: string; outline: SeasonOutline; active: ActiveDay }
   db: SupabaseClient
   schema: Schema
   now: Date
@@ -396,7 +394,6 @@ export interface ContestCore {
   eliminatedCount: number
   totalPlayers: number
   picksMade: number
-  standings: StandingRow[] | null // the table's rows; teams only once the day has locked
   teamBrands: TeamBrandDirectory
 }
 
@@ -417,7 +414,6 @@ export const getContestCore = cache(async (): Promise<ContestCore | null> => {
     // The lock decision, made now: it picks which active-day entry is served.
     const revealed = !!lookup.lock && now >= new Date(lookup.lock)
     const active = await cachedActiveDay(schema, lookup.slateId, revealed, sandbox ? now.toISOString() : null)
-    const board = await composeBoard(schema, epoch.v, outline, active, now)
     const { pool, slates, players } = outline
     const mode = pool.competition_mode
     const slate = slates.find((s) => s.id === outline.activeSlateId) ?? null
@@ -428,7 +424,9 @@ export const getContestCore = cache(async (): Promise<ContestCore | null> => {
     )
     const currentPeriod = slate ? periods.find((p) => p.id === slate.id) ?? null : null
     const alive = players.filter((p) => p.status === 'alive')
+    const submitted = new Set(slate && active.slateId === slate.id ? active.submitters : [])
     return {
+      board: { schema, epoch: epoch.v, outline, active },
       db,
       schema,
       now,
@@ -443,8 +441,7 @@ export const getContestCore = cache(async (): Promise<ContestCore | null> => {
       aliveCount: alive.length,
       eliminatedCount: players.length - alive.length,
       totalPlayers: players.length,
-      picksMade: board.picksMade,
-      standings: board.standings,
+      picksMade: alive.filter((p) => submitted.has(p.id)).length,
       teamBrands,
     }
   } catch (error) {
@@ -454,7 +451,15 @@ export const getContestCore = cache(async (): Promise<ContestCore | null> => {
 })
 
 // The standings: every entry's days survived, seed total and losing pick,
-// sorted. Built with the board, so this is only a lookup.
-export async function getContestStandings(core: ContestCore): Promise<StandingRow[] | null> {
-  return core.standings
-}
+// sorted. Built once per instance from the shared entries and reused until one
+// of them changes; null when the table can't be built, so the page can say so.
+export const getContestStandings = cache(async (core: ContestCore): Promise<StandingRow[] | null> => {
+  try {
+    const { schema, epoch, outline, active } = core.board
+    const board = await composeBoard(schema, epoch, outline, active, core.now)
+    return board.standings
+  } catch (error) {
+    console.error('standings unavailable', error)
+    return null
+  }
+})

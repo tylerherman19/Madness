@@ -226,12 +226,14 @@ export async function GET() {
         }
       }
     }
-    const seconds = Math.max(0, Math.floor((built.until - Date.now()) / 1000))
     return new Response(built.body.slice(), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${built.filename}"`,
-        'Cache-Control': testMode || seconds < 1 ? 'private, no-store' : `public, max-age=0, s-maxage=${seconds}`,
+        // Not CDN-stored: the CDN keys on the URL alone, so a copy built for the
+        // pool could be handed to a test-mode browser. The shared build above is
+        // what spares the database.
+        'Cache-Control': 'private, no-store',
       },
     })
   } catch (error) {

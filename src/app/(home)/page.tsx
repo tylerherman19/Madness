@@ -1,6 +1,7 @@
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { pageMetadata } from '@/lib/site'
-import { getContestCore, type ContestCore } from '@/lib/dashboard'
+import { getContestCore, getContestStandings, type ContestCore } from '@/lib/dashboard'
 import { haveSignupsClosedCached } from '@/lib/season'
 import { getSession } from '@/lib/session'
 import { getPoolConfig } from '@/lib/pool'
@@ -17,6 +18,7 @@ import LockCountdown from '../components/LockCountdown'
 import LocalTime from '../components/LocalTime'
 import TeamLogo from '../components/TeamLogo'
 import StandingsTable from '../components/StandingsTable'
+import { StandingsTableSkeleton } from '../components/PageSkeletons'
 import RulesSection from '../components/RulesSection'
 import SurvivalTimeline from '../components/SurvivalTimeline'
 import ScrollToHash from '../components/ScrollToHash'
@@ -39,6 +41,14 @@ export default async function Today() {
     haveSignupsClosedCached(),
     sessionRead,
     sessionRead.then((current) => (current ? loadMyPicks(current.player_id) : [])),
+  ])
+  // The standings are built from shared entries kept in memory, so they are
+  // normally in hand with the page; only when they are still loading does the
+  // table stream in behind its placeholder.
+  const standingsRead = data ? getContestStandings(data) : Promise.resolve(null)
+  const ready = await Promise.race([
+    standingsRead.then((standings) => ({ standings })),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 0)),
   ])
   const pool = data?.pool ?? (await getPoolConfig())
   const mode = pool.competition_mode
@@ -166,8 +176,14 @@ export default async function Today() {
       <section id="standings" className={s.homeSection} aria-label="Standings">
         <div className={s.sectionHead}><h2>Standings</h2><span>{period ? `Through day ${dayNumber}` : ''}</span></div>
         {winner && <div className={s.winner}><span className={s.cellLabel}>Winner</span><b>{winner}</b></div>}
-        {data ? (
-          <StandingsBlock standings={data.standings} core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
+        {data && ready ? (
+          <StandingsBlock standings={ready.standings} core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
+        ) : data ? (
+          // Everything above is built from today's data; the table may need the
+          // season's finished days, so it can stream in behind a same-size placeholder.
+          <Suspense fallback={<StandingsTableSkeleton alive={alive} out={total - alive} showSeedTotal={standingsProps.showSeedTotal} />}>
+            <TodayStandings core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
+          </Suspense>
         ) : (
           <StandingsTable alive={[]} out={[]} outLabels={{}} teamBrands={{}} {...standingsProps} />
         )}
@@ -192,4 +208,8 @@ function StandingsBlock({ standings, core, meId, myTeams, ...table }: StandingsT
   if (!standings) return <p role="status" className={s.notice}>Standings are unavailable. Refresh to try again.</p>
   const rows = buildStandingsRows({ standings, periods: core.periods, meId, myTeams, brands: core.teamBrands, showSeedTotal: table.showSeedTotal })
   return <StandingsTable alive={rows.alive} out={rows.out} outLabels={rows.outLabels} teamBrands={rows.teamBrands} {...table} />
+}
+
+async function TodayStandings(props: StandingsTableProps) {
+  return <StandingsBlock standings={await getContestStandings(props.core)} {...props} />
 }

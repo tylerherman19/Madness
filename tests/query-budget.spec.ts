@@ -1,4 +1,6 @@
 import { test, expect, type APIRequestContext } from '@playwright/test'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { adminCookie } from './support/admin'
 import { seedSeason } from './support/seedSeason.mjs'
 
@@ -32,6 +34,21 @@ async function callsPerRequest(request: APIRequestContext, path: string, count =
     calls.push(await total(request))
   }
   return calls
+}
+
+// Everything Next.js has written to its data cache on disk, as text.
+function cacheText(): string {
+  const chunks: string[] = []
+  const walk = (dir: string) => {
+    let names: string[] = []
+    try { names = readdirSync(dir) } catch { return }
+    for (const name of names) {
+      const path = join(dir, name)
+      try { statSync(path).isDirectory() ? walk(path) : chunks.push(readFileSync(path, 'utf8')) } catch {}
+    }
+  }
+  for (const dir of ['.next/dev/cache/fetch-cache', '.next/cache/fetch-cache']) walk(dir)
+  return chunks.join('\n')
 }
 
 test.beforeEach(async ({ request }) => {
@@ -73,9 +90,9 @@ for (const days of [5, 70]) {
 // the lock instant without any cache being thrown away.
 test('other entries picks are never in the page before the lock and are once it passes', async ({ request, playwright }) => {
   test.setTimeout(120_000)
+  // Teams that are not on the slate, so the names appear nowhere except in a stored pick.
   const SECRET_A = 'Zorblax State', SECRET_B = 'Quillon Tech'
   const patch = (path: string, data: unknown) => request.patch(`${FIXTURE_DB}${path}`, { data, headers: { 'x-fixture-seed': '1' } })
-  expect((await patch('/games', { home_team: SECRET_A, away_team: SECRET_B })).ok()).toBeTruthy()
   const extra = ['u1', 'u2', 'u3'].map((u, i) => ({ id: `00000000-0000-4000-8000-0000000001${i}0`, full_name: `Hidden Picker ${i}`, email: `${u}@example.test`, pin_hash: 'x', status: 'alive' }))
   expect((await request.post(`${FIXTURE_DB}/players`, { data: extra })).ok()).toBeTruthy()
   const picks = [
@@ -110,6 +127,13 @@ test('other entries picks are never in the page before the lock and are once it 
     expect(own).not.toContain('Zorblax')
   }
 
+  // The shared data cache on disk: entries exist (the entry names are in it) and no hidden team is.
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  const before = cacheText()
+  expect(before).toContain('Hidden Picker 0')
+  expect(before).not.toContain('Zorblax')
+  expect(before).not.toContain('Quillon')
+
   // Lock in four seconds: stored lock and first tip move together. Nothing is invalidated afterwards.
   const lockAt = new Date(Date.now() + 4000).toISOString()
   expect((await patch(`/slates?id=eq.${ACTIVE}`, { locks_at: lockAt })).ok()).toBeTruthy()
@@ -122,6 +146,9 @@ test('other entries picks are never in the page before the lock and are once it 
     expect(after).toContain('Zorblax')
     expect(after).toContain('Quillon')
   }
+  // Only now, with the day locked, do the teams reach the shared cache.
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  expect(cacheText()).toContain('Zorblax')
   await other.dispose()
   await owner.dispose()
 })
