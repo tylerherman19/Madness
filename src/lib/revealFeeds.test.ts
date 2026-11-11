@@ -78,8 +78,6 @@ function database(log: string[]) {
       const query = {
         select: () => query,
         eq: (key: string, value: unknown) => { filters.push([key, value]); return query },
-        // Contest scoping (pool_id) is a read filter; the fixture rows all belong to one contest.
-        match: () => query,
         order: () => query,
         single: async () => ({ ...result(), data: result().data[0] ?? null }),
         maybeSingle: async () => ({ ...result(), data: result().data[0] ?? null }),
@@ -101,7 +99,7 @@ function harness(route: string, { now, events, testMode = false }: { now: Date; 
     '@/lib/deadline': deadline,
     '@/lib/email': { isDeliverable: () => true },
     '@/lib/espn': { ...espnModule, fetchDayScoreboard: async () => { log.push('espn'); return { events: events ?? [], failedGroups: [] } } },
-    '@/lib/pool': { getPoolConfig: async () => ({ id: 'pool-1', ended_on: null, competition_mode: 'regular-season' }), poolScope: () => 'pool-1', contestFilter: (scope: string | null) => (scope ? { pool_id: scope } : {}), getActivePoolId: async () => 'pool-1' },
+    '@/lib/pool': { getPoolConfig: async () => ({ competition_mode: 'regular-season' }) },
     '@/lib/competition': competition,
     '@/lib/seasonData': { loadPicksForSlates: async () => picks },
     '@/lib/alerts': { reportFailure: async (_db: unknown, report: unknown) => { throw new Error(`unexpected failure ${JSON.stringify(report)}`) } },
