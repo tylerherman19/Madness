@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { getActivePoolId, contestFilter } from '@/lib/pool'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
@@ -17,6 +18,7 @@ export default async function Picks({
       'id,player_id,slate_id,team,version,updated_at,auto_assigned,submitted_by_admin,players(full_name),slates(locks_at,slate_date)',
       { count: 'exact' },
     )
+    .match(contestFilter(await getActivePoolId(db)))
     .order('updated_at', { ascending: false })
     .order('id')
     .range(page * 50, page * 50 + 49)

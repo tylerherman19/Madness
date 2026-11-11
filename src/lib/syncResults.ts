@@ -20,7 +20,7 @@ export async function syncResults(supabase: import('@supabase/supabase-js').Supa
     const ids = overdue.map(slate => slate.id)
     const [storedGames, picks] = await Promise.all([
       loadGamesForSlates(supabase, ids),
-      loadPicksForSlates<{ slate_id: string }>(supabase, ids, 'slate_id'),
+      loadPicksForSlates<{ slate_id: string }>(supabase, ids, 'slate_id', 'ended_on' in pool ? pool.id : null),
     ])
     const pickedIds = new Set(picks.map(pick => pick.slate_id))
     // Reconcile stored finals on every overdue period, including days left

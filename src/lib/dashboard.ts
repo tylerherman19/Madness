@@ -6,7 +6,7 @@ import type { Game, Slate, StandingRow } from '@/types'
 import { allRows, selectAll } from './db'
 import { publicPlayerLabels } from './playerLabels'
 import { survivedPeriodsByPlayer } from './survival'
-import { readPoolConfig } from './pool'
+import { contestFilter, contestScopeOf, readPoolConfig } from './pool'
 import {
   buildPickPeriods,
   capabilitiesFor,
@@ -83,10 +83,11 @@ function seasonSlatesOf(weeks: Slate[], pool: PoolConfig): Slate[] {
 const internalAccount = (email: string | null) => !!email?.endsWith('@nflsurvivor.internal')
 
 async function readOutline(db: SupabaseClient): Promise<SeasonOutline> {
-  const [pool, weeks, playersRes, rounds] = await Promise.all([
-    readPoolConfig(db),
+  // Entries belong to one contest (migration 030): read only the active one's.
+  const pool = await readPoolConfig(db)
+  const [weeks, playersRes, rounds] = await Promise.all([
     loadAll<Slate>(db, 'slates', '*'),
-    allRows(db.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').order('full_name')),
+    allRows(db.from('players').select('id, full_name, email, status, elimination_slate, elimination_reason, paid').match(contestFilter(contestScopeOf(pool))).order('full_name')),
     // Only labelled games can name a round; unlabelled ones are ignored by
     // the period builder, so they needn't be read.
     selectAll<PickPeriodGame>((from, to) =>

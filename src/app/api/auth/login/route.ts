@@ -8,6 +8,7 @@ import { escapeIlike } from '@/lib/api'
 import { serverError } from '@/lib/alerts'
 import { firstExceeded, loginLimits } from '@/lib/rateLimitPolicy'
 import { SessionSecretError } from '@/lib/sessionSecret'
+import { getActivePoolId, contestFilter } from '@/lib/pool'
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
     const supabase = await getDb()
     const { data: players, error } = await supabase.from('players')
       .select('id, full_name, pin_hash, status')
-      .ilike('email', escapeIlike(identity)).limit(2)
+      .match(contestFilter(await getActivePoolId(supabase))).ilike('email', escapeIlike(identity)).limit(2)
     if (error) throw error
     const player = players?.length === 1 ? players[0] : null
     if (!player || !(await verifyPassword(password, player.pin_hash))) {
