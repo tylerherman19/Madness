@@ -47,7 +47,7 @@ test('an entry an admin eliminates before lock does not expose its hidden pick; 
   await other.dispose()
 })
 
-test('a winner picks tomorrow tonight although tomorrow was never stored; a loser cannot', async ({ page, request, playwright, baseURL }) => {
+test('a winner picks tomorrow tonight although tomorrow was never stored; a loser cannot', async ({ request, playwright, baseURL }) => {
   await login(request, 'player+test@example.test')
   expect((await request.post('/api/picks', { data: { slate_id: SLATE, team: 'A' } })).ok()).toBeTruthy()
   const loser = await playwright.request.newContext({ baseURL })
