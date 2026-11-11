@@ -7,7 +7,7 @@ import AdminLogoutButton from './AdminLogoutButton'
 import BrandMark from '@/app/components/BrandMark'
 
 const GAME_LINKS: [string,string][]=[['/admin','Overview'],['/admin/players','Players'],['/admin/picks','Picks'],['/admin/results','Results'],['/admin/email','Communications'],['/admin/config','Rules'],['/admin/schedule','Schedule'],['/admin/history','History']]
-const SYSTEM_LINKS: [string,string][]=[['/admin/system','Overview'],['/admin/system/email','Email operations'],['/admin/system/jobs','Background jobs'],['/admin/system/incidents','Errors and incidents'],['/admin/system/integrity','Data integrity'],['/admin/system/recovery','Recovery'],['/admin/audit','Audit history']]
+const SYSTEM_LINKS: [string,string][]=[['/admin/system','Overview'],['/admin/operations','Job health'],['/admin/system/email','Email operations'],['/admin/system/jobs','Background jobs'],['/admin/system/incidents','Errors and incidents'],['/admin/system/integrity','Data integrity'],['/admin/system/recovery','Recovery'],['/admin/audit','Audit history']]
 
 export default function AdminNav({ testMode }: { testMode: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
