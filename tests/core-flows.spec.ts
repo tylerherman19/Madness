@@ -1,7 +1,8 @@
 import {test,expect} from '@playwright/test'
 import {createHmac} from 'node:crypto'
+const FIXTURE_DB=`http://127.0.0.1:${process.env.E2E_DB_PORT??'54329'}`
 const slate='00000000-0000-4000-8000-000000000001'
-test.beforeEach(async({request})=>{expect((await request.post('http://127.0.0.1:54329/__test/reset')).ok()).toBeTruthy()})
+test.beforeEach(async({request})=>{expect((await request.post(`${FIXTURE_DB}/__test/reset`)).ok()).toBeTruthy()})
 test('signup accepts plus email, apostrophes and Unicode; then login reaches the pick page',async({page})=>{
  await page.goto('/signup')
  await page.getByLabel('Full name',{exact:true}).fill("D'Angelo 🏀")
@@ -47,7 +48,7 @@ test('pick retry returns saved receipt, stale edits and another players pick are
  expect((await repeat.json()).pick.id).toBe(saved.id)
  const stale=await request.post('/api/picks',{data:{slate_id:slate,team:'B',pick_id:saved.id,expected_version:'2000-01-01T00:00:00Z'}})
  expect(stale.status()).toBe(409)
- const other=await playwright.request.newContext({baseURL:'http://127.0.0.1:3017'})
+ const other=await playwright.request.newContext({baseURL:`http://127.0.0.1:${process.env.E2E_APP_PORT??'3017'}`})
  await other.post('/api/auth/login',{data:{email:'other@example.test',password:'FixturePass123!'}})
  const attack=await other.post('/api/picks',{data:{slate_id:slate,team:'B',pick_id:saved.id,expected_version:saved.updated_at}})
  expect(attack.status()).toBe(400)
@@ -56,7 +57,7 @@ test('pick retry returns saved receipt, stale edits and another players pick are
 test('signed unsubscribe link turns emails off and back on; forged links are refused',async({page,request})=>{
  const player='00000000-0000-4000-8000-000000000002'
  const token=createHmac('sha256','fixture-only-signing-secret-at-least-32-characters').update(`unsubscribe:${player}`).digest('base64url')
- const enabled=async()=>(await (await request.get(`http://127.0.0.1:54329/players?id=eq.${player}`)).json())[0].notifications_enabled
+ const enabled=async()=>(await (await request.get(`${FIXTURE_DB}/players?id=eq.${player}`)).json())[0].notifications_enabled
  expect((await request.post(`/api/unsubscribe?p=${player}&t=forged`)).status()).toBe(400)
  expect((await request.post(`/api/unsubscribe?p=00000000-0000-4000-8000-000000000003&t=${token}`)).status()).toBe(400)
  await page.goto(`/unsubscribe?p=${player}&t=${token}`)
@@ -92,7 +93,7 @@ test('a deadline crossing blocks edits while an identical accepted retry retains
  const accepted=await request.post('/api/picks',{data:{slate_id:slate,team:'A'}})
  expect(accepted.ok()).toBeTruthy()
  const saved=(await accepted.json()).pick
- await request.post('http://127.0.0.1:54329/__test/lock')
+ await request.post(`${FIXTURE_DB}/__test/lock`)
  const late=await request.post('/api/picks',{data:{slate_id:slate,team:'B',pick_id:saved.id,expected_version:saved.updated_at}})
  expect(late.status()).toBe(400)
  const retry=await request.post('/api/picks',{data:{slate_id:slate,team:'A'}})

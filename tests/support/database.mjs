@@ -4,6 +4,7 @@ import {PGlite} from '@electric-sql/pglite'
 import {readFile,readdir} from 'node:fs/promises'
 import {createHash} from 'node:crypto'
 import bcrypt from 'bcryptjs'
+const PORT=Number(process.env.E2E_DB_PORT??54329)
 const db=new PGlite()
 await db.exec('create role anon;create role authenticated;create role service_role;create role authenticator;')
 for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&(process.env.FIXTURE_LEGACY_SCHEMA!=='true'||f<'025_')).sort())await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
@@ -19,7 +20,7 @@ await seed()
 const ident=value=>{if(!/^[a-z_]+$/.test(value))throw new Error('Invalid fixture identifier');return '"'+value+'"'}
 createServer(async(req,res)=>{
  try{
-  const url=new URL(req.url,'http://127.0.0.1:54329')
+  const url=new URL(req.url,`http://127.0.0.1:${PORT}`)
   let raw='';for await(const chunk of req)raw+=chunk
   const body=raw?JSON.parse(raw):{}
   const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value))}
@@ -76,4 +77,4 @@ createServer(async(req,res)=>{
   }
   return send(200,rows)
  }catch(error){res.writeHead(400,{'Content-Type':'application/json'});res.end(JSON.stringify({code:error.code??'fixture',message:error.message}))}
-}).listen(54329,'127.0.0.1',()=>console.log('Isolated database fixture ready'))
+}).listen(PORT,'127.0.0.1',()=>console.log('Isolated database fixture ready'))
