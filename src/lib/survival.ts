@@ -23,3 +23,24 @@ export function survivedPeriodsByPlayer(
   }
   return totals
 }
+
+// The same count when each pick already carries its outcome (won, or excused),
+// so callers holding a compact per-slate summary need not rebuild the games.
+export function survivedPeriodsByOutcome(
+  picks: { player_id: string; slate_id: string; won: boolean }[],
+  periods: Record<string, { key: string; quota: number }>
+): Record<string, number> {
+  const groups = new Map<string, { player: string; quota: number; won: boolean[] }>()
+  for (const pick of picks) {
+    const period = periods[pick.slate_id] ?? { key: pick.slate_id, quota: 1 }
+    const key = `${pick.player_id}:${period.key}`
+    const group = groups.get(key) ?? { player: pick.player_id, quota: period.quota, won: [] }
+    group.won.push(pick.won)
+    groups.set(key, group)
+  }
+  const totals: Record<string, number> = {}
+  for (const group of groups.values()) {
+    if (group.won.length === group.quota && group.won.every(Boolean)) totals[group.player] = (totals[group.player] ?? 0) + 1
+  }
+  return totals
+}
