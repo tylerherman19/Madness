@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { SweatGame, SweatResponse } from '@/app/api/sweat/route'
+import { tipTime } from '@/lib/poolTheme'
 import { formatClock } from '@/lib/deadline'
 import { useViewerTimeZone } from '@/app/components/LocalTime'
 import { RETRY_MS, nextPollMs } from '@/lib/livePolling'
@@ -30,10 +31,10 @@ function standingOf(game: SweatGame | undefined, side: Side): Standing {
   return mine > theirs ? 'lead' : 'trail'
 }
 
-function clockOf(game: SweatGame, timeZone: string | null): string {
+function clockOf(game: SweatGame): string {
   if (game.state === 'post') return 'Final'
   if (game.state === 'in') return game.statusText.replace(/ - /g, ' ')
-  return game.statusText.toLowerCase().includes('tbd') ? 'TBD' : formatClock(game.kickoff, timeZone, false)
+  return game.statusText.toLowerCase().includes('tbd') ? 'TBD' : tipTime(game.kickoff)
 }
 
 export default function SweatBoard({
@@ -153,7 +154,7 @@ export default function SweatBoard({
                       <article className={s.sgame} key={game.id}>
                         <div className={s.sgameGrid}>
                           <div className={s.sgameMeta}>
-                            {game.state === 'in' ? <span className={s.clockLive}>{clockOf(game, viewerZone)}</span> : <b>{clockOf(game, viewerZone)}</b>}
+                            {game.state === 'in' ? <span className={s.clockLive}>{clockOf(game)}</span> : <b>{clockOf(game)}</b>}
                             <span>{[game.group, game.tv].filter(Boolean).join(' · ')}</span>
                           </div>
                           {sides.map((side, index) => {
@@ -232,7 +233,7 @@ export default function SweatBoard({
                     <div className={s.youTeam}>{myTeams.map(name).join(', ')}</div>
                     {myGame && (
                       <div className={s.youLine}>
-                        vs {name(sideOf(myGame, myTeam) === 'home' ? myGame.awayTeam : myGame.homeTeam)} · {clockOf(myGame, viewerZone)}{myGame.tv ? ` · ${myGame.tv}` : ''}
+                        vs {name(sideOf(myGame, myTeam) === 'home' ? myGame.awayTeam : myGame.homeTeam)} · {clockOf(myGame)}{myGame.tv ? ` · ${myGame.tv}` : ''}
                       </div>
                     )}
                   </div>

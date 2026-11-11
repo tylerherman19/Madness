@@ -69,6 +69,9 @@ export default function StandingsTable({
   // first page, derived from the key so no effect has to reset it.
   const limitKey = `${sort}\u0000${query.trim().toLowerCase()}`
   const [limits, setLimits] = useState({ key: limitKey, alive: INITIAL_ROWS, out: INITIAL_ROWS })
+  // Any sort or search change starts over at the first page (stored, so a
+  // later return to an earlier search does not bring back an enlarged window).
+  if (limits.key !== limitKey) setLimits({ key: limitKey, alive: INITIAL_ROWS, out: INITIAL_ROWS })
   const aliveLimit = limits.key === limitKey ? limits.alive : INITIAL_ROWS
   const outLimit = limits.key === limitKey ? limits.out : INITIAL_ROWS
   // After "Show more", focus moves to the first new row so keyboard and
@@ -185,8 +188,8 @@ export default function StandingsTable({
   const headerRows = compact ? 0 : 1
   const aliveItems: ListItem<Group<AliveRow>, AliveRow>[] = grouped ? groupedItems(groupAlive(aliveRows)) : plainItems(aliveRows)
   const outItems: ListItem<Group<OutRow>, OutRow>[] = grouped ? groupedItems(groupOut(outRows)) : plainItems(outRows)
-  const aliveWindow = windowItems(aliveItems, aliveLimit)
-  const outWindow = windowItems(outItems, outLimit)
+  const aliveWindow = windowItems(aliveItems, aliveLimit, (row) => row.me)
+  const outWindow = windowItems(outItems, outLimit, (row) => row.me)
 
   function showMore(list: 'alive' | 'out') {
     const shown = (list === 'alive' ? aliveWindow : outWindow).shown.length
@@ -214,8 +217,15 @@ export default function StandingsTable({
   const announcement = searching
     ? `${aliveRows.length} of ${alive.length} alive and ${outRows.length} of ${out.length} eliminated entries match.`
     : ''
-  const sortAttr = (column: 'entry' | 'seed') =>
-    column === 'entry' && sort === 'alphabetical' ? 'ascending' : column === 'seed' && sort === 'seeds' ? 'descending' : undefined
+  // aria-sort only claims an order that is strictly true: your own entry is
+  // pinned first among the alive entries, which makes that list "other".
+  const aliveHasMe = aliveRows.some((row) => row.me)
+  const aliveSortAttr = (column: 'entry' | 'seed') =>
+    column === 'entry' && sort === 'alphabetical' ? (aliveHasMe ? 'other' : 'ascending')
+      : column === 'seed' && sort === 'seeds' ? (aliveWindow.pinned ? 'other' : 'descending') : undefined
+  const outSortAttr = (column: 'entry' | 'seed') =>
+    column === 'entry' && sort === 'alphabetical' ? (outWindow.pinned ? 'other' : 'ascending')
+      : column === 'seed' && sort === 'seeds' ? (outWindow.pinned ? 'other' : 'descending') : undefined
 
   return (
     <div className={compact ? s.stCompact : undefined}>
@@ -239,11 +249,12 @@ export default function StandingsTable({
         <div ref={aliveTable} role="table" aria-label="Entries still alive" aria-rowcount={aliveItems.length + headerRows}>
           {!compact && (
             <div className={`${s.stRow} ${s.stLabels}`} role="row" aria-rowindex={1}>
-              <span role="columnheader" aria-sort={sortAttr('entry')}>Entry</span>
+              <span role="columnheader" aria-sort={aliveSortAttr('entry')}>Entry</span>
               <span role="columnheader">Status</span>
-              <span role="columnheader" aria-sort={sortAttr('seed')}>{sort === 'seeds' ? 'Seed total' : `${dayLabel} pick`}</span>
+              <span role="columnheader" aria-sort={aliveSortAttr('seed')}>{sort === 'seeds' ? 'Seed total' : `${dayLabel} pick`}</span>
             </div>
           )}
+          {aliveWindow.pinned && aliveRow(aliveWindow.pinned.row, false, aliveWindow.pinned.position + headerRows)}
           {aliveWindow.shown.map((item, i) =>
             item.type === 'head' ? groupHead(item.group, i + 1 + headerRows) : aliveRow(item.row, grouped, i + 1 + headerRows)
           )}
@@ -258,11 +269,12 @@ export default function StandingsTable({
           <div ref={outTable} role="table" aria-label="Eliminated entries" aria-rowcount={outItems.length + headerRows}>
             {!compact && (
               <div className={`${s.stRow} ${s.stLabels}`} role="row" aria-rowindex={1}>
-                <span role="columnheader" aria-sort={sort === 'alphabetical' ? 'ascending' : undefined}>Entry</span>
+                <span role="columnheader" aria-sort={outSortAttr('entry')}>Entry</span>
                 <span role="columnheader">Out</span>
-                <span role="columnheader" aria-sort={sort === 'seeds' ? 'descending' : undefined}>{sort === 'seeds' ? 'Seed total' : 'Losing pick'}</span>
+                <span role="columnheader" aria-sort={outSortAttr('seed')}>{sort === 'seeds' ? 'Seed total' : 'Losing pick'}</span>
               </div>
             )}
+            {outWindow.pinned && outRow(outWindow.pinned.row, false, outWindow.pinned.position + headerRows)}
             {outWindow.shown.map((item, i) =>
               item.type === 'head' ? groupHead({ ...item.group, tone: s.red }, i + 1 + headerRows) : outRow(item.row, grouped, i + 1 + headerRows)
             )}

@@ -19,6 +19,7 @@ export interface OutRow {
   id: string
   name: string
   out: string
+  me: boolean
   teams: string[] // the losing pick(s)
   losing: string | null
   seedTotal: number
@@ -70,6 +71,7 @@ export function buildStandingsRows({
       return {
         id: row.player_id,
         name: row.full_name,
+        me: row.player_id === meId,
         out: outPeriod ? `Out ${weekdayDay(outPeriod.date)}` : 'Out',
         teams,
         losing: teams.length ? `Picked ${teams.map(name).join(', ')}, lost` : row.elimination_reason,

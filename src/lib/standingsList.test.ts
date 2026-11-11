@@ -15,7 +15,7 @@ const alive = (name: string, seedTotal = 0, me = false): AliveRow => ({
   id: name, name, me, teams: [], status: 'none', seedTotal,
 })
 const out = (name: string, seedTotal = 0): OutRow => ({
-  id: name, name, out: 'Out', teams: [], losing: null, seedTotal,
+  id: name, name, me: false, out: 'Out', teams: [], losing: null, seedTotal,
 })
 const many = (count: number) => Array.from({ length: count }, (_, i) => alive(`Entry ${String(i).padStart(4, '0')}`, i % 17))
 
@@ -85,4 +85,35 @@ test('grouped windows count entries, not headings, and never end on a heading', 
   assert.equal(w4.rowsShown, 4)
   assert.equal(w4.shown.length, 6)
   assert.equal(windowItems(items, 6).shown.length, 9)
+})
+
+test('your own entry is pinned into the window with its true position when a sort puts it past the first page', () => {
+  // Seed-total order: a low total lands you at position 801.
+  const rows = many(1000).map((r, i) => ({ ...r, seedTotal: 1000 - i }))
+  const mine = { ...rows[800], me: true }
+  rows[800] = mine
+  const items = plainItems(sortAlive(rows, 'seeds'))
+  const w = windowItems(items, INITIAL_ROWS, (row) => row.me)
+  assert.equal(w.shown.length, INITIAL_ROWS)
+  assert.equal(w.pinned?.row.id, mine.id)
+  assert.equal(w.pinned?.position, 801)
+  // Others see the same order and window as without a viewer.
+  const plain = windowItems(items, INITIAL_ROWS)
+  assert.deepEqual(w.shown, plain.shown)
+  assert.equal(plain.pinned, null)
+})
+
+test('in grouped order your entry in a late group is pinned, and not duplicated once it is in the window', () => {
+  const big = Array.from({ length: 3000 }, (_, i) => alive(`Locked ${i}`))
+  const me = alive('Me', 0, true)
+  const items = groupedItems<{ key: string; rows: AliveRow[] }, AliveRow>([{ key: '~locked', rows: big }, { key: '~none', rows: [me] }])
+  const w = windowItems(items, INITIAL_ROWS, (row) => row.me)
+  assert.equal(w.pinned?.row, me)
+  assert.equal(w.pinned?.position, 3 + 3000)
+  assert.ok(!w.shown.some((item) => item.type === 'row' && item.row === me))
+  const all = windowItems(items, 5000, (row) => row.me)
+  assert.equal(all.pinned, null)
+  assert.ok(all.shown.some((item) => item.type === 'row' && item.row === me))
+  // Within the first page: no separate pin.
+  assert.equal(windowItems(plainItems([me, ...big]), INITIAL_ROWS, (row) => row.me).pinned, null)
 })

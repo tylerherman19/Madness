@@ -50,20 +50,39 @@ export function groupedItems<G extends { rows: readonly R[] }, R>(groups: readon
 // The first `rowLimit` entries, plus the headings that lead them. `shown` is a
 // prefix of `items`, so the item at index i has the same position (i + 1) in the
 // full list and in the window; that position is its aria-rowindex.
+//
+// `isPinned` marks the viewer's own entry. When it falls outside the window it
+// is returned separately as `pinned`, with its true 1-based position in the full
+// list, so it is always rendered whatever the sort mode.
 export function windowItems<G, R>(
   items: readonly ListItem<G, R>[],
-  rowLimit: number
-): { shown: ListItem<G, R>[]; rowsShown: number; rowsTotal: number } {
+  rowLimit: number,
+  isPinned?: (row: R) => boolean
+): {
+  shown: ListItem<G, R>[]
+  rowsShown: number
+  rowsTotal: number
+  pinned: { row: R; position: number } | null
+} {
   let rowsShown = 0
   let rowsTotal = 0
   let cut = 0
+  let pinnedAt = -1
   for (let i = 0; i < items.length; i++) {
-    if (items[i].type !== 'row') continue
+    const item = items[i]
+    if (item.type !== 'row') continue
     rowsTotal++
+    if (pinnedAt < 0 && isPinned?.(item.row)) pinnedAt = i
     if (rowsShown < rowLimit) {
       rowsShown++
       cut = i + 1
     }
   }
-  return { shown: items.slice(0, cut), rowsShown, rowsTotal }
+  const pinnedItem = pinnedAt >= cut ? items[pinnedAt] : null
+  return {
+    shown: items.slice(0, cut),
+    rowsShown,
+    rowsTotal,
+    pinned: pinnedItem && pinnedItem.type === 'row' ? { row: pinnedItem.row, position: pinnedAt + 1 } : null,
+  }
 }

@@ -1,6 +1,4 @@
 'use client'
-import { formatClock } from '@/lib/deadline'
-import { useViewerTimeZone } from '@/app/components/LocalTime'
 import { useEffect, useRef, useState } from 'react'
 import type { LiveScoresResponse } from '@/app/api/live-scores/route'
 import s from './pp.module.css'
@@ -31,7 +29,6 @@ type Drag = {
 export default function LiveTicker({ label, sandbox = false }: { label?: string | null; sandbox?: boolean }) {
   const [data, setData] = useState<LiveScoresResponse | null>(null)
   const [paused, setPaused] = useState(false)
-  const viewerZone = useViewerTimeZone()
   const [settled, setSettled] = useState(false)
   const [reduceMotion, setReduceMotion] = useState(false)
   const [copyCount, setCopyCount] = useState(MIN_COPIES)
@@ -185,7 +182,7 @@ export default function LiveTicker({ label, sandbox = false }: { label?: string 
     game.state === 'pre'
       ? game.timeTbd
         ? 'TBD'
-        : formatClock(game.kickoff, viewerZone, false)
+        : new Date(game.kickoff).toLocaleString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' })
       : game.state === 'post'
         ? 'Final'
         : game.statusText
