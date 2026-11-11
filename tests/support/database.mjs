@@ -19,9 +19,12 @@ if(REAL){
  const pg=await import('pg')
  // PostgREST returns a date column as YYYY-MM-DD, not a JavaScript Date.
  pg.types.setTypeParser(1082,value=>value)
+ // Like PostgREST: timestamps keep microseconds (the app round-trips updated_at into save_pick), bigint and numeric are JSON numbers.
+ for(const oid of [1184,1114])pg.types.setTypeParser(oid,value=>{const iso=value.replace(' ','T');return /[+-]\d\d$/.test(iso)?iso+':00':/Z|[+-]\d\d:\d\d$/.test(iso)?iso:iso+'+00:00'})
+ pg.types.setTypeParser(20,value=>Number(value));pg.types.setTypeParser(1700,value=>Number(value))
  const url=process.env.FIXTURE_PG_URL
  if(!url||!/@(127\.0\.0\.1|localhost)[:/]/.test(url))throw new Error('FIXTURE_PG_URL must point at a local PostgreSQL')
- pool=new pg.Pool({connectionString:url,max:Number(process.env.FIXTURE_PG_POOL??10),application_name:'fixture-postgrest'})
+ pool=new pg.Pool({connectionString:url,options:'-c timezone=UTC',max:Number(process.env.FIXTURE_PG_POOL??10),application_name:'fixture-postgrest'})
  pool.on('error',()=>{})
  const timed=async(fn)=>{const t0=performance.now();try{return await fn()}finally{poolStats.queries++;poolStats.queryMs+=performance.now()-t0}}
  db={
@@ -121,7 +124,7 @@ createServer(async(req,res)=>{
   const seeding=req.headers['x-fixture-seed']==='1'
   const result=seeding?await db.seeded(query,values):await db.query(query,values)
   const rows=result.rows
-  if(url.searchParams.get('select')?.includes('players('))for(const row of rows)row.players=(await db.query(`select * from ${namespace}.players where id=$1`,[row.player_id])).rows[0]??null
+  if(url.searchParams.get('select')?.includes('players(')&&rows.length){const ids=[...new Set(rows.map(row=>row.player_id))];const embedded=new Map((await db.query(`select * from ${namespace}.players where id=any($1::uuid[])`,[ids])).rows.map(row=>[row.id,row]));for(const row of rows)row.players=embedded.get(row.player_id)??null}
   // Like PostgREST: the total is reported only when a count was requested, and
   // for reads it is the whole filtered table, not the page served.
   const counted=/count=(exact|planned|estimated)/.test(String(req.headers.prefer??''))
