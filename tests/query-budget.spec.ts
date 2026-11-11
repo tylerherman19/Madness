@@ -36,15 +36,20 @@ async function callsPerRequest(request: APIRequestContext, path: string, count =
   return calls
 }
 
-// Everything Next.js has written to its data cache on disk, as text.
-function cacheText(): string {
+// Everything Next.js has written to its data cache on disk since `since`, as text
+// (files from earlier runs of the dev server stay on disk and are not this test's).
+function cacheText(since: number): string {
   const chunks: string[] = []
   const walk = (dir: string) => {
     let names: string[] = []
     try { names = readdirSync(dir) } catch { return }
     for (const name of names) {
       const path = join(dir, name)
-      try { statSync(path).isDirectory() ? walk(path) : chunks.push(readFileSync(path, 'utf8')) } catch {}
+      try {
+        const stat = statSync(path)
+        if (stat.isDirectory()) walk(path)
+        else if (stat.mtimeMs >= since) chunks.push(readFileSync(path, 'utf8'))
+      } catch {}
     }
   }
   for (const dir of ['.next/dev/cache/fetch-cache', '.next/cache/fetch-cache']) walk(dir)
@@ -90,6 +95,7 @@ for (const days of [5, 70]) {
 // the lock instant without any cache being thrown away.
 test('other entries picks are never in the page before the lock and are once it passes', async ({ request, playwright }) => {
   test.setTimeout(120_000)
+  const startedAt = Date.now() - 1000
   // Teams that are not on the slate, so the names appear nowhere except in a stored pick.
   const SECRET_A = 'Zorblax State', SECRET_B = 'Quillon Tech'
   const patch = (path: string, data: unknown) => request.patch(`${FIXTURE_DB}${path}`, { data, headers: { 'x-fixture-seed': '1' } })
@@ -129,7 +135,7 @@ test('other entries picks are never in the page before the lock and are once it 
 
   // The shared data cache on disk: entries exist (the entry names are in it) and no hidden team is.
   await new Promise((resolve) => setTimeout(resolve, 500))
-  const before = cacheText()
+  const before = cacheText(startedAt)
   expect(before).toContain('Hidden Picker 0')
   expect(before).not.toContain('Zorblax')
   expect(before).not.toContain('Quillon')
@@ -148,7 +154,7 @@ test('other entries picks are never in the page before the lock and are once it 
   }
   // Only now, with the day locked, do the teams reach the shared cache.
   await new Promise((resolve) => setTimeout(resolve, 500))
-  expect(cacheText()).toContain('Zorblax')
+  expect(cacheText(startedAt)).toContain('Zorblax')
   await other.dispose()
   await owner.dispose()
 })

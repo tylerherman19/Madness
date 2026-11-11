@@ -56,6 +56,7 @@ first-request breakdown by call:
   POST /api/picks (HTTP 200): POST rpc:bump_rate_limit x2, GET players x2, GET slates x2, GET games x2, GET revoked_sessions x1, GET pick_requests x1, GET pools x1, GET picks x1, POST rpc:save_pick x1
 
 
+(the 1000 x 100 block below is a separate run of the same script against the same unmodified code, built in its own checkout: it is where the history cache cliff shows, 102 reads per warm home view)
 === 1000 entries x 100 past pick days (95450 stored picks, 110 future days) ===
 route                           HTTP  first request  warm avg  bytes     gzip
 home, signed out                200   109            102       441884    48017
