@@ -55,3 +55,32 @@ first-request breakdown by call:
   /api/grid/export: GET picks x67, GET players x2, GET games x1, GET pools x1, GET slates x1
   POST /api/picks (HTTP 200): POST rpc:bump_rate_limit x2, GET players x2, GET slates x2, GET games x2, GET revoked_sessions x1, GET pick_requests x1, GET pools x1, GET picks x1, POST rpc:save_pick x1
 
+
+=== 1000 entries x 100 past pick days (95450 stored picks, 110 future days) ===
+route                           HTTP  first request  warm avg  bytes     gzip
+home, signed out                200   109            102       441884    48017
+home, signed in                 200   105            105.88    441529    48021
+/api/me, signed out             200   4              0         35        55
+/api/me, signed in              200   11             6         59        79
+/pick, signed in                200   11             10        64100     9969
+/grid                           200   1              0.25      31348     6307
+/api/sweat                      200   60             9.13      49075     3101
+/api/sweat?x=1 (query string)   200   10             8.13      49075     3101
+/api/live-scores                200   3              3         383       262
+/api/grid/export                200   101            101       273655    43103
+POST /api/picks (HTTP 200)      200   14             -         -         -
+(first request = database requests on a cold server; warm avg = per request over the next 8 back-to-back requests)
+
+first-request breakdown by call:
+  home, signed out: GET picks x98, GET slates x4, GET games x4, GET players x2, GET pools x1
+  home, signed in: GET picks x99, GET games x2, GET pools x1, GET slates x1, GET revoked_sessions x1, GET players x1
+  /api/me, signed out: GET slates x2, GET pools x1, GET games x1
+  /api/me, signed in: GET players x3, GET picks x3, GET games x2, GET revoked_sessions x1, GET pools x1, GET slates x1
+  /pick, signed in: GET games x3, GET players x2, GET slates x2, GET pools x1, GET revoked_sessions x1, GET teams x1, GET picks x1
+  /grid: GET pools x1
+  /api/sweat: GET picks x50, GET games x4, GET players x3, GET pools x1, GET slates x1, GET teams x1
+  /api/sweat?x=1 (query string): GET picks x5, GET players x2, GET pools x1, GET slates x1, GET games x1
+  /api/live-scores: GET slates x1, GET games x1, GET teams x1
+  /api/grid/export: GET picks x96, GET players x2, GET games x1, GET pools x1, GET slates x1
+  POST /api/picks (HTTP 200): GET games x3, POST rpc:bump_rate_limit x2, GET players x2, GET slates x2, GET revoked_sessions x1, GET pick_requests x1, GET pools x1, GET picks x1, POST rpc:save_pick x1
+

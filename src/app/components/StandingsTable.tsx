@@ -41,8 +41,8 @@ export default function StandingsTable({
   signupsClosed = true,
   compact = false,
 }: {
-  alive: PackedAlive[]
-  out: PackedOut[]
+  alive: (PackedAlive | string)[]
+  out: (PackedOut | string)[]
   outLabels: Record<number, string>
   teamBrands: Record<string, TeamBrand>
   dayLabel: string

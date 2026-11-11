@@ -54,8 +54,8 @@ export function buildStandingsRows({
   const periodByNumber = new Map(periods.map((p) => [p.number, p]))
   const outLabels: Record<number, string> = {}
   const used = new Set<string>()
-  const alive: PackedAlive[] = []
-  const out: PackedOut[] = []
+  const alive: (PackedAlive | string)[] = []
+  const out: (PackedOut | string)[] = []
   for (const row of standings) {
     const me = row.player_id === meId
     const seed = showSeedTotal && row.seed_total ? { v: row.seed_total } : {}
@@ -63,20 +63,22 @@ export function buildStandingsRows({
       const teams = me ? myTeams : row.pick_revealed ? row.current_picks : []
       const state = row.pick_revealed && teams.length ? 'p' : me && teams.length ? 's' : row.pick_locked ? 'l' : undefined
       for (const team of teams) used.add(team)
-      alive.push({ n: row.full_name, ...(me && { me: 1 as const }), ...(teams.length && { t: teams }), ...(state && { s: state }), ...seed })
+      const packed: PackedAlive = { n: row.full_name, ...(me && { me: 1 as const }), ...(teams.length && { t: teams }), ...(state && { s: state }), ...seed }
+      alive.push(Object.keys(packed).length === 1 ? row.full_name : packed)
     } else if (row.status === 'eliminated') {
       const teams = row.losing_picks ?? []
       const period = row.elimination_slate != null ? periodByNumber.get(row.elimination_slate) : undefined
       if (period) outLabels[period.number] = `Out ${weekdayDay(period.date)}`
       for (const team of teams) used.add(team)
-      out.push({
+      const packed: PackedOut = {
         n: row.full_name,
         ...(me && { me: 1 as const }),
         ...(period && { o: period.number }),
         ...(teams.length && { t: teams }),
         ...(!teams.length && row.elimination_reason && { r: row.elimination_reason }),
         ...seed,
-      })
+      }
+      out.push(Object.keys(packed).length === 1 ? row.full_name : packed)
     }
   }
   // Only the brands the lists show, so the client gets a small payload.

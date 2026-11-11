@@ -4,7 +4,8 @@ import { unpackAlive, unpackOut, type PackedAlive, type PackedOut } from './stan
 import { survivedPeriodsByOutcome, survivedPeriodsByPlayer } from './survival.ts'
 
 test('a packed row with only a name expands to the no-pick defaults', () => {
-  const [row] = unpackAlive([{ n: 'Ada' }])
+  const [row, bare] = unpackAlive([{ n: 'Ada' }, 'Ada'])
+  assert.deepEqual(bare, row)
   assert.deepEqual(row, { id: 'Ada', name: 'Ada', me: false, teams: [], status: 'none', seedTotal: 0 })
 })
 

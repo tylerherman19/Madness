@@ -15,9 +15,11 @@ export function invalidateContestData(): void {
   }
 }
 
-// Call after any write to contest data. A saved pick passes `picksOnly`: picks
-// for the active day and later are always read live, so the shared season
-// cache needn't be thrown away on every pick.
+// Call after any write to contest data. A saved pick passes `picksOnly`: the
+// shared copy of the active day (who has picked, and the teams once locked)
+// refreshes every 10 seconds on its own, and a pick never changes the finished
+// days, so the shared season cache needn't be thrown away on every pick. The
+// pick's own player reads their pick fresh, never from a shared copy.
 export function revalidateContest({ picksOnly = false }: { picksOnly?: boolean } = {}) {
   if (!picksOnly) invalidateContestData()
   for (const path of ['/', '/grid', '/sweat', '/pick', '/admin', '/admin/players']) revalidatePath(path)
