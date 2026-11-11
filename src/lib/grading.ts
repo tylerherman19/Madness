@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game } from '@/types'
 import { selectAll } from './db'
 import { reportFailure } from './alerts'
-import { getActivePoolId } from './pool'
+import { getActivePoolId, contestFilter } from './pool'
 
 export interface GradeResult {
   eliminated: string[]
@@ -65,7 +65,7 @@ export async function gradeSlatePicks(
     players: { id: string; full_name: string; email: string; status: string } | null
   }>((from, to) => db.from('picks')
     .select('id, player_id, team, loss_excused, players(id, full_name, email, status)')
-    .eq('slate_id', slateId).eq('pool_id', poolId).order('id').range(from, to))
+    .eq('slate_id', slateId).match(contestFilter(poolId)).order('id').range(from, to))
 
   const eliminated: string[] = []
   const advanced = new Map<string, string>()

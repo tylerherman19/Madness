@@ -2,7 +2,7 @@ import {legacyPickPost} from '@/lib/legacyPickRoute'
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
-import { getPoolConfig } from '@/lib/pool'
+import { getPoolConfig, contestFilter, contestScopeOf } from '@/lib/pool'
 import { getSession, getAdminSession } from '@/lib/session'
 import { isUuid } from '@/lib/api'
 import { isSlateLocked,slateDeadline } from '@/lib/deadline'
@@ -68,13 +68,13 @@ export async function POST(req: NextRequest) {
     // Check player is alive
     const { data: player } = await supabase
       .from('players')
-      .select('id, email, full_name, status, notifications_enabled, pool_id')
+      .select('id, email, full_name, status, notifications_enabled')
       .eq('id', playerId)
+      // Entries belong to one contest; an archived contest's entry is not found here.
+      .match(contestFilter(contestScopeOf(pool)))
       .single()
 
     if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
-    // Entries belong to one contest; an archived contest's entry cannot pick.
-    if (player.pool_id !== pool.id) return NextResponse.json({ error: 'This entry belongs to a past contest.' }, { status: 403 })
     if (player.status === 'eliminated') {
       return NextResponse.json({ error: 'You are eliminated' }, { status: 403 })
     }

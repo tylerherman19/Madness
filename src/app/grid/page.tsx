@@ -4,7 +4,7 @@ import { publicPlayerLabels } from '@/lib/playerLabels'
 import { pageMetadata } from '@/lib/site'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { slateDeadline, isPickRevealed } from '@/lib/deadline'
-import { getPoolConfig, poolScope } from '@/lib/pool'
+import { getPoolConfig, poolScope, contestFilter } from '@/lib/pool'
 import { buildPickPeriods, capabilitiesFor, type PickPeriod } from '@/lib/competition'
 import type { Game } from '@/types'
 import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from '@/lib/seasonData'
@@ -37,7 +37,7 @@ export default async function GridPage() {
       loadAll<typeof slates[number] & { is_active: boolean }>(
         supabase, 'slates', 'id, slate_number, slate_date, season_year, locks_at, is_active'
       ),
-      allRows(supabase.from('players').select('id, full_name, status, elimination_slate').eq('pool_id', poolScope(pool)).not('email', 'like', '%@nflsurvivor.internal').order('full_name')),
+      allRows(supabase.from('players').select('id, full_name, status, elimination_slate').match(contestFilter(poolScope(pool))).not('email', 'like', '%@nflsurvivor.internal').order('full_name')),
     ])
     // One season's grid — the one being played — paged past the row cap.
     const seasonYear = seasonYearOf(allSlates)

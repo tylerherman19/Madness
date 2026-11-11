@@ -1,5 +1,5 @@
 import { allRows, selectAll } from '@/lib/db'
-import { getActivePoolId } from '@/lib/pool'
+import { getActivePoolId, contestFilter } from '@/lib/pool'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       const { data: players, error } = await allRows(supabase
         .from('players')
         .select('full_name, email, phone, venmo_handle, paid, status, elimination_slate')
-        .eq('pool_id', poolId)
+        .match(contestFilter(poolId))
         .order('full_name'))
       if (error) throw error
 
@@ -61,9 +61,9 @@ export async function GET(req: NextRequest) {
     // Paged read; a failure throws into the catch below.
     const [{ data: picks }, { data: players }, { data: slates }] = await Promise.all([
       selectAll<{ player_id: string; slate_id: string; team: string; auto_assigned: boolean; submitted_by_admin: boolean; created_at: string }>((from, to) =>
-        supabase.from('picks').select('player_id, slate_id, team, auto_assigned, submitted_by_admin, created_at').eq('pool_id', poolId).order('id').range(from, to)
+        supabase.from('picks').select('player_id, slate_id, team, auto_assigned, submitted_by_admin, created_at').match(contestFilter(poolId)).order('id').range(from, to)
       ).then((data) => ({ data })),
-      allRows(supabase.from('players').select('id, full_name').eq('pool_id', poolId)),
+      allRows(supabase.from('players').select('id, full_name').match(contestFilter(poolId))),
       supabase.from('slates').select('id, slate_number, season_year'),
     ])
 

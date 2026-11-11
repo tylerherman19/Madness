@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getSignupCutoff } from '@/lib/season'
-import { getActivePoolId, getPoolConfig } from '@/lib/pool'
+import { getActivePoolId, getPoolConfig, contestFilter } from '@/lib/pool'
 import { MODE_LABEL, STATUS_LABEL } from '@/lib/competition'
 import { formatCentralTime } from '@/lib/deadline'
 import { seedTotalsByPlayer } from '@/lib/standings'
@@ -31,9 +31,9 @@ export default async function AdminDashboard() {
     pool,
   ] = await Promise.all([
     supabase.from('slates').select('*').eq('is_active', true).single(),
-    allRows(supabase.from('players').select('id, full_name, email, status, paid').eq('pool_id', poolId)),
+    allRows(supabase.from('players').select('id, full_name, email, status, paid').match(contestFilter(poolId))),
     supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active').order('slate_date'),
-    selectAll<{ player_id: string; seed: number | null }>((from, to) => supabase.from('picks').select('player_id, seed').eq('pool_id', poolId).order('id').range(from, to)).then((data) => ({ data })),
+    selectAll<{ player_id: string; seed: number | null }>((from, to) => supabase.from('picks').select('player_id, seed').match(contestFilter(poolId)).order('id').range(from, to)).then((data) => ({ data })),
     getSignupCutoff(),
     getEffectiveNow(),
     getPoolConfig(supabase),
@@ -83,7 +83,7 @@ export default async function AdminDashboard() {
 
   if (slate) {
     const [{ data: picks }, { data: gamesData }] = await Promise.all([
-      allRows(supabase.from('picks').select('player_id, team').eq('slate_id', slate.id).eq('pool_id', poolId)),
+      allRows(supabase.from('picks').select('player_id, team').eq('slate_id', slate.id).match(contestFilter(poolId))),
       supabase.from('games').select('id, home_team, away_team, result').eq('slate_id', slate.id).order('tip_time'),
     ])
     games = gamesData || []

@@ -4,7 +4,7 @@ import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import { formatCentralTime } from '@/lib/deadline'
 import { getTeamAbbrs } from '@/lib/teams'
-import { getPoolConfig, poolScope } from '@/lib/pool'
+import { getPoolConfig, poolScope, contestFilter } from '@/lib/pool'
 import { loadAll } from '@/lib/seasonData'
 import { buildPickPeriods, type PickPeriod } from '@/lib/competition'
 
@@ -41,9 +41,9 @@ export default async function AdminHistoryPage() {
       .then((data) => ({ data: data.sort((a, b) => a.tip_time.localeCompare(b.tip_time)) })),
     // The active contest's picks and entries; finished contests are on /history.
     selectAll<{ slate_id: string; team: string; auto_assigned: boolean }>((from, to) =>
-      supabase.from('picks').select('slate_id, team, auto_assigned').eq('pool_id', poolScope(pool)).order('id').range(from, to))
+      supabase.from('picks').select('slate_id, team, auto_assigned').match(contestFilter(poolScope(pool))).order('id').range(from, to))
       .then((data) => ({ data })),
-    allRows(supabase.from('players').select('full_name, email, status, elimination_slate, elimination_reason').eq('pool_id', poolScope(pool))),
+    allRows(supabase.from('players').select('full_name, email, status, elimination_slate, elimination_reason').match(contestFilter(poolScope(pool)))),
   ])
 
   const weekRows: WeekRow[] = slates || []

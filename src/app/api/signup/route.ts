@@ -9,7 +9,7 @@ import { haveSignupsClosed } from '@/lib/season'
 import { logAudit } from '@/lib/audit'
 import { serverError } from '@/lib/alerts'
 import { revalidateContest } from '@/lib/revalidateContest'
-import { getActivePoolId } from '@/lib/pool'
+import { getActivePoolId, contestFilter } from '@/lib/pool'
 
 export async function POST(req: NextRequest) {
   try {
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id')
       // Per contest: the same email may hold an entry in an archived contest.
-      .eq('pool_id', await getActivePoolId(supabase))
+      .match(contestFilter(await getActivePoolId(supabase)))
       .ilike('email', escapeIlike(emailLower))
       .limit(1)
       .maybeSingle()

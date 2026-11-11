@@ -2,7 +2,7 @@ import { allRows } from '@/lib/db'
 import writeExcelFile, { type Cell, type SheetData } from 'write-excel-file/node'
 import { buildPickPeriods } from '@/lib/competition'
 import { isPickRevealed } from '@/lib/deadline'
-import { getPoolConfig } from '@/lib/pool'
+import { contestFilter, getActivePoolId, getPoolConfig } from '@/lib/pool'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { loadAll } from '@/lib/seasonData'
 import type { Game } from '@/types'
@@ -49,11 +49,13 @@ const headerCell = (value: string, align: 'left' | 'center' = 'center'): Cell =>
 export async function GET() {
   try {
     const supabase = await getDb()
+    const scope = await getActivePoolId(supabase)
     const [slatesRes, playersRes, picksRes, gamesRes, pool] = await Promise.all([
       supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active, locks_at').order('slate_number'),
       allRows(supabase
         .from('players')
-        .select('id, full_name, status, elimination_slate, pool_id')
+        .select('id, full_name, status, elimination_slate')
+        .match(contestFilter(scope))
         .not('email', 'like', '%@nflsurvivor.internal')
         .order('full_name')),
       loadAll<ExportPick>(supabase, 'picks', 'player_id, slate_id, team').then((data) => ({ data, error: null })),
@@ -67,7 +69,7 @@ export async function GET() {
 
     const allSlates = (slatesRes.data ?? []) as ExportSlate[]
     // The active contest's entries and their picks only (migration 030).
-    const players = ((playersRes.data ?? []) as (ExportPlayer & { pool_id?: string })[]).filter((player) => player.pool_id === pool.id)
+    const players = (playersRes.data ?? []) as ExportPlayer[]
     const contestIds = new Set(players.map((player) => player.id))
     const allPicks = ((picksRes.data ?? []) as ExportPick[]).filter((pick) => contestIds.has(pick.player_id))
     const allGames = (gamesRes.data ?? []) as ExportGame[]

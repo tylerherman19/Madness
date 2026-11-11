@@ -4,7 +4,7 @@ import { invalidateContestData } from '@/lib/revalidateContest'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
-import { getPoolConfig, updatePoolConfig, type PoolConfigPatch } from '@/lib/pool'
+import { getPoolConfig, updatePoolConfig, type PoolConfigPatch, contestFilter, contestScopeOf } from '@/lib/pool'
 import { serverError } from '@/lib/alerts'
 import {
   COMPETITION_MODES,
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
     }
     const ruleKeys = ['competition_mode', 'season_year', 'pick_frequency', 'pick_deadline_rule', 'team_reuse_rule', 'auto_pick_behavior', 'tiebreaker', 'starts_on'] as const
     if (ruleKeys.some(key => key in patch && patch[key] !== current[key])) {
-      const { count, error } = await supabase.from('picks').select('id', { count: 'exact', head: true }).eq('pool_id', poolId)
+      const { count, error } = await supabase.from('picks').select('id', { count: 'exact', head: true }).match(contestFilter(contestScopeOf(current)))
       if (error) throw error
       if (count) return NextResponse.json({ error: 'Rules are frozen for this contest after its first pick. To open March with fresh entries and unused teams, use Archive and start March Madness below.' }, { status: 409 })
     }

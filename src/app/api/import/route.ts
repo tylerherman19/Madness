@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getActivePoolId } from '@/lib/pool'
+import { getActivePoolId, contestFilter } from '@/lib/pool'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, escapeIlike } from '@/lib/api'
 import { hashPassword, passwordValidationError } from '@/lib/password'
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
         const { data: existing } = await supabase
           .from('players')
           .select('id')
-          .eq('pool_id', poolId)
+          .match(contestFilter(poolId))
           .ilike('email', escapeIlike(row.email))
           .maybeSingle()
 

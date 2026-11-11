@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getActivePoolId } from '@/lib/pool'
+import { getActivePoolId, contestFilter } from '@/lib/pool'
 import { draftMode } from 'next/headers'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { requireAdmin } from '@/lib/api'
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
       const { data: existingPlayers, error: playersErr } = await sandboxSupabase
         .from('players')
         .select('email')
-        .eq('pool_id', await getActivePoolId(sandboxSupabase))
+        .match(contestFilter(await getActivePoolId(sandboxSupabase)))
       if (playersErr) {
         return NextResponse.json(
           { error: `Sandbox unreachable: ${playersErr.message}. Run supabase/migrations/004_testing_sandbox.sql and 007_sandbox_expose.sql in the Supabase SQL editor.` },

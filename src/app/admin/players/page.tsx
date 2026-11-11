@@ -1,5 +1,5 @@
 import { allRows, selectAll } from '@/lib/db'
-import { getActivePoolId } from '@/lib/pool'
+import { getActivePoolId, contestFilter } from '@/lib/pool'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
@@ -19,7 +19,7 @@ export default async function PlayersPage() {
   const { data: players } = await allRows(supabase
     .from('players')
     .select('id, full_name, email, phone, venmo_handle, paid, status, elimination_slate, elimination_reason')
-    .eq('pool_id', poolId)
+    .match(contestFilter(poolId))
     .order('status')
     .order('full_name'))
 
@@ -30,12 +30,12 @@ export default async function PlayersPage() {
     .single()
 
   const { data: picksData } = activeSlate
-    ? await allRows(supabase.from('picks').select('id,player_id,team,updated_at').eq('slate_id', activeSlate.id).eq('pool_id', poolId))
+    ? await allRows(supabase.from('picks').select('id,player_id,team,updated_at').eq('slate_id', activeSlate.id).match(contestFilter(poolId)))
     : { data: [] }
 
   const teams = await getTeamAbbrs(supabase)
 
-  const allPicks = await selectAll<{ player_id: string }>((from, to) => supabase.from('picks').select('player_id').eq('pool_id', poolId).order('id').range(from, to))
+  const allPicks = await selectAll<{ player_id: string }>((from, to) => supabase.from('picks').select('player_id').match(contestFilter(poolId)).order('id').range(from, to))
   const weeksSurvived: Record<string, number> = {}
   for (const p of allPicks || []) {
     weeksSurvived[p.player_id] = (weeksSurvived[p.player_id] || 0) + 1

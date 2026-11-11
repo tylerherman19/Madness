@@ -18,17 +18,17 @@ export async function loadGamesForSlates<T = Game>(
 }
 
 // Slates are shared by every contest (migration 030), so a slate's picks can
-// belong to more than one contest. Pass `poolId` to read one contest's picks;
-// an empty id (no pool row) matches nothing rather than every contest.
+// belong to more than one contest. Pass `poolId` to read one contest's picks.
 export async function loadPicksForSlates<T>(
   db: SupabaseClient,
   slateIds: string[],
   columns: string,
-  poolId?: string
+  poolId?: string | null
 ): Promise<T[]> {
   return selectAllIn<T>(slateIds, (batch, from, to) => {
     const query = db.from('picks').select(columns).in('slate_id', batch)
-    return (poolId === undefined ? query : query.eq('pool_id', poolId || '00000000-0000-0000-0000-000000000000')).order('id').range(from, to)
+    // undefined: not requested; null: schema predates 030; '': no pool row (match nothing).
+    return (poolId == null ? query : query.eq('pool_id', poolId || '00000000-0000-0000-0000-000000000000')).order('id').range(from, to)
   })
 }
 

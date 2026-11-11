@@ -83,22 +83,34 @@ export async function readPoolConfig(db: SupabaseClient): Promise<PoolConfig> {
   return data ? normalize(data) : DEFAULT_POOL_CONFIG
 }
 
-// The active contest's id, for scoping every live-gameplay query on `players`
-// and `picks` (migration 030: an entry belongs to exactly one contest, and an
-// archived contest's entries must never appear in the current one). Throws
-// when no active contest can be read: an unscoped read would mix contests.
-export async function getActivePoolId(db?: SupabaseClient): Promise<string> {
+// Contest scope for live-gameplay queries on `players` and `picks` (migration
+// 030: an entry belongs to exactly one contest; an archived contest's entries
+// must never appear in the current one).
+//
+// A scope is the active pool's id, or null when the schema predates 030 (the
+// pool row has no `ended_on`, which 030 adds in the same transaction as
+// players.pool_id); then every entry is the one contest's and no filter is
+// applied, so the app keeps working until the migration lands. Everything else
+// fails closed: a read error throws, and the no-row default (id '') scopes to
+// an id no entry has, never to every contest.
+export const NO_POOL_ID = '00000000-0000-0000-0000-000000000000'
+export function contestScopeOf(pool: { id?: string | null }): string | null {
+  if (!pool.id) return NO_POOL_ID
+  return 'ended_on' in pool ? pool.id : null
+}
+export const poolScope = (pool: { id?: string | null }): string | null => contestScopeOf(pool)
+
+// Filter argument for `.match(...)`: the contest condition, or none on a pre-030 schema.
+export const contestFilter = (scope: string | null): Record<string, string> => (scope ? { pool_id: scope } : {})
+
+// The active contest's scope, read live. Throws when no active contest can be read.
+export async function getActivePoolId(db?: SupabaseClient): Promise<string | null> {
   const supabase = db ?? (await getDb())
   const { data, error } = await readActivePool(supabase)
   if (error) throw error
   if (!data?.id) throw new Error('No active contest is configured')
-  return data.id as string
+  return contestScopeOf(data)
 }
-
-// A filter value for a pool config that may be the no-row default (id ''):
-// matches no entry instead of failing as an invalid uuid or reading every contest.
-export const NO_POOL_ID = '00000000-0000-0000-0000-000000000000'
-export const poolScope = (pool: Pick<PoolConfig, 'id'>): string => pool.id || NO_POOL_ID
 
 export type PoolConfigPatch = Partial<
   Pick<
