@@ -79,27 +79,27 @@ Status values: Fixed and independently verified / Fixed but not fully verified /
 | ID | Approved behaviour | WS | Status | Files | Tests | Verified by | Limits / owner action |
 |---|---|---|---|---|---|---|---|
 | F-01 | No winner logic; thresholds; zero-survivor stop | F | Not started | | | | |
-| F-02 | Admin-generated one-time reset link, no email | C | Not started | | | | |
+| F-02 | Admin-generated one-time reset link, no email | C | Fixed but not fully verified | `032_password_reset_links.sql`, `api/players/[id]/regen-pin`, `api/auth/reset-password`, `api/forgot-pin`, `reset-password/*`, `forgot-pin/page.tsx`, `admin/players/PlayersManager.tsx`, `lib/password.ts`, `lib/auditEvents.ts` | `tests/account-recovery.spec.ts`, `scripts/test-password-reset.mjs`, legacy `reset link` e2e | WS-C only | Apply migration 032 (fallback works without it, but reuse/expiry are not audited). Concurrency verified serially only (PGlite single connection); atomicity relies on the row lock |
 | F-03 | Native API in source control, reviewed | D | Not started | | | | |
 | F-04 | Single reveal rule | B | Not started | | | | |
 | F-05 | Never fabricate a winner | B | Not started | | | | |
 | F-06 | Query efficiency, caching, load test (no upgrade) | G | Not started | | | | |
 | F-07 | Monitoring without email | H | Not started | | | | |
-| F-08 | Private backup storage | C | Not started | | | | |
+| F-08 | Private backup storage | C | Fixed but not fully verified | `scripts/backup.mjs`, `backup-storage.mjs`, `restore-check.mjs`, `record-backup-check.mjs`, `.github/workflows/backup.yml`, `docs/backup-recovery.md` | `scripts/test-backup-check.mjs`, `scripts/test-operations.mjs` | WS-C only; all Storage calls mocked | Owner: create private bucket `madness-backups`, set variable `BACKUP_STORAGE_BUCKET`, rotate `BACKUP_ENCRYPTION_KEY` to `openssl rand -base64 32`, run manually. Job fails until then. Recovery page still says "artifact" (shows run id) |
 | F-09 | Shared admin password | — | Excluded by owner | | | | |
 | F-10 | Signup policy | — | Excluded by owner | | | | |
 | F-11 | Independent contests, no delete | A | Not started | | | | |
 | F-12 | Corrected results restore/eliminate | F | Not started | | | | |
 | F-13 | Grade button works | E | Not started | | | | |
 | F-14 / D-1 / D-2 | Void/replace/manual, stall detection | F, H | Not started | | | | |
-| F-15 | Shared-network rate limits | C | Not started | | | | |
+| F-15 | Shared-network rate limits | C | Fixed but not fully verified | `lib/rateLimitPolicy.ts`, `proxy.ts`, `api/auth/login`, `api/auth/reset-password` | `src/lib/rateLimitPolicy.test.ts`, e2e 300 players behind one IP | WS-C only | Per-account login limit (30/15 min) lets a known email be delayed 15 min |
 | F-16 / UX-1 | Local time zone, CT fallback | E | Not started | | | | |
 | F-17 | Stable ESPN team ids | B | Not started | | | | |
 | F-18 | Remove other-league stress test | E | Not started | | | | |
 | F-19 | e2e with a space in the path | Orchestrator | Fixed (12/12 e2e pass from a path with a space) | `playwright.config.ts`, `tests/*` | e2e | Not independently reviewed | |
 | F-20–F-26 | Email | — | Excluded by owner | | | | |
 | F-27 | Paid tier | — | Excluded by owner | | | | |
-| F-28 | Session secret minimum strength | C | Not started | | | | |
+| F-28 | Session secret minimum strength | C | Fixed but not fully verified | `lib/sessionSecret.ts`, `session.ts`, `testMode.ts`, `unsubscribe.ts`, `proxy.ts`, `ci.yml` | `src/lib/sessionSecret.test.ts`, `next build` | WS-C only | Owner: confirm production and preview `SESSION_SECRET` are >=32 random chars before deploy, else nobody can sign in; `SESSION_SECRET_ENFORCEMENT=warn` for staged rollout |
 | F-29 | Page views must not write | B | Not started | | | | |
 | D-3 | Conference coverage | — | Excluded by owner | | | | |
 | D-4 | No alphabetical fallback | B | Not started | | | | |
@@ -107,7 +107,7 @@ Status values: Fixed and independently verified / Fixed but not fully verified /
 | UX-3, UX-4, UX-5 | Touch targets, zero-alive copy, saved time | — | Excluded by owner | | | | |
 | UX-6 | Rules copy vs behaviour | — | Report only; rules not edited | | | | |
 | UX-7 | Safer admin actions | H | Not started | | | | |
-| 7.5 | Backup restore drill | C | Not started | | | | |
+| 7.5 | Backup restore drill | C | Fixed but not fully verified | `scripts/test-backup-drill.mjs`, `restore-check.mjs` (inspect hook, newer tables), `docs/backup-recovery.md` | `npm run test:operations` | WS-C only | PGlite only; real recovery procedure documented, not rehearsed on Supabase |
 
 ## Production facts gathered read-only (2026-11-11, Supabase dashboard, catalog SELECTs only)
 

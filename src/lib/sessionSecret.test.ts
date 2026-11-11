@@ -1,0 +1,53 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
+import { SessionSecretError, readSessionSecret, sessionSecretProblem } from './sessionSecret.ts'
+
+const strong = randomBytes(32).toString('base64')
+const quiet = <T>(fn: () => T): T => {
+  const { warn, error } = console
+  console.warn = () => {}
+  console.error = () => {}
+  try { return fn() } finally { console.warn = warn; console.error = error }
+}
+
+test('strong random secrets are accepted everywhere', () => {
+  for (let i = 0; i < 200; i++) assert.equal(sessionSecretProblem(randomBytes(32).toString('base64')), null)
+  for (let i = 0; i < 200; i++) assert.equal(sessionSecretProblem(randomBytes(24).toString('hex')), null)
+  for (let i = 0; i < 2000; i++) assert.equal(sessionSecretProblem(randomBytes(16).toString('hex')), null)
+  assert.equal(readSessionSecret({ NODE_ENV: 'production', SESSION_SECRET: strong }), strong)
+})
+
+test('production refuses short and placeholder secrets with a message that never contains the value', () => {
+  const weak = [
+    'short-secret',
+    'ci-placeholder-secret',
+    'x'.repeat(40),
+    'abababababababababababababababababab',
+    'ci-placeholder-secret-at-least-32-characters-long',
+    'fixture-only-signing-secret-at-least-32-characters',
+    'please-change-me-before-going-live-2026',
+    'your-secret-here-your-secret-here-0123',
+  ]
+  for (const value of weak) {
+    assert.notEqual(sessionSecretProblem(value), null, value)
+    assert.throws(() => quiet(() => readSessionSecret({ NODE_ENV: 'production', SESSION_SECRET: value })), (error: unknown) =>
+      error instanceof SessionSecretError && !error.message.includes(value))
+  }
+  assert.throws(() => readSessionSecret({ NODE_ENV: 'production' }), SessionSecretError)
+  assert.throws(() => readSessionSecret({ NODE_ENV: 'development' }), SessionSecretError)
+})
+
+test('development keeps working with fixture secrets; warn mode is an explicit production escape hatch', () => {
+  assert.equal(readSessionSecret({ NODE_ENV: 'development', SESSION_SECRET: 'short' }), 'short')
+  assert.equal(readSessionSecret({ NODE_ENV: 'test', SESSION_SECRET: 'short' }), 'short')
+  const messages: string[] = []
+  const { warn } = console
+  console.warn = (message: string) => { messages.push(message) }
+  try {
+    assert.equal(readSessionSecret({ NODE_ENV: 'production', SESSION_SECRET: 'short-but-tolerated', SESSION_SECRET_ENFORCEMENT: 'warn' }), 'short-but-tolerated')
+  } finally { console.warn = warn }
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].includes('short-but-tolerated'), false)
+  assert.throws(() => quiet(() => readSessionSecret({ NODE_ENV: 'production', SESSION_SECRET: 'short-but-tolerated', SESSION_SECRET_ENFORCEMENT: 'off' })), SessionSecretError)
+})

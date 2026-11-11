@@ -1,5 +1,6 @@
 import 'server-only'
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { readSessionSecret } from './sessionSecret'
 
 // Per-player unsubscribe links. A link carries the player id and an HMAC of
 // it, so it works without logging in and can't be forged for someone else.
@@ -7,9 +8,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://madness-cyan.vercel.app'
 
 function sign(playerId: string): string {
-  const secret = process.env.SESSION_SECRET
-  if (!secret) throw new Error('SESSION_SECRET env var is not set')
-  return createHmac('sha256', secret).update(`unsubscribe:${playerId}`).digest('base64url')
+  return createHmac('sha256', readSessionSecret()).update(`unsubscribe:${playerId}`).digest('base64url')
 }
 
 export function verifyUnsubscribe(playerId: unknown, token: unknown): playerId is string {

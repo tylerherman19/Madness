@@ -60,7 +60,8 @@ jobs:
         env:
           # Placeholders: the build never contacts these — the Supabase client
           # is lazily constructed and only reads env at request time — but the
-          # modules expect the vars to be defined.
-          SESSION_SECRET: ci-placeholder-secret
+          # modules expect the vars to be defined. SESSION_SECRET is validated
+          # lazily per request (never at build), so this dummy is never used to sign.
+          SESSION_SECRET: ci-placeholder-secret-at-least-32-characters-long
           SUPABASE_URL: https://placeholder.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-key

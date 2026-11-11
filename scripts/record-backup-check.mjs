@@ -1,9 +1,15 @@
-// Run only after the encrypted artifact upload has succeeded. No backup rows,
-// credentials, response bodies or provider errors belong in workflow logs.
+// Run only after the encrypted archives were stored in the private bucket and
+// downloaded back. No backup rows, credentials, response bodies or provider
+// errors belong in workflow logs.
+//
+// The progress record keeps the shape the admin Recovery page validates
+// (artifact_status 'uploaded', numeric artifact_id). Since archives moved off
+// public workflow artifacts, artifact_id carries the workflow run id and the
+// private storage location is recorded alongside it.
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { decryptBackup } from './backup.mjs'
+import { decryptBackup, parseBackupKey } from './backup.mjs'
 import { restoreCheck } from './restore-check.mjs'
 
 const PROJECT_ORIGIN = 'https://ugyimdqnyanmxayhdvje.supabase.co'
@@ -14,19 +20,24 @@ class BackupCheckError extends Error {}
 const validTime = value => typeof value === 'string' && Number.isFinite(Date.parse(value))
 const validId = value => typeof value === 'string' && /^[1-9][0-9]{0,19}$/.test(value)
 
-export async function recordBackupChecks({ supabaseUrl, serviceKey, encryptionKey, githubRepository, githubRunId, commitSha, artifactId, archives }, {
+const STORED = /^(public|sandbox)\/madness-(public|sandbox)-\d{8}T\d{6}Z-run[1-9][0-9]{0,19}\.json\.enc$/
+const validKey = value => { try { parseBackupKey(value); return true } catch { return false } }
+
+export async function recordBackupChecks({ supabaseUrl, serviceKey, encryptionKey, githubRepository, githubRunId, commitSha, artifactId, archives, storage }, {
  read = readFile, decrypt = decryptBackup, verify = restoreCheck, request = fetch, now = () => new Date(),
 } = {}) {
  let target
  try { target = new URL(supabaseUrl) } catch { throw new BackupCheckError('Configure the verified Madness Supabase project') }
  if (target.origin !== PROJECT_ORIGIN || target.pathname !== '/' || target.search || target.hash || target.username || target.password)
   throw new BackupCheckError('Backup telemetry is restricted to the verified Madness project')
- if (typeof serviceKey !== 'string' || !serviceKey || typeof encryptionKey !== 'string' || encryptionKey.length < 32)
+ if (typeof serviceKey !== 'string' || !serviceKey || !validKey(encryptionKey))
   throw new BackupCheckError('Existing backup and service-role credentials must be configured')
  if (githubRepository !== REPOSITORY || !validId(githubRunId) || typeof commitSha !== 'string' || !/^[a-f0-9]{40}$/.test(commitSha) || !validId(artifactId))
   throw new BackupCheckError('Verified repository, source revision, workflow run and uploaded artifact are required')
  if (!Array.isArray(archives) || archives.length !== 2 || SCHEMAS.some(schema => archives.filter(archive => archive?.schema === schema).length !== 1) || archives.some(archive => typeof archive.file !== 'string' || !archive.file))
   throw new BackupCheckError('Exactly one public and one sandbox encrypted archive are required')
+ if (typeof storage?.bucket !== 'string' || !/^[a-z0-9][a-z0-9-]{2,62}$/.test(storage.bucket) || SCHEMAS.some(schema => typeof storage.objects?.[schema] !== 'string' || !STORED.test(storage.objects[schema]) || !storage.objects[schema].startsWith(`${schema}/madness-${schema}-`)))
+  throw new BackupCheckError('The private storage location of both archives is required')
 
  // Verify BOTH files before writing either success observation. A broken or
  // cross-schema archive must never advance even the first schema's timestamp.
@@ -50,7 +61,7 @@ export async function recordBackupChecks({ supabaseUrl, serviceKey, encryptionKe
   const record = {
    key: KEY, status: 'done', attempts: 0, token: null, lease_until: null, last_error: null,
    last_success_at: checkedAt, updated_at: checkedAt, next_attempt_at: checkedAt,
-   progress: { ...result, github_run_id: githubRunId, commit_sha: commitSha, artifact_id: artifactId, artifact_status: 'uploaded', verified_schemas: SCHEMAS },
+   progress: { ...result, github_run_id: githubRunId, commit_sha: commitSha, artifact_id: artifactId, artifact_status: 'uploaded', storage: 'supabase-private-bucket', storage_bucket: storage.bucket, storage_object: storage.objects[result.schema], verified_schemas: SCHEMAS },
   }
   let response
   try {
@@ -73,16 +84,19 @@ export async function recordBackupChecks({ supabaseUrl, serviceKey, encryptionKe
    throw new BackupCheckError('Saved backup observation could not be verified')
  }
  // Deliberately return only reviewed aggregate fields, never snapshot content.
- return { ok: true, checked_at: checkedAt, github_run_id: githubRunId, commit_sha: commitSha, artifact_id: artifactId, schemas: verified }
+ return { ok: true, checked_at: checkedAt, github_run_id: githubRunId, commit_sha: commitSha, artifact_id: artifactId, storage_bucket: storage.bucket, schemas: verified }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
  try {
+  const manifest = JSON.parse(await readFile('work/backup-storage.json', 'utf8').catch(() => '{}'))
   const result = await recordBackupChecks({
    supabaseUrl: process.env.SUPABASE_URL, serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
    encryptionKey: process.env.BACKUP_ENCRYPTION_KEY, githubRepository: process.env.GITHUB_REPOSITORY,
    githubRunId: process.env.GITHUB_RUN_ID, commitSha: process.env.GITHUB_SHA, artifactId: process.env.BACKUP_ARTIFACT_ID,
-   archives: SCHEMAS.map(schema => ({ schema, file: `work/backup-${schema}.json.enc` })),
+   // Verify the copies downloaded back from private storage, not the local originals.
+   archives: SCHEMAS.map(schema => ({ schema, file: `work/downloaded-${schema}.json.enc` })),
+   storage: { bucket: process.env.BACKUP_STORAGE_BUCKET, objects: Object.fromEntries(SCHEMAS.map(schema => [schema, manifest[schema]?.name])) },
   })
   console.log(JSON.stringify(result))
  } catch (error) {

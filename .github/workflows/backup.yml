@@ -1,4 +1,8 @@
 name: Encrypted backup and restore drill
+# Archives are stored only in a private Supabase Storage bucket in the Madness
+# project (never as workflow artifacts: this repository is public). If the
+# bucket is not configured, missing or public, the job fails before any backup
+# is taken. See docs/backup-recovery.md for the one-time owner setup.
 on:
   schedule:
     - cron: '30 10 * * *'
@@ -10,6 +14,7 @@ jobs:
     if: vars.BACKUPS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Secrets are scoped to the steps that run our scripts, never to npm ci.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,30 +22,47 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Back up public and sandbox and verify isolated restores
+      - name: Require a private backup bucket and a random 32-byte key
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_STORAGE_BUCKET: ${{ vars.BACKUP_STORAGE_BUCKET }}
         run: |
           set -euo pipefail
+          node --input-type=module -e "import {parseBackupKey} from './scripts/backup.mjs'; try { parseBackupKey(process.env.BACKUP_ENCRYPTION_KEY) } catch (error) { console.error(error.message); process.exit(1) }"
+          node scripts/backup-storage.mjs preflight
+      - name: Back up public and sandbox, verify isolated restores, store privately
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_STORAGE_BUCKET: ${{ vars.BACKUP_STORAGE_BUCKET }}
+        run: |
+          set -euo pipefail
+          mkdir -p work
           for schema in public sandbox; do
             SUPABASE_BACKUP_SCHEMA="$schema" node scripts/backup.mjs "work/backup-$schema.json.enc"
             node scripts/restore-check.mjs "work/backup-$schema.json.enc"
+            node scripts/backup-storage.mjs upload "$schema" "work/backup-$schema.json.enc"
           done
-      - uses: actions/upload-artifact@v4
-        id: upload
-        with:
-          name: encrypted-madness-backup-${{ github.run_id }}
-          path: |
-            work/backup-public.json.enc
-            work/backup-sandbox.json.enc
-          retention-days: 14
-          if-no-files-found: error
-      - name: Reverify uploaded archives and record restore observations
+      - name: Download stored archives, reverify and record restore observations
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
-          BACKUP_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
-        run: node scripts/record-backup-check.mjs
+          BACKUP_STORAGE_BUCKET: ${{ vars.BACKUP_STORAGE_BUCKET }}
+          BACKUP_ARTIFACT_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for schema in public sandbox; do
+            node scripts/backup-storage.mjs download "$schema" "work/downloaded-$schema.json.enc"
+          done
+          node scripts/record-backup-check.mjs
+      - name: Remove stored archives older than 14 days
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_STORAGE_BUCKET: ${{ vars.BACKUP_STORAGE_BUCKET }}
+        run: node scripts/backup-storage.mjs prune
