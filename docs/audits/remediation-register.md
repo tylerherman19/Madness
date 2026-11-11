@@ -85,21 +85,21 @@ Status values: Fixed and independently verified / Fixed but not fully verified /
 | F-05 | Never fabricate a winner | B | Fixed but not fully verified | `lib/espn.ts`, `lib/espnSync.ts` | `espnResult.test.ts`, `test-schedule-sync.mjs` | WS-B only | Legacy rows already graded from 0–0 feeds are kept (incident raised on next sync); reinstatement is WS-F |
 | F-06 | Query efficiency, caching, load test (no upgrade) | G | Not started | | | | |
 | F-07 | Monitoring without email | H | Not started | | | | |
-| F-08 | Private backup storage | C | Fixed but not fully verified | `scripts/backup.mjs`, `backup-storage.mjs`, `restore-check.mjs`, `record-backup-check.mjs`, `.github/workflows/backup.yml`, `docs/backup-recovery.md` | `scripts/test-backup-check.mjs`, `scripts/test-operations.mjs` | WS-C only; all Storage calls mocked | Owner: create private bucket `madness-backups`, set variable `BACKUP_STORAGE_BUCKET`, rotate `BACKUP_ENCRYPTION_KEY` to `openssl rand -base64 32`, run manually. Job fails until then. Recovery page still says "artifact" (shows run id) |
+| F-08 | Private backup storage | C | Not changed | Original backup pipeline retained (`scripts/backup.mjs`, `.github/workflows/backup.yml`); private-storage change dropped because it would fail nightly until the owner creates a bucket and rotates a key | n/a | n/a | Private storage can be revisited later as a separate, owner-scheduled change |
 | F-09 | Shared admin password | — | Excluded by owner | | | | |
 | F-10 | Signup policy | — | Excluded by owner | | | | |
 | F-11 | Independent contests, no delete | A | Not started | | | | |
 | F-12 | Corrected results restore/eliminate | F | Not started | | | | |
 | F-13 | Grade button works | E | Not started | | | | |
 | F-14 / D-1 / D-2 | Void/replace/manual, stall detection | F, H | Not started | | | | |
-| F-15 | Shared-network rate limits | C | Fixed but not fully verified | `lib/rateLimitPolicy.ts`, `proxy.ts`, `api/auth/login`, `api/auth/reset-password` | `src/lib/rateLimitPolicy.test.ts`, e2e 300 players behind one IP | WS-C only | Per-account login limit (30/15 min) lets a known email be delayed 15 min |
+| F-15 | Shared-network rate limits | C | Not changed | Original limits retained (one per-IP write check in `proxy.ts`; original login limits); the per-account cap and `rateLimitPolicy.ts` were dropped | n/a | n/a | None |
 | F-16 / UX-1 | Local time zone, CT fallback | E | Not started | | | | |
 | F-17 | Stable ESPN team ids | B | Partially fixed | `lib/espn.ts`, `lib/espnSync.ts`, `lib/teams.ts`, feeds, `lib/pickWindow.ts` | `espnResult.test.ts`, `test-schedule-sync.mjs` | WS-B only | Reuse index on `(player_id, team)`, `teams` keyed by `abbr`, grading by abbr and pick trigger `limit 1` remain (owner/WS-F) |
 | F-18 | Remove other-league stress test | E | Not started | | | | |
 | F-19 | e2e with a space in the path | Orchestrator | Fixed (12/12 e2e pass from a path with a space) | `playwright.config.ts`, `tests/*` | e2e | Not independently reviewed | |
 | F-20–F-26 | Email | — | Excluded by owner | | | | |
 | F-27 | Paid tier | — | Excluded by owner | | | | |
-| F-28 | Session secret minimum strength | C | Fixed but not fully verified | `lib/sessionSecret.ts`, `session.ts`, `testMode.ts`, `unsubscribe.ts`, `proxy.ts`, `ci.yml` | `src/lib/sessionSecret.test.ts`, `next build` | WS-C only | Owner: confirm production and preview `SESSION_SECRET` are >=32 random chars before deploy, else nobody can sign in; `SESSION_SECRET_ENFORCEMENT=warn` for staged rollout |
+| F-28 | Session secret minimum strength | C | Fixed (warn-only by default) | `lib/sessionSecret.ts`, `session.ts`, `testMode.ts`, `unsubscribe.ts`, `proxy.ts`, `ci.yml`, `api/operations/health` | `src/lib/sessionSecret.test.ts`, `next build` with a short secret | WS-C only | A weak secret logs one warning per instance and nothing is refused; `SESSION_SECRET_ENFORCEMENT=enforce` refuses it later; admin health payload shows `sessionSecret: ok\|weak` |
 | F-29 | Page views must not write | B | Fixed but not fully verified | `lib/autoAssign.ts`, `lib/pickWindow.ts`, `pick/page.tsx`, feeds | `revealFeeds.test.ts` (no DB on bypass), suite | WS-B only | Flags off: assignment only at 06:00 UTC cron / turnover. Next-day schedule now only from scheduled/admin syncs |
 | D-3 | Conference coverage | — | Excluded by owner | | | | |
 | D-4 | No alphabetical fallback | B | Fixed but not fully verified | `lib/autoAssign.ts`, `lib/deadline.ts`, `lib/espnSync.ts` | `test-operations.mjs` D-4 section | WS-B only | Owner decision: two unranked teams on one seed line with a snapshot present still use name order. PGlite is single-connection |
@@ -107,7 +107,7 @@ Status values: Fixed and independently verified / Fixed but not fully verified /
 | UX-3, UX-4, UX-5 | Touch targets, zero-alive copy, saved time | — | Excluded by owner | | | | |
 | UX-6 | Rules copy vs behaviour | — | Report only; rules not edited | | | | |
 | UX-7 | Safer admin actions | H | Not started | | | | |
-| 7.5 | Backup restore drill | C | Fixed but not fully verified | `scripts/test-backup-drill.mjs`, `restore-check.mjs` (inspect hook, newer tables), `docs/backup-recovery.md` | `npm run test:operations` | WS-C only | PGlite only; real recovery procedure documented, not rehearsed on Supabase |
+| 7.5 | Backup restore drill | C | Not changed | Original backup and restore check retained; the new restore drill was dropped with F-08 | n/a | n/a | None |
 
 ## Production facts gathered read-only (2026-11-11, Supabase dashboard, catalog SELECTs only)
 

@@ -2,9 +2,8 @@
 // unsubscribe links. This module is dependency-free (no `server-only`) so the
 // proxy and the unit tests can use it. It never logs or returns the value.
 //
-// Validation is lazy: it runs when a request needs to sign or verify, never at
-// import or build time, so `next build` with a placeholder still succeeds and a
-// weak deployed secret fails closed per request rather than crashing the app.
+// Validation is lazy (per request, never at import or build time). By default a
+// weak secret only warns; refusal needs SESSION_SECRET_ENFORCEMENT=enforce.
 
 export const MIN_SESSION_SECRET_LENGTH = 32
 
@@ -37,29 +36,33 @@ export function sessionSecretProblem(value: string | undefined | null): string |
 }
 
 type Env = Record<string, string | undefined>
-const reported = new Set<string>()
-function reportOnce(level: 'warn' | 'error', message: string) {
-  if (reported.has(level + message)) return
-  reported.add(level + message)
-  console[level](message)
+let warned = false
+function warnOnce(message: string) {
+  if (warned) return
+  warned = true
+  console.warn(message)
 }
 
-// Enforcement applies to production builds (Vercel production and preview,
-// `next start`). Development and the browser-test server only require the
-// value to be present. SESSION_SECRET_ENFORCEMENT=warn is a temporary rollout
-// escape hatch: it logs the problem and keeps signing with the weak value.
+export const sessionSecretEnforced = (env: Env = process.env): boolean =>
+  env.SESSION_SECRET_ENFORCEMENT?.trim().toLowerCase() === 'enforce'
+
+// 'ok' or 'weak' only: never the value or its length. A missing secret is 'weak'.
+export function sessionSecretStatus(env: Env = process.env): 'ok' | 'weak' {
+  return sessionSecretProblem(env.SESSION_SECRET) ? 'weak' : 'ok'
+}
+
+// Default: a weak production secret logs one warning per server instance and
+// keeps working exactly as before. Only SESSION_SECRET_ENFORCEMENT=enforce
+// refuses it. Development and the browser-test server only need a value.
 export function readSessionSecret(env: Env = process.env): string {
   const value = env.SESSION_SECRET
   if (!value) throw new SessionSecretError('SESSION_SECRET is not set')
   if (env.NODE_ENV !== 'production') return value
   const problem = sessionSecretProblem(value)
   if (!problem) return value
-  if (env.SESSION_SECRET_ENFORCEMENT === 'warn') {
-    reportOnce('warn', `${problem} (SESSION_SECRET_ENFORCEMENT=warn: continuing; rotate the secret and remove the flag)`)
-    return value
-  }
-  reportOnce('error', `${problem} Requests that need a signed session are refused until it is fixed.`)
-  throw new SessionSecretError(problem)
+  if (sessionSecretEnforced(env)) throw new SessionSecretError(problem)
+  warnOnce(`${problem} (continuing with the current value; set SESSION_SECRET_ENFORCEMENT=enforce once it is rotated to refuse weak secrets)`)
+  return value
 }
 
 export function sessionSecretKey(env: Env = process.env): Uint8Array {

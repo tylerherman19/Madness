@@ -5,7 +5,7 @@ import { serverError } from '@/lib/alerts'
 export async function POST(req: NextRequest) {
   try {
     const ip = await getIP()
-    const { allowed } = await checkRateLimit(`forgot-pin:${ip}`, 30, 60 * 60)
+    const { allowed } = await checkRateLimit(`forgot-pin:${ip}`, 5, 60 * 60)
     if (!allowed) {
       return NextResponse.json(
         { error: 'Too many requests from this device. Try again in an hour.' },

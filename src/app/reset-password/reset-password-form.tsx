@@ -38,6 +38,8 @@ export default function ResetPasswordForm({ token: queryToken }: { token?: strin
       if (!res.ok) {
         const data = await res.json().catch(() => null)
         setError(data?.error || 'Could not reset password.')
+        // A used, expired or invalid link is dead: take it out of the address bar and history.
+        if (res.status === 400 && /link/i.test(data?.error ?? '')) window.history.replaceState(null, '', '/reset-password')
         return
       }
       // The link is spent; drop it from the address bar and history entry.
