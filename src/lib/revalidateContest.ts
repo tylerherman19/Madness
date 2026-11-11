@@ -20,5 +20,5 @@ export function invalidateContestData(): void {
 // cache needn't be thrown away on every pick.
 export function revalidateContest({ picksOnly = false }: { picksOnly?: boolean } = {}) {
   if (!picksOnly) invalidateContestData()
-  for (const path of ['/', '/grid', '/sweat', '/pick', '/admin', '/admin/players']) revalidatePath(path)
+  for (const path of ['/', '/grid', '/sweat', '/pick', '/admin', '/admin/players', '/history']) revalidatePath(path)
 }

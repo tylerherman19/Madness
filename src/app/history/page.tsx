@@ -6,6 +6,9 @@ import { MODE_LABEL, type CompetitionMode } from '@/lib/competition'
 import PoolShell from '@/app/components/PoolShell'
 import s from '@/app/components/pp.module.css'
 
+// Like /grid: served from cache and refreshed every minute, never frozen at build.
+export const revalidate = 60
+
 export const metadata = pageMetadata('Past Contests', 'Final standings and picks from finished Pick and Pray contests.', '/history', false)
 
 interface ContestListItem {
