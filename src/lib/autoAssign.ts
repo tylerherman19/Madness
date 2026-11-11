@@ -200,7 +200,9 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
   }
 
   // Find alive players who have not completed this slate or round quota.
-  const alivePlayers = (await loadAll<{id: string; full_name: string; email: string; status: string; pool_id: string}>(supabase, 'players', 'id, full_name, email, status, pool_id')).filter(row => row.status === 'alive' && row.pool_id === pool.id)
+  // Only the active contest's entries (migration 030). A schema without the
+  // column predates independent contests, so every entry is this contest's.
+  const alivePlayers = (await loadAll<{id: string; full_name: string; email: string; status: string; pool_id?: string}>(supabase, 'players', 'id, full_name, email, status, pool_id')).filter(row => row.status === 'alive' && (row.pool_id === undefined || row.pool_id === pool.id))
 
   if (!alivePlayers || alivePlayers.length === 0) {
     return { ok: true, message: 'No alive players', done: true }
