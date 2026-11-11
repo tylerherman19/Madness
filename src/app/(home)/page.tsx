@@ -111,7 +111,6 @@ export default async function Today() {
     : null
 
   const survivors = (data?.players ?? []).filter((player) => player.status === 'alive')
-  const winner = pool.status === 'completed' && survivors.length === 1 ? survivors[0].full_name : null
   const standingsProps = {
     dayLabel: period ? `Day ${dayNumber}` : 'Today',
     hiddenUntil: slate && !locked ? lockIso : null,
@@ -183,7 +182,6 @@ export default async function Today() {
 
       <section id="standings" className={s.homeSection} aria-label="Standings">
         <div className={s.sectionHead}><h2>Standings</h2><span>{period ? `Through day ${dayNumber}` : ''}</span></div>
-        {winner && <div className={s.winner}><span className={s.cellLabel}>Winner</span><b>{winner}</b></div>}
         {data && ready ? (
           <StandingsBlock standings={ready.standings} core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
         ) : data ? (
