@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
-import { tipTime } from '@/lib/poolTheme'
+import { formatClock } from '@/lib/deadline'
+import { useViewerTimeZone } from '@/app/components/LocalTime'
 import LockCountdown from '@/app/components/LockCountdown'
 import TeamLogo from '@/app/components/TeamLogo'
 import s from '@/app/components/pp.module.css'
@@ -94,7 +95,10 @@ export default function PickForm({
 
   const name = (team: string) => brandFor(team, teamBrands).shortName
   const deadline = gameRows[0]?.deadline ?? null
-  const lockText = tipTime(deadline)
+  // Viewer-local display (Central until the browser zone is known); the server enforces the lock.
+  const viewerZone = useViewerTimeZone()
+  const lockText = formatClock(deadline, viewerZone)
+  const tipText = (iso: string) => formatClock(iso, viewerZone, false)
   const savedTeams = useMemo(() => new Set(picks.map((pick) => pick.team)), [picks])
   const editingPick = picks.find((pick) => pick.id === editingId) ?? null
   const canAdd = picks.length < requiredPicks
@@ -243,7 +247,7 @@ export default function PickForm({
     : activeSelection || pickStatus === 'Locked'
       ? `${teamName} ${pickStatus.toLowerCase()}`
       : `${pickStatus}: ${teamName}`
-  const changeDeadline = !locked && deadline && shownPick?.editable ? `Change until ${lockText} CT` : null
+  const changeDeadline = !locked && deadline && shownPick?.editable ? `Change until ${lockText}` : null
 
   function sideState(side: GameSide, game: GameRow): { state?: string; note: string } {
     if (side.used) return { state: 'used', note: `Used${side.usedOn ? ` ${side.usedOn}` : ''}` }
@@ -284,7 +288,7 @@ export default function PickForm({
         </div>
         {deadline && (
           <div className={s.lockBox}>
-            <span>Locks at {lockText} CT</span>
+            <span>Locks at {lockText}</span>
             <LockCountdown deadline={deadline} className={s.lockClock} soonClassName={s.clockSoon} />
           </div>
         )}
@@ -292,7 +296,7 @@ export default function PickForm({
       <p className={s.availLine}><b>{available.length}</b> of {teams.length} teams available{sharedRound ? ` · ${requiredPicks} picks this round` : ''}</p>
       <div className={s.mobileLock}>
         <span>{available.length} of {teams.length} teams available</span>
-        {deadline && <span>Locks {lockText} CT · <b><LockCountdown deadline={deadline} /></b></span>}
+        {deadline && <span>Locks {lockText} · <b><LockCountdown deadline={deadline} /></b></span>}
       </div>
       {error && <p role="alert" className={s.alert}>{error}</p>}
       {uncertain && <div><button className={s.cta} onClick={()=>void checkReceipt()} disabled={submitting}>Check saved pick</button>{!locked&&<button className={s.cta} onClick={()=>void submit()} disabled={submitting}>Retry same selection</button>}</div>}
@@ -304,7 +308,7 @@ export default function PickForm({
             {games.map((game) => (
               <div className={s.pickGame} key={game.gameId}>
                 <div className={s.pickMeta}>
-                  <span><b>{game.timeTbd ? 'TBD' : tipTime(game.kickoff)}</b>{game.tv ? ` · ${game.tv}` : ''}</span>
+                  <span><b>{game.timeTbd ? 'TBD' : tipText(game.kickoff)}</b>{game.tv ? ` · ${game.tv}` : ''}</span>
                   <span>{game.group ?? ''}</span>
                 </div>
                 {[game.away, game.home].map((side) => {
@@ -363,7 +367,7 @@ export default function PickForm({
                 <div className={s.cardTeam}>{receipt}</div>
               </div>
               {shownGame && opponent && (
-                <div className={s.pickLine}>vs {name(opponent)} · {shownGame.timeTbd ? 'TBD' : tipTime(shownGame.kickoff)}{shownGame.tv ? ` · ${shownGame.tv}` : ''}</div>
+                <div className={s.pickLine}>vs {name(opponent)} · {shownGame.timeTbd ? 'TBD' : tipText(shownGame.kickoff)}{shownGame.tv ? ` · ${shownGame.tv}` : ''}</div>
               )}
               {changeDeadline && <div className={s.pickLine}>{changeDeadline}</div>}
             </div>

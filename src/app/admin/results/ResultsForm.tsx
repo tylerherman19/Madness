@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Game, Slate } from '@/types'
 import { TONE_ROLE, TONE_TEXT_CLASS, type StatusMessage } from '../statusTone'
@@ -19,6 +19,8 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
     Object.fromEntries(games.map((g) => [g.id, g.result as GameResult]))
   )
   const [submitting, setSubmitting] = useState(false)
+  // State updates are async, so a fast double-click could start two requests before `disabled` renders.
+  const gradingInFlight = useRef(false)
   const [message, setMessage] = useState<StatusMessage | null>(null)
   const [gradingResult, setGradingResult] = useState<null | {
     eliminated: string[]
@@ -52,10 +54,12 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
   }
 
   async function gradeAllPending() {
+    if (gradingInFlight.current) return
+    gradingInFlight.current = true
     setSubmitting(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/results/grade-slate', {
+      const res = await fetch('/api/results/grade-week', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slate_id: slate.id }),
@@ -65,7 +69,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
         setGradingResult(data.grading)
         setMessage({
           tone: 'ok',
-          text: `Graded ${slate.slate_number}. ${data.grading.eliminated.length} eliminated.`,
+          text: `Graded slate ${slate.slate_number}. ${data.grading.eliminated.length} eliminated.`,
         })
         router.refresh()
       } else {
@@ -74,6 +78,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
     } catch {
       setMessage({ tone: 'error', text: 'Server error' })
     } finally {
+      gradingInFlight.current = false
       setSubmitting(false)
     }
   }
@@ -131,6 +136,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
         <button
           onClick={gradeAllPending}
           disabled={submitting}
+          aria-busy={submitting}
           className="rounded-lg bg-accent px-6 py-2.5 font-semibold text-on-accent hover:bg-accent-strong disabled:opacity-50 transition-colors"
         >
           {submitting ? 'Grading…' : 'Grade All Picks & Eliminate Losers'}

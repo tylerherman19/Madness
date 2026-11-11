@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { autoAssignHighestSeed, didPickWin, isSlateLocked } from './deadline.ts'
+import { FALLBACK_TIME_ZONE, autoAssignHighestSeed, didPickWin, formatClock, isSlateLocked, resolveTimeZone } from './deadline.ts'
 import type { Game } from '../types/index.ts'
 
 function game(
@@ -103,4 +103,48 @@ test('an earlier game overrides a later stored deadline', () => {
 test('an unknown deadline closes mutations without revealing private picks', () => {
   const tbd = { ...game('tbd', 'A', null, 'B', null), time_tbd: true }
   assert.equal(isSlateLocked(null, [tbd], new Date('2027-03-18T16:30:00Z')), true)
+})
+
+test('deadlines print in the viewer zone with a short label, and daylight saving follows the deadline date', () => {
+  // US clocks changed on 2026-03-08. The offset must come from the deadline's own instant.
+  const before = '2026-03-05T23:00:00Z'
+  const after = '2026-03-19T21:00:00Z'
+  assert.equal(formatClock(before, 'America/Chicago'), '5:00 PM CST')
+  assert.equal(formatClock(before, 'America/New_York'), '6:00 PM EST')
+  assert.equal(formatClock(after, 'America/Chicago'), '4:00 PM CDT')
+  assert.equal(formatClock(after, 'America/New_York'), '5:00 PM EDT')
+  assert.equal(formatClock(after, 'America/Los_Angeles'), '2:00 PM PDT')
+  assert.equal(formatClock(before, 'America/Los_Angeles'), '3:00 PM PST')
+})
+
+test('zones without daylight saving and UTC are labelled correctly across the change', () => {
+  for (const instant of ['2026-03-05T23:00:00Z', '2026-03-19T21:00:00Z']) {
+    assert.match(formatClock(instant, 'America/Phoenix'), /MST$/)
+    assert.match(formatClock(instant, 'Pacific/Honolulu'), /HST$/)
+    assert.match(formatClock(instant, 'UTC'), /UTC$/)
+  }
+  assert.equal(formatClock('2026-03-19T21:00:00Z', 'America/Phoenix'), '2:00 PM MST')
+  assert.equal(formatClock('2026-03-19T21:00:00Z', 'Pacific/Honolulu'), '11:00 AM HST')
+  assert.equal(formatClock('2026-03-19T21:00:00Z', 'UTC'), '9:00 PM UTC')
+})
+
+test('an unknown, empty or missing zone falls back to Central with its label', () => {
+  const instant = '2026-03-19T21:00:00Z'
+  for (const zone of ['Not/AZone', '', null, undefined, 'x']) {
+    assert.equal(formatClock(instant, zone), '4:00 PM CDT')
+  }
+  assert.equal(resolveTimeZone('Not/AZone'), FALLBACK_TIME_ZONE)
+  assert.equal(resolveTimeZone('Asia/Kolkata'), 'Asia/Kolkata')
+})
+
+test('the zone label can be left off and a missing or invalid time reads TBD', () => {
+  assert.equal(formatClock('2026-03-19T21:00:00Z', 'America/New_York', false), '5:00 PM')
+  assert.equal(formatClock(null), 'TBD')
+  assert.equal(formatClock('not a date', 'UTC'), 'TBD')
+  assert.equal(formatClock(new Date('2026-03-19T21:00:00Z'), 'UTC'), '9:00 PM UTC')
+})
+
+test('midnight and noon use the 12-hour clock without a leading zero hour', () => {
+  assert.equal(formatClock('2026-01-15T06:00:00Z', 'America/Chicago'), '12:00 AM CST')
+  assert.equal(formatClock('2026-01-15T18:00:00Z', 'America/Chicago'), '12:00 PM CST')
 })
