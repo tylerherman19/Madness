@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import type { AliveRow, OutRow } from '@/lib/standingsRows'
+import { unpackAlive, unpackOut, type PackedAlive, type PackedOut } from '@/lib/standingsWire'
 import {
   INITIAL_ROWS,
   ROWS_STEP,
@@ -30,8 +31,9 @@ interface Group<T> {
 }
 
 export default function StandingsTable({
-  alive,
-  out,
+  alive: packedAlive,
+  out: packedOut,
+  outLabels,
   teamBrands,
   dayLabel,
   hiddenUntil: hiddenUntilIso,
@@ -39,8 +41,9 @@ export default function StandingsTable({
   signupsClosed = true,
   compact = false,
 }: {
-  alive: AliveRow[]
-  out: OutRow[]
+  alive: (PackedAlive | string)[]
+  out: (PackedOut | string)[]
+  outLabels: Record<number, string>
   teamBrands: Record<string, TeamBrand>
   dayLabel: string
   // The instant picks are revealed (the slate's lock), shown in the viewer's time zone.
@@ -53,6 +56,10 @@ export default function StandingsTable({
   const [sort, setSort] = useState<SortMode>('alphabetical')
   const [query, setQuery] = useState('')
   const name = (team: string) => teamBrands[team]?.shortName ?? team
+  // Rows arrive packed (lib/standingsWire.ts); search, sort and the window all
+  // run over every entry once they are expanded.
+  const alive = useMemo(() => unpackAlive(packedAlive), [packedAlive])
+  const out = useMemo(() => unpackOut(packedOut, outLabels, (team) => teamBrands[team]?.shortName ?? team), [packedOut, outLabels, teamBrands])
   const teamsText = (teams: string[]) => teams.map(name).join(', ')
 
   const viewerZone = useViewerTimeZone()

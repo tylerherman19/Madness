@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { pageMetadata } from '@/lib/site'
-import { getContestCore, getContestStandings, preloadContestStandings, type ContestCore } from '@/lib/dashboard'
+import { getContestCore, getContestStandings, type ContestCore } from '@/lib/dashboard'
 import { haveSignupsClosedCached } from '@/lib/season'
 import { getContestState } from '@/lib/contestState'
 import { getSession } from '@/lib/session'
@@ -34,7 +34,6 @@ export const dynamic = 'force-dynamic'
 export const metadata = pageMetadata('Today', 'Today in the Pick and Pray college basketball survivor pool.', '/', true)
 
 export default async function Today() {
-  preloadContestStandings()
   // Your own picks are read as soon as the session is known, alongside the
   // pool's data rather than after it.
   const sessionRead = getSession()
@@ -45,10 +44,9 @@ export default async function Today() {
     sessionRead.then((current) => (current ? loadMyPicks(current.player_id) : [])),
     getContestState(),
   ])
-  // The standings started loading with everything else. When they are
-  // already in hand — the usual, cached case — they render with the page;
-  // only when they are still loading does the table stream in behind its
-  // placeholder.
+  // The standings are built from shared entries kept in memory, so they are
+  // normally in hand with the page; only when they are still loading does the
+  // table stream in behind its placeholder.
   const standingsRead = data ? getContestStandings(data) : Promise.resolve(null)
   const ready = await Promise.race([
     standingsRead.then((standings) => ({ standings })),
@@ -185,13 +183,13 @@ export default async function Today() {
         {data && ready ? (
           <StandingsBlock standings={ready.standings} core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
         ) : data ? (
-          // Everything above is built from today's data; the table needs the
-          // whole season, so it streams in behind a same-size placeholder.
+          // Everything above is built from today's data; the table may need the
+          // season's finished days, so it can stream in behind a same-size placeholder.
           <Suspense fallback={<StandingsTableSkeleton alive={alive} out={total - alive} showSeedTotal={standingsProps.showSeedTotal} />}>
             <TodayStandings core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
           </Suspense>
         ) : (
-          <StandingsTable alive={[]} out={[]} teamBrands={{}} {...standingsProps} />
+          <StandingsTable alive={[]} out={[]} outLabels={{}} teamBrands={{}} {...standingsProps} />
         )}
       </section>
 
@@ -212,8 +210,8 @@ type StandingsTableProps = {
 
 function StandingsBlock({ standings, core, meId, myTeams, ...table }: StandingsTableProps & { standings: StandingRow[] | null }) {
   if (!standings) return <p role="status" className={s.notice}>Standings are unavailable. Refresh to try again.</p>
-  const rows = buildStandingsRows({ standings, periods: core.periods, meId, myTeams, brands: core.teamBrands })
-  return <StandingsTable alive={rows.alive} out={rows.out} teamBrands={rows.teamBrands} {...table} />
+  const rows = buildStandingsRows({ standings, periods: core.periods, meId, myTeams, brands: core.teamBrands, showSeedTotal: table.showSeedTotal })
+  return <StandingsTable alive={rows.alive} out={rows.out} outLabels={rows.outLabels} teamBrands={rows.teamBrands} {...table} />
 }
 
 async function TodayStandings(props: StandingsTableProps) {
