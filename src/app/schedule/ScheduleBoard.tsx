@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react'
 import type { ScheduleDay } from './page'
 import type { LiveScoresResponse } from '@/app/api/live-scores/route'
 import { brandFor, type TeamBrandDirectory } from '@/lib/teamBrand'
-import { formatClock } from '@/lib/deadline'
-import { useViewerTimeZone } from '@/app/components/LocalTime'
+import { tipTime } from '@/lib/poolTheme'
 import TeamLogo from '@/app/components/TeamLogo'
 import { american, point } from '@/lib/oddsFormat'
 import { RETRY_MS, nextPollMs } from '@/lib/livePolling'
@@ -14,7 +13,6 @@ import s from '@/app/components/pp.module.css'
 export default function ScheduleBoard({ days, brands, tournament, sandbox = false }: { days: ScheduleDay[]; brands: TeamBrandDirectory; tournament: boolean; sandbox?: boolean }) {
   const [date, setDate] = useState(days.find((d) => d.games.length)?.date ?? days[0]?.date ?? '')
   const [query, setQuery] = useState('')
-  const viewerZone = useViewerTimeZone()
   const [live, setLive] = useState<LiveScoresResponse | null>(null)
 
   // Scores from the same feed and on the same timing as the ticker: often
@@ -75,7 +73,7 @@ export default function ScheduleBoard({ days, brands, tournament, sandbox = fals
           return (
             <div className={`${s.gameRow} ${s.scheduleRow}`} key={`${game.awayAbbr}${game.homeAbbr}${index}`}>
               <span className={s.gameTime}>
-                {result?.state === 'in' ? <span className={s.clockLive}>{result.statusText}</span> : <b>{started ? 'Final' : game.timeTbd ? 'TBD' : formatClock(game.kickoff, viewerZone, false)}</b>}
+                {result?.state === 'in' ? <span className={s.clockLive}>{result.statusText}</span> : <b>{started ? 'Final' : game.timeTbd ? 'TBD' : tipTime(game.kickoff)}</b>}
                 <span>{game.tv ?? ''}</span>
               </span>
               <span className={s.sides}>

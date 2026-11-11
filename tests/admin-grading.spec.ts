@@ -36,7 +36,7 @@ test('Grade button grades the slate once, is audited, and a repeat changes nothi
   })
   const grade = page.getByRole('button', { name: /Grade All Picks/ })
   await grade.dblclick()
-  await expect(page.getByText('Graded slate 1. 1 eliminated.')).toBeVisible()
+  await expect(page.getByText('Graded 1. 1 eliminated.')).toBeVisible()
   expect(gradeCalls).toBe(1)
 
   const player = (await rows(request, `/players?id=eq.${OTHER_PLAYER}`))[0]
@@ -51,7 +51,7 @@ test('Grade button grades the slate once, is audited, and a repeat changes nothi
   // A deliberate second run is a no-op for entries: nobody new is eliminated.
   await expect(grade).toBeEnabled()
   await grade.click()
-  await expect(page.getByText('Graded slate 1. 0 eliminated.')).toBeVisible()
+  await expect(page.getByText('Graded 1. 0 eliminated.')).toBeVisible()
   expect(await audit('player-eliminated')).toHaveLength(1)
   expect((await rows(request, `/players?id=eq.${OTHER_PLAYER}`))[0].elimination_slate).toBe(player.elimination_slate)
 })
@@ -72,7 +72,7 @@ test('setting a result in the form saves it and grades the slate immediately', a
   await expect.poll(async () => (await rows(request, '/games?result=eq.away_win')).length).toBe(1)
   expect((await rows(request, '/audit_log?event_type=eq.result-set')).length).toBe(1)
   await page.getByRole('button', { name: /Grade All Picks/ }).click()
-  await expect(page.getByText('Graded slate 1. 0 eliminated.')).toBeVisible()
+  await expect(page.getByText('Graded 1. 0 eliminated.')).toBeVisible()
 })
 
 test('an unauthenticated grading request is refused and changes nothing', async ({ request }) => {

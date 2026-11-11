@@ -24,8 +24,12 @@ async function seedEntries(request: APIRequestContext, count: number, eliminated
     const res = await request.post(`${FIXTURE_DB}/players`, { data: rows })
     expect(res.ok(), await res.text()).toBeTruthy()
   }
-  // Rows added behind the app's back are invisible until the server's contest
-  // cache is invalidated; an admin result write (no-op: pending -> pending) does that.
+  await bustCache(request)
+}
+
+// Rows added behind the app's back are invisible until the server's contest
+// cache is invalidated; an admin result write (no-op: pending -> pending) does that.
+async function bustCache(request: APIRequestContext) {
   const cookie = await adminCookie()
   const game = (await (await request.get(`${FIXTURE_DB}/games`)).json())[0]
   const bust = await request.post('/api/results', {
@@ -107,4 +111,40 @@ test('a search with no match says so and announces zero results', async ({ page,
   await page.getByLabel('Find an entry').fill('nobody at all')
   await expect(page.getByText('No match.').first()).toBeVisible()
   await expect(page.getByRole('status').filter({ hasText: 'match' })).toContainText('0 of')
+})
+
+test('the signed-in viewer\'s own entry stays on screen in By team order even past the first page', async ({ page, request }) => {
+  await seedEntries(request, 1200)
+  const login = await page.context().request.post('/api/auth/login', { data: { email: 'player+test@example.test', password: 'FixturePass123!' } })
+  expect(login.ok()).toBeTruthy()
+  // Everyone else picks A, the viewer picks B: after lock the one-person B group sorts after the huge A group.
+  const mine = await page.context().request.post('/api/picks', { data: { slate_id: '00000000-0000-4000-8000-000000000001', team: 'B' } })
+  expect(mine.ok(), await mine.text()).toBeTruthy()
+  const players = (await (await request.get(`${FIXTURE_DB}/players?limit=5000`)).json()) as { id: string; email: string }[]
+  const others = players.filter((p) => p.email.startsWith('scale'))
+  for (let i = 0; i < others.length; i += 500) {
+    const res = await request.post(`${FIXTURE_DB}/picks`, {
+      data: others.slice(i, i + 500).map((p) => ({ slate_id: '00000000-0000-4000-8000-000000000001', player_id: p.id, team: 'A' })),
+    })
+    expect(res.ok(), await res.text()).toBeTruthy()
+  }
+  expect((await request.post(`${FIXTURE_DB}/__test/lock`)).ok()).toBeTruthy()
+  await bustCache(request)
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'By team' }).click()
+  const table = aliveTable(page)
+  const row = table.getByRole('row').filter({ hasText: /^You/ })
+  await expect(row).toHaveCount(1)
+  expect(Number(await row.getAttribute('aria-rowindex'))).toBeGreaterThan(100)
+  expect(await bodyRows(page)).toBeLessThanOrEqual(102) // 100 entries + group heading + pinned own row
+})
+
+test('Show more then a new search then clearing it returns to the first page', async ({ page, request }) => {
+  await seedEntries(request, 400)
+  await page.goto('/')
+  await page.getByRole('button', { name: /Show \d+ more alive entries/ }).click()
+  expect(await bodyRows(page)).toBeGreaterThan(100)
+  await page.getByLabel('Find an entry').fill('Entry 00')
+  await page.getByLabel('Find an entry').fill('')
+  expect(await bodyRows(page)).toBeLessThanOrEqual(100)
 })

@@ -69,7 +69,7 @@ export default function ResultsForm({ slate, games, pendingEliminations }: Props
         setGradingResult(data.grading)
         setMessage({
           tone: 'ok',
-          text: `Graded slate ${slate.slate_number}. ${data.grading.eliminated.length} eliminated.`,
+          text: `Graded ${slate.slate_number}. ${data.grading.eliminated.length} eliminated.`,
         })
         router.refresh()
       } else {
