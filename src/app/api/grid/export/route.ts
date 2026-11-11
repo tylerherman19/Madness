@@ -53,7 +53,7 @@ export async function GET() {
       supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active, locks_at').order('slate_number'),
       allRows(supabase
         .from('players')
-        .select('id, full_name, status, elimination_slate')
+        .select('id, full_name, status, elimination_slate, pool_id')
         .not('email', 'like', '%@nflsurvivor.internal')
         .order('full_name')),
       loadAll<ExportPick>(supabase, 'picks', 'player_id, slate_id, team').then((data) => ({ data, error: null })),
@@ -66,8 +66,10 @@ export async function GET() {
     if (queryError) throw queryError
 
     const allSlates = (slatesRes.data ?? []) as ExportSlate[]
-    const players = (playersRes.data ?? []) as ExportPlayer[]
-    const allPicks = (picksRes.data ?? []) as ExportPick[]
+    // The active contest's entries and their picks only (migration 030).
+    const players = ((playersRes.data ?? []) as (ExportPlayer & { pool_id?: string })[]).filter((player) => player.pool_id === pool.id)
+    const contestIds = new Set(players.map((player) => player.id))
+    const allPicks = ((picksRes.data ?? []) as ExportPick[]).filter((pick) => contestIds.has(pick.player_id))
     const allGames = (gamesRes.data ?? []) as ExportGame[]
     const activeSlate = allSlates.find((slate) => slate.is_active && slate.season_year === pool.season_year)
     const seasonSlates = allSlates

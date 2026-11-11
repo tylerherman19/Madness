@@ -6,7 +6,7 @@ import { slateDeadline, isPickRevealed } from '@/lib/deadline'
 import { isDeliverable } from '@/lib/email'
 import { autoAssignIfDue } from '@/lib/autoAssign'
 import { fetchDayScoreboard, eventCompetitors } from '@/lib/espn'
-import { getPoolConfig } from '@/lib/pool'
+import { getPoolConfig, poolScope } from '@/lib/pool'
 import {
   buildPickPeriods,
   capabilitiesFor,
@@ -152,6 +152,7 @@ export async function GET(request: NextRequest) {
       allRows(supabase
         .from('players')
         .select('id, full_name, email, status, elimination_slate')
+        .eq('pool_id', poolScope(pool))
         .order('full_name')),
       loadPicksForSlates<{ player_id: string; team: string; auto_assigned: boolean | null }>(supabase, [slate.id], 'player_id, team, auto_assigned').then(data => ({ data })),
       supabase.from('games').select('*').eq('slate_id', slate.id),

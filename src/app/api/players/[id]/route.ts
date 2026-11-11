@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getActivePoolId } from '@/lib/pool'
 import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid, escapeIlike } from '@/lib/api'
@@ -31,6 +32,13 @@ export async function PATCH(
   if ('status' in updates && updates.status !== 'alive' && updates.status !== 'eliminated') {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
+  // Archived contests are read-only: their entries keep their final state.
+  const { data: entry, error: entryError } = await supabase.from('players').select('pool_id').eq('id', id).maybeSingle()
+  if (entryError) return serverError('api/players/[id]', entryError, 'Could not load player')
+  if (!entry) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+  if (entry.pool_id !== await getActivePoolId(supabase)) {
+    return NextResponse.json({ error: 'This entry belongs to an archived contest and cannot be changed.' }, { status: 409 })
+  }
 
   // full_name is the login key but doesn't have to be unique — login tries
   // every same-named candidate's password (see /api/auth/login). Email stays
@@ -49,6 +57,7 @@ export async function PATCH(
     const { data: byEmail } = await supabase
       .from('players')
       .select('id')
+      .eq('pool_id', entry.pool_id)
       .ilike('email', escapeIlike(email))
       .neq('id', id)
       .limit(1)

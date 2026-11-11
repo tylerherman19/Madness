@@ -2,7 +2,7 @@ import { allRows } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
-import { getPoolConfig } from '@/lib/pool'
+import { getPoolConfig, poolScope } from '@/lib/pool'
 import { buildPickPeriods } from '@/lib/competition'
 import RecapClient from './RecapClient'
 
@@ -25,8 +25,8 @@ export default async function RecapPage() {
   if (activeSlate) {
     const [{ data: games }, { data: players }, { data: picks }] = await Promise.all([
       supabase.from('games').select('*').eq('slate_id', activeSlate.id).order('tip_time'),
-      allRows(supabase.from('players').select('*')),
-      allRows(supabase.from('picks').select('*, players(full_name)').eq('slate_id', activeSlate.id)),
+      allRows(supabase.from('players').select('*').eq('pool_id', poolScope(pool))),
+      allRows(supabase.from('picks').select('*, players(full_name)').eq('slate_id', activeSlate.id).eq('pool_id', poolScope(pool))),
     ])
 
     const { generateRecap } = await import('@/lib/recap')

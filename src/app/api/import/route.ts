@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getActivePoolId } from '@/lib/pool'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, escapeIlike } from '@/lib/api'
 import { hashPassword, passwordValidationError } from '@/lib/password'
@@ -58,6 +59,8 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await getDb()
+    // Imported entries join the active contest; duplicates are checked there.
+    const poolId = await getActivePoolId(supabase)
 
     let count = 0
     let skipped = 0
@@ -75,8 +78,9 @@ export async function POST(req: NextRequest) {
         const { data: existing } = await supabase
           .from('players')
           .select('id')
+          .eq('pool_id', poolId)
           .ilike('email', escapeIlike(row.email))
-          .single()
+          .maybeSingle()
 
         if (existing) {
           skipped++

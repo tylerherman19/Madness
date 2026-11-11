@@ -56,11 +56,13 @@ export async function legacyPickPost(req: NextRequest) {
     // Check player is alive
     const { data: player } = await supabase
       .from('players')
-      .select('id, email, full_name, status, notifications_enabled')
+      .select('id, email, full_name, status, notifications_enabled, pool_id')
       .eq('id', playerId)
       .single()
 
     if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+    // Entries belong to one contest; an archived contest's entry cannot pick.
+    if (player.pool_id !== pool.id) return NextResponse.json({ error: 'This entry belongs to a past contest.' }, { status: 403 })
     if (player.status === 'eliminated') {
       return NextResponse.json({ error: 'You are eliminated' }, { status: 403 })
     }

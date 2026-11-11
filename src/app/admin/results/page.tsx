@@ -1,4 +1,5 @@
 import {allRows} from '@/lib/db'
+import { getActivePoolId } from '@/lib/pool'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
@@ -29,7 +30,7 @@ export default async function ResultsPage() {
       .order('tip_time')
     games = data || []
 
-    const { data: pickRows } = await allRows(supabase.from('picks').select('player_id,team,players(status)').eq('slate_id',activeSlate.id))
+    const { data: pickRows } = await allRows(supabase.from('picks').select('player_id,team,players(status)').eq('slate_id',activeSlate.id).eq('pool_id',await getActivePoolId(supabase)))
     const picks = (pickRows || []).map((p) => ({
       playerId:p.player_id,
       team: p.team as string,

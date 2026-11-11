@@ -1,10 +1,10 @@
-import { allRows } from '@/lib/db'
+import { allRows, selectAll } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import { formatCentralTime } from '@/lib/deadline'
 import { getTeamAbbrs } from '@/lib/teams'
-import { getPoolConfig } from '@/lib/pool'
+import { getPoolConfig, poolScope } from '@/lib/pool'
 import { loadAll } from '@/lib/seasonData'
 import { buildPickPeriods, type PickPeriod } from '@/lib/competition'
 
@@ -39,9 +39,11 @@ export default async function AdminHistoryPage() {
     supabase.from('slates').select('id, slate_number, slate_date, season_year, is_active').order('slate_number'),
     loadAll<GameRow>(supabase, 'games', 'id, slate_id, home_team, away_team, result, tip_time, round_label')
       .then((data) => ({ data: data.sort((a, b) => a.tip_time.localeCompare(b.tip_time)) })),
-    loadAll<{ slate_id: string; team: string; auto_assigned: boolean }>(supabase, 'picks', 'slate_id, team, auto_assigned')
+    // The active contest's picks and entries; finished contests are on /history.
+    selectAll<{ slate_id: string; team: string; auto_assigned: boolean }>((from, to) =>
+      supabase.from('picks').select('slate_id, team, auto_assigned').eq('pool_id', poolScope(pool)).order('id').range(from, to))
       .then((data) => ({ data })),
-    allRows(supabase.from('players').select('full_name, email, status, elimination_slate, elimination_reason')),
+    allRows(supabase.from('players').select('full_name, email, status, elimination_slate, elimination_reason').eq('pool_id', poolScope(pool))),
   ])
 
   const weekRows: WeekRow[] = slates || []

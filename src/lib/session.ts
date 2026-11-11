@@ -7,6 +7,7 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import type { SessionPayload } from '@/types'
 import { isTestMode } from './testMode'
+import { getActivePoolId } from './pool'
 
 const SESSION_COOKIE = 'survivor_session'
 const ADMIN_COOKIE = 'survivor_admin'
@@ -79,12 +80,14 @@ export const getSession = cache(async (): Promise<SessionPayload | null> => {
     if (payload.purpose !== 'player' || typeof payload.player_id !== 'string' || typeof payload.credential_version !== 'string') return null
     const db = await getDb()
     // Independent checks, read together: both must pass.
-    const [revoked, { data: player, error }] = await Promise.all([
+    const [revoked, { data: player, error }, activePoolId] = await Promise.all([
       isRevoked(token),
-      db.from('players').select('pin_hash').eq('id', payload.player_id).maybeSingle(),
+      db.from('players').select('pin_hash, pool_id').eq('id', payload.player_id).maybeSingle(),
+      getActivePoolId(db),
     ])
     if (revoked) return null
-    if (error || !player) return null
+    // An entry in an archived contest is not a current session (migration 030).
+    if (error || !player || player.pool_id !== activePoolId) return null
     const expected = Buffer.from(credentialVersion(player.pin_hash))
     const actual = Buffer.from(payload.credential_version)
     if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null

@@ -83,6 +83,23 @@ export async function readPoolConfig(db: SupabaseClient): Promise<PoolConfig> {
   return data ? normalize(data) : DEFAULT_POOL_CONFIG
 }
 
+// The active contest's id, for scoping every live-gameplay query on `players`
+// and `picks` (migration 030: an entry belongs to exactly one contest, and an
+// archived contest's entries must never appear in the current one). Throws
+// when no active contest can be read: an unscoped read would mix contests.
+export async function getActivePoolId(db?: SupabaseClient): Promise<string> {
+  const supabase = db ?? (await getDb())
+  const { data, error } = await readActivePool(supabase)
+  if (error) throw error
+  if (!data?.id) throw new Error('No active contest is configured')
+  return data.id as string
+}
+
+// A filter value for a pool config that may be the no-row default (id ''):
+// matches no entry instead of failing as an invalid uuid or reading every contest.
+export const NO_POOL_ID = '00000000-0000-0000-0000-000000000000'
+export const poolScope = (pool: Pick<PoolConfig, 'id'>): string => pool.id || NO_POOL_ID
+
 export type PoolConfigPatch = Partial<
   Pick<
     PoolConfig,

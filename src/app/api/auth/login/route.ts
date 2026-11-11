@@ -6,6 +6,7 @@ import { createSession } from '@/lib/session'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
 import { serverError } from '@/lib/alerts'
+import { getActivePoolId } from '@/lib/pool'
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     const supabase = await getDb()
     const { data: players, error } = await supabase.from('players')
       .select('id, full_name, pin_hash, status')
-      .ilike('email', escapeIlike(identity)).limit(2)
+      .eq('pool_id', await getActivePoolId(supabase)).ilike('email', escapeIlike(identity)).limit(2)
     if (error) throw error
     const player = players?.length === 1 ? players[0] : null
     if (!player || !(await verifyPassword(password, player.pin_hash))) {
