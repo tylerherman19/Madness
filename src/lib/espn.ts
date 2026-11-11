@@ -295,6 +295,22 @@ export function resultOf(
   return scored === 'home' ? 'home_win' : 'away_win'
 }
 
+// ESPN itself calls the game over: a final status code, completed, post.
+// Whether the score can be trusted is resultOf's separate question.
+export function reportsFinal(event: EspnEvent): boolean {
+  const type = event.competitions?.[0]?.status?.type
+  return !!type && type.completed === true && type.state === 'post' && !!type.name && FINAL_STATUS_NAMES.has(type.name)
+}
+
+// A short, stable description of what the feed says about a game, for review
+// items. It changes exactly when the observed state changes.
+export function describeFeedState(event: EspnEvent): string {
+  const comp = event.competitions?.[0]
+  const type = comp?.status?.type
+  const sides = (comp?.competitors ?? []).map((c) => `${c.team?.abbreviation ?? '?'} ${c.score ?? 'no score'}${c.winner === true ? ' (winner flag)' : ''}`)
+  return `${type?.name ?? 'no status code'}, ${type?.state ?? 'no state'}${type?.completed ? ', completed' : ''}; ${sides.join(' vs ') || 'no competitors'}`
+}
+
 // The state a board may show. ESPN reports postponed and cancelled games as
 // 'post' with a 0–0 score, and every board reads 'post' as "final, compare
 // the scores" — which would show both sides as having lost. Only a game with

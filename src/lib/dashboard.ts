@@ -318,10 +318,19 @@ export const getContestStandings = cache(async (core: ContestCore): Promise<Stan
         .filter((p) => p.status === 'eliminated' && p.elimination_slate != null)
         .map((p) => [p.id, p.elimination_slate!])
     )
+    // An admin can eliminate an entry on a day that has not locked yet, so
+    // the day must be revealed and the pick's game a final it lost.
+    const slateById = new Map(slates.map((w) => [w.id, w]))
+    const lostGame = (pick: { slate_id: string; team: string }) => {
+      const game = (gamesBySlate.get(pick.slate_id) ?? []).find((g) => g.home_team === pick.team || g.away_team === pick.team)
+      return !!game && (game.result === 'tie' || game.result === (game.home_team === pick.team ? 'away_win' : 'home_win'))
+    }
     const losingPicksByPlayer: Record<string, string[]> = {}
     for (const pick of seasonPicks) {
       const out = eliminationSlateByPlayer.get(pick.player_id)
-      if (out != null && slateNumberById.get(pick.slate_id) === out) {
+      const day = slateById.get(pick.slate_id)
+      if (out != null && slateNumberById.get(pick.slate_id) === out && day &&
+          isPickRevealed(day, (gamesBySlate.get(day.id) ?? []) as Game[], now) && lostGame(pick)) {
         losingPicksByPlayer[pick.player_id] = [...(losingPicksByPlayer[pick.player_id] ?? []), pick.team]
       }
     }
