@@ -81,8 +81,8 @@ Status values: Fixed and independently verified / Fixed but not fully verified /
 | F-01 | No winner logic; thresholds; zero-survivor stop | F | Not started | | | | |
 | F-02 | Admin-generated one-time reset link, no email | C | Fixed but not fully verified | `032_password_reset_links.sql`, `api/players/[id]/regen-pin`, `api/auth/reset-password`, `api/forgot-pin`, `reset-password/*`, `forgot-pin/page.tsx`, `admin/players/PlayersManager.tsx`, `lib/password.ts`, `lib/auditEvents.ts` | `tests/account-recovery.spec.ts`, `scripts/test-password-reset.mjs`, legacy `reset link` e2e | WS-C only | Apply migration 032 (fallback works without it, but reuse/expiry are not audited). Concurrency verified serially only (PGlite single connection); atomicity relies on the row lock |
 | F-03 | Native API in source control, reviewed | D | Not started | | | | |
-| F-04 | Single reveal rule | B | Not started | | | | |
-| F-05 | Never fabricate a winner | B | Not started | | | | |
+| F-04 | Single reveal rule | B | Fixed but not fully verified | `api/sweat`, `api/live-scores`, `lib/feedRules.ts`, `grid/page.tsx` (time_tbd) | `revealFeeds.test.ts`, `tests/reveal.spec.ts` | WS-B only | SQL `app_private.slate_is_revealed` does not exist in any migration; TS rule only. Real CDN not exercised |
+| F-05 | Never fabricate a winner | B | Fixed but not fully verified | `lib/espn.ts`, `lib/espnSync.ts` | `espnResult.test.ts`, `test-schedule-sync.mjs` | WS-B only | Legacy rows already graded from 0–0 feeds are kept (incident raised on next sync); reinstatement is WS-F |
 | F-06 | Query efficiency, caching, load test (no upgrade) | G | Not started | | | | |
 | F-07 | Monitoring without email | H | Not started | | | | |
 | F-08 | Private backup storage | C | Fixed but not fully verified | `scripts/backup.mjs`, `backup-storage.mjs`, `restore-check.mjs`, `record-backup-check.mjs`, `.github/workflows/backup.yml`, `docs/backup-recovery.md` | `scripts/test-backup-check.mjs`, `scripts/test-operations.mjs` | WS-C only; all Storage calls mocked | Owner: create private bucket `madness-backups`, set variable `BACKUP_STORAGE_BUCKET`, rotate `BACKUP_ENCRYPTION_KEY` to `openssl rand -base64 32`, run manually. Job fails until then. Recovery page still says "artifact" (shows run id) |
@@ -94,15 +94,15 @@ Status values: Fixed and independently verified / Fixed but not fully verified /
 | F-14 / D-1 / D-2 | Void/replace/manual, stall detection | F, H | Not started | | | | |
 | F-15 | Shared-network rate limits | C | Fixed but not fully verified | `lib/rateLimitPolicy.ts`, `proxy.ts`, `api/auth/login`, `api/auth/reset-password` | `src/lib/rateLimitPolicy.test.ts`, e2e 300 players behind one IP | WS-C only | Per-account login limit (30/15 min) lets a known email be delayed 15 min |
 | F-16 / UX-1 | Local time zone, CT fallback | E | Not started | | | | |
-| F-17 | Stable ESPN team ids | B | Not started | | | | |
+| F-17 | Stable ESPN team ids | B | Partially fixed | `lib/espn.ts`, `lib/espnSync.ts`, `lib/teams.ts`, feeds, `lib/pickWindow.ts` | `espnResult.test.ts`, `test-schedule-sync.mjs` | WS-B only | Reuse index on `(player_id, team)`, `teams` keyed by `abbr`, grading by abbr and pick trigger `limit 1` remain (owner/WS-F) |
 | F-18 | Remove other-league stress test | E | Not started | | | | |
 | F-19 | e2e with a space in the path | Orchestrator | Fixed (12/12 e2e pass from a path with a space) | `playwright.config.ts`, `tests/*` | e2e | Not independently reviewed | |
 | F-20–F-26 | Email | — | Excluded by owner | | | | |
 | F-27 | Paid tier | — | Excluded by owner | | | | |
 | F-28 | Session secret minimum strength | C | Fixed but not fully verified | `lib/sessionSecret.ts`, `session.ts`, `testMode.ts`, `unsubscribe.ts`, `proxy.ts`, `ci.yml` | `src/lib/sessionSecret.test.ts`, `next build` | WS-C only | Owner: confirm production and preview `SESSION_SECRET` are >=32 random chars before deploy, else nobody can sign in; `SESSION_SECRET_ENFORCEMENT=warn` for staged rollout |
-| F-29 | Page views must not write | B | Not started | | | | |
+| F-29 | Page views must not write | B | Fixed but not fully verified | `lib/autoAssign.ts`, `lib/pickWindow.ts`, `pick/page.tsx`, feeds | `revealFeeds.test.ts` (no DB on bypass), suite | WS-B only | Flags off: assignment only at 06:00 UTC cron / turnover. Next-day schedule now only from scheduled/admin syncs |
 | D-3 | Conference coverage | — | Excluded by owner | | | | |
-| D-4 | No alphabetical fallback | B | Not started | | | | |
+| D-4 | No alphabetical fallback | B | Fixed but not fully verified | `lib/autoAssign.ts`, `lib/deadline.ts`, `lib/espnSync.ts` | `test-operations.mjs` D-4 section | WS-B only | Owner decision: two unranked teams on one seed line with a snapshot present still use name order. PGlite is single-connection |
 | UX-2 | Standings at 1,000 rows | E | Not started | | | | |
 | UX-3, UX-4, UX-5 | Touch targets, zero-alive copy, saved time | — | Excluded by owner | | | | |
 | UX-6 | Rules copy vs behaviour | — | Report only; rules not edited | | | | |

@@ -1,15 +1,15 @@
 import {allRows} from '@/lib/db'
-import { NextResponse, after, type NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { getDb, isTestMode, getEffectiveNow } from '@/lib/testMode'
 import { isDeliverable } from '@/lib/email'
-import { fetchDayScoreboard, eventCompetitors, seedOf } from '@/lib/espn'
-import { isPickRevealed } from '@/lib/deadline'
-import { autoAssignIfDue } from '@/lib/autoAssign'
+import { fetchDayScoreboard, seedOf, displayStateOf, scheduledEventSides } from '@/lib/espn'
+import { isPickRevealed, slateDeadline } from '@/lib/deadline'
 import type { Game } from '@/types'
 import { loadPicksForSlates } from '@/lib/seasonData'
 import { reportFailure } from '@/lib/alerts'
 import { getTeamBrandDirectory } from '@/lib/sharedData'
 import { cdnSeconds, feedCacheControl } from '@/lib/livePolling'
+import { revealCacheSeconds, sandboxRedirect } from '@/lib/feedRules'
 import { centralClock } from '@/lib/operationPolicy'
 
 export interface LiveGame {
@@ -49,9 +49,6 @@ export interface LiveScoresResponse {
   // schedule table (the sandbox, or a slate ESPN can't serve yet).
   source: 'espn' | 'schedule' | 'none'
 }
-
-// Room for the auto-assign run this route may kick off after responding.
-export const maxDuration = 60
 
 const EMPTY: LiveScoresResponse = {
   slateNumber: null, games: [], picksVisible: false, hasLiveGames: false, season: null, source: 'none',
@@ -94,17 +91,21 @@ function gameFromSchedule(g: Game, now: Date, teams: Record<string, { logo: stri
 
 // The CDN keeps a copy for up to a minute before a tip (never past it), 10
 // seconds during games and 5 minutes once the day is done; see lib/livePolling.
-// Test-mode browsers ask for ?sandbox=1, which is never stored, so a tester
-// never sees the real pool's copy and the real pool never sees the sandbox.
+// Pick counts appear only once the stored lock has passed, and a copy made
+// before then never outlives it. Test-mode browsers ask for ?sandbox=1, which
+// is never stored, so a tester never sees the real pool's copy and the real
+// pool never sees the sandbox; outside test mode it redirects to the shared URL.
 const BEFORE_TIP_SECONDS = 60
 // With no active day, check back within a minute so a newly opened one shows.
 const NO_SLATE_SECONDS = 60
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getDb()
     const testMode = await isTestMode()
-    const uncached = testMode || request.nextUrl.searchParams.has('sandbox')
+    const redirect = sandboxRedirect(request.nextUrl, testMode)
+    if (redirect) return redirect
+    const supabase = await getDb()
+    const uncached = testMode
 
     const now = await getEffectiveNow()
     const fields = 'id, slate_number, slate_date, season_year, locks_at, is_active'
@@ -145,11 +146,6 @@ export async function GET(request: NextRequest) {
       getTeamBrandDirectory(),
     ])
 
-    // Every open page polls this ticker, so it is the heartbeat that fills in
-    // missed picks within a minute or two of first tip. Runs after the
-    // response is sent; a no-op until the slate locks and once it's done.
-    after(() => autoAssignIfDue(supabase, now))
-
     if (dbGamesRes.error) throw dbGamesRes.error
     const dbGames = (dbGamesRes.data ?? []) as Game[]
     const teamRows = Object.fromEntries((teamsRes.data ?? []).map((team) => [team.abbr, team]))
@@ -161,26 +157,29 @@ export async function GET(request: NextRequest) {
     for (const event of events ?? []) {
       const scheduled = authoritativeEvents.get(event.id)
       if (!scheduled) continue
-      const teams = eventCompetitors(event)
+      // Matched on ESPN's team ids where the stored row has them.
+      // Shown in the stored orientation, under the stored abbreviations, so
+      // pick counts and the schedule page line up with the saved game.
+      const teams = scheduledEventSides(scheduled, event)
       if (!teams) continue
       const status = event.competitions[0].status
-      const homeAbbr = teams.home.team.abbreviation
-      const awayAbbr = teams.away.team.abbreviation
-      if (!homeAbbr || !awayAbbr) continue
-      const sameSides = homeAbbr === scheduled.home_team && awayAbbr === scheduled.away_team
-      const neutralSwap = event.competitions[0].neutralSite === true &&
-        homeAbbr === scheduled.away_team && awayAbbr === scheduled.home_team
-      if (!sameSides && !neutralSwap) continue
+      const homeAbbr = scheduled.home_team
+      const awayAbbr = scheduled.away_team
       games.push({
         id: event.id,
         homeTeam: homeAbbr,
         awayTeam: awayAbbr,
         homeScore: parseInt(teams.home.score ?? '0') || 0,
         awayScore: parseInt(teams.away.score ?? '0') || 0,
-        state: status.type.state as 'pre' | 'in' | 'post',
+        // Postponed/cancelled games arrive as 'post' 0–0; only a definitive
+        // final is shown as final.
+        state: displayStateOf(event),
         statusText: status.type.shortDetail ?? '',
+        // An unresolved 'post' (postponed, cancelled, no clear winner) has no
+        // tip to wait for: shown as TBD, and never treated as about to go live
+        // by the CDN lifetime or the pages' polling.
         kickoff: scheduled.tip_time,
-        timeTbd: scheduled.time_tbd,
+        timeTbd: scheduled.time_tbd || (status.type.state === 'post' && displayStateOf(event) !== 'post'),
         homeSeed: seedOf(teams.home),
         awaySeed: seedOf(teams.away),
         homeLogo: teams.home.team.logo ?? teams.home.team.logos?.[0]?.href ?? null,
@@ -213,7 +212,8 @@ export async function GET(request: NextRequest) {
     // The slate locks as a unit at its first tip, so picks go public as a
     // unit too — there is no longer a per-team reveal to compute.
     const revealedTeams = new Set<string>()
-    if (slate.is_active && isPickRevealed(slate, dbGames, now)) {
+    const revealed = slate.is_active && isPickRevealed(slate, dbGames, now)
+    if (revealed) {
       for (const g of dbGames) {
         revealedTeams.add(g.home_team)
         revealedTeams.add(g.away_team)
@@ -252,7 +252,9 @@ export async function GET(request: NextRequest) {
       hasLiveGames,
       source,
     } satisfies LiveScoresResponse, {
-      headers: { 'Cache-Control': feedCacheControl(uncached ? null : cdnSeconds(games, hasLiveGames, BEFORE_TIP_SECONDS)) },
+      headers: { 'Cache-Control': feedCacheControl(uncached ? null : revealCacheSeconds(
+        cdnSeconds(games, hasLiveGames, BEFORE_TIP_SECONDS, now.getTime()),
+        revealed || !slate.is_active, slateDeadline(slate, dbGames), now)) },
     })
   } catch (err) {
     console.error('live-scores error', err)

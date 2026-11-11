@@ -15,9 +15,10 @@ async function loadTs(file, dependencies = {}) {
 }
 const espn = await loadTs('src/lib/espn.ts', {'server-only': {}})
 const paging = await loadTs('src/lib/db.ts')
+const teams = await loadTs('src/lib/teams.ts', {'./db': paging})
 let feed, hooks
 const { syncSlateFromEspn } = await loadTs('src/lib/espnSync.ts', {
- 'server-only': {}, 'node:crypto': {randomUUID}, './db': paging,
+ 'server-only': {}, 'node:crypto': {randomUUID}, './db': paging, './teams': teams,
  './espn': {...espn, fetchDayScoreboard: async () => feed, fetchApRankings: async () => ({})},
  './slates': {
   getOrCreateSlate: async (_db, date) => {hooks.push(['create', date]); return {id: 'new-slate'}},
@@ -115,7 +116,7 @@ try {
  const currentDay = [{id: 'new-slate', slate_date: '2026-11-01', is_active: true}]
  const reversed = event()
  reversed.competitions[0].neutralSite = true
- reversed.competitions[0].status.type = {state: 'post', completed: true}
+ reversed.competitions[0].status.type = {name: 'STATUS_FINAL', state: 'post', completed: true}
  reversed.competitions[0].competitors = [
   {homeAway: 'home', team: {id: '2', abbreviation: 'B'}, score: '78', winner: true},
   {homeAway: 'away', team: {id: '1', abbreviation: 'A'}, score: '72', winner: false},
@@ -132,6 +133,7 @@ try {
  const changed = structuredClone(reversed)
  changed.competitions[0].competitors[1].team = {id: '3', abbreviation: 'C'}
  const unaffected = {...event(), id: 'unaffected'}
+ unaffected.competitions[0].competitors = [{homeAway: 'home', team: {id: '5', abbreviation: 'E'}}, {homeAway: 'away', team: {id: '6', abbreviation: 'F'}}]
  const conflict = fixture({games: [current], slates: currentDay, picks: picked})
  const isolated = await run(conflict, [changed, unaffected])
  assert.equal(isolated.gamesSynced, 1)
@@ -143,6 +145,34 @@ try {
  const partial = fixture({games: [{...oldGame, id: 'other', espn_event_id: 'absent', slate_id: 'new-slate'}]})
  assert.equal((await run(partial, [event()], ['SEC'])).ok, true)
  assert.ok(partial.state.games.some(game => game.id === 'other'), 'A failed conference must disable pruning')
+ // F-17: two schools ESPN abbreviates the same way on one day are never graded.
+ const game = (id, home, away, type, scores) => ({id, date: '2026-11-01T20:00:00Z', competitions: [{timeValid: true, status: {type},
+  competitors: [{homeAway: 'home', team: {id: home[1], abbreviation: home[0]}, score: scores?.[0]}, {homeAway: 'away', team: {id: away[1], abbreviation: away[0]}, score: scores?.[1]}]}]})
+ const FINAL = {name: 'STATUS_FINAL', state: 'post', completed: true}
+ const shared = fixture({slates: currentDay})
+ const sharedResult = await run(shared, [game('m1', ['MIA', '10'], ['X', '11'], FINAL, ['70', '60']), game('m2', ['MIA', '20'], ['Y', '21'], FINAL, ['55', '80']), game('ok', ['P', '30'], ['Q', '31'], FINAL, ['90', '80'])])
+ assert.equal(sharedResult.ok, true)
+ assert.deepEqual(shared.state.games.map(row => [row.espn_event_id, row.result]).sort(), [['m1', 'pending'], ['m2', 'pending'], ['ok', 'home_win']], 'Ambiguous abbreviation leaves both games pending; others grade')
+ assert.ok(shared.incidents.some(call => call.args.p_key === 'team-identity:2026-11-01'), 'Ambiguity raises an organizer incident')
+ // F-05: a stored final is not erased by a later unclear feed, but is flagged.
+ const finalGame = {...current, result: 'home_win', home_score: 72, away_score: 70}
+ const postponed = game('event', ['A', '1'], ['B', '2'], {name: 'STATUS_POSTPONED', state: 'post', completed: false}, ['0', '0'])
+ const kept = fixture({games: [finalGame], slates: currentDay, picks: picked})
+ await run(kept, [postponed])
+ assert.equal(kept.state.games[0].result, 'home_win', 'A saved final survives an unclear feed')
+ assert.ok(kept.incidents.some(call => call.args.p_key === 'result-review:game'))
+ // Delayed correction: a different definitive final is written, so the
+ // result-correction trigger (migration 027, exercised below) sees it.
+ const corrected = fixture({games: [finalGame], slates: currentDay, picks: picked})
+ await run(corrected, [game('event', ['A', '1'], ['B', '2'], FINAL, ['70', '72'])])
+ assert.equal(corrected.state.games[0].result, 'away_win', 'A corrected upstream final reaches the database')
+ const legacyReview = fixture({games: [finalGame], slates: currentDay, picks: picked, legacy: true})
+ process.env.TOURNAMENT_RELIABILITY_ENABLED = 'false'
+ await run(legacyReview, [postponed])
+ process.env.TOURNAMENT_RELIABILITY_ENABLED = 'true'
+ assert.equal(legacyReview.state.games[0].result, 'home_win')
+ assert.ok(legacyReview.state.audit_log.some(row => row.details?.key === 'result-review:game'), 'Legacy deployments record the review in the audit log')
+ console.log('PASS result safety: ambiguous abbreviations stay pending with an incident, saved finals survive unclear feeds, corrections are written')
  console.log('PASS schedule sync: wrong/mixed/invalid date fail closed, Central late tip, TBD placeholder, paged picked move, legacy audit, concurrent guard skip, directory failure and incomplete-feed preservation')
 } finally {
  if (oldFlag === undefined) delete process.env.TOURNAMENT_RELIABILITY_ENABLED; else process.env.TOURNAMENT_RELIABILITY_ENABLED = oldFlag
@@ -197,6 +227,12 @@ for (const schema of ['public', 'sandbox']) {
  await db.exec(`update slates set locks_at='2099-03-20T18:00:00Z' where slate_number=2`)
  await db.query(activation)
  assert.equal(await scalar(`select slate_number from slates where is_active`), 2)
+ // Delayed correction path (027): a changed final is audited, ungraded and raised.
+ const corrected = await scalar(`select id from games where espn_event_id='move'`)
+ await db.exec(`update games set graded_at=now() where id='${corrected}'; update games set result='away_win' where id='${corrected}'`)
+ assert.equal(await scalar(`select graded_at from games where id=$1`, [corrected]), null, 'A correction clears graded_at for regrading')
+ assert.equal(await scalar(`select count(*)::int from incidents where key=$1 and status='open'`, [`result-correction:${corrected}`]), 1)
+ assert.equal(await scalar(`select count(*)::int from audit_log where event_type='result-corrected'`), 1)
  console.log(`PASS ${schema}: idempotent 028, unpicked move snapshots, legacy stable-ID fill, protected period/team/provider/game identity and delete, preserved outcome/linkage, live scores and restricted trigger ACL`)
 }
 await db.close()

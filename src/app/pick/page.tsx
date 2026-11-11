@@ -1,7 +1,5 @@
 import { pageMetadata } from '@/lib/site'
 import { redirect } from 'next/navigation'
-import { after } from 'next/server'
-import { autoAssignIfDue } from '@/lib/autoAssign'
 import { getSession } from '@/lib/session'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
@@ -24,9 +22,6 @@ import { conferenceGroup } from '@/lib/teams'
 import { getCachedTeamConferences, getTeamBrandDirectory } from '@/lib/sharedData'
 import { dayDate, pickDayTitle, teamTag, teamTagName, weekdayShort } from '@/lib/poolTheme'
 import s from '../components/pp.module.css'
-
-// Room for the auto-assign run this page may kick off after rendering.
-export const maxDuration = 60
 
 // Everything the pick page needs, loaded in one place. Kept separate from the
 // render so no JSX is constructed inside the try/catch — React renders
@@ -72,8 +67,6 @@ async function loadPickData(
       caps.showRegions ? Promise.resolve({} as Record<string, string>) : getCachedTeamConferences(supabase),
     ])
     if (!player) return { kind: 'no-session' }
-    // Fill in missed picks once first tip has passed — see lib/autoAssign.ts.
-    after(() => autoAssignIfDue(supabase, now))
     const slate = window.pickSlate
     if (!slate) return { kind: 'no-slate' }
     const pastPicks = window.picks

@@ -5,25 +5,18 @@ import type { PoolConfig } from './competition'
 import { buildPickPeriods, sharedRoundPickQuota } from './competition'
 import { didPickWin, isSlateLocked } from './deadline'
 import { fetchDayScoreboard, resultOf } from './espn'
-import { syncSlateFromEspn } from './espnSync'
 import { loadGamesForSlates } from './seasonData'
 import { isTestMode } from './testMode'
+import { ambiguousAbbreviations } from './teams'
 
 type PlayerPick = Pick<StoredPick, 'id' | 'team' | 'slate_id' | 'auto_assigned' | 'loss_excused' | 'updated_at' | 'version'>
 
 // This runs on every pick-page view and pick submission, so everything it
 // asks ESPN goes through Next's shared fetch cache: one scoreboard read per
 // date per window for the whole site, not one per player per refresh.
+// It only reads: the next day's schedule comes from the scheduled schedule
+// sync, the day turnover and the organizer's season sync, never from a view.
 const RESULT_REFRESH_SECONDS = 30
-const NEXT_DAY_REVALIDATE_SECONDS = 300
-// A next day synced this recently is read straight from the database.
-const NEXT_DAY_FRESH_MS = 10 * 60 * 1000
-
-function recentlySynced(slate: Slate | undefined): boolean {
-  const syncedAt = (slate as (Slate & { synced_at?: string | null }) | undefined)?.synced_at
-  if (!syncedAt) return false
-  return Date.now() - new Date(syncedAt).getTime() < NEXT_DAY_FRESH_MS
-}
 
 // The active day remains active for scoring and grading. Once a player's
 // previous selection is final and won, only that player can see the next day.
@@ -57,7 +50,7 @@ export async function loadPickWindow(
   if (picksRes.error) throw picksRes.error
   const slates = slatesRes.data
   const picks = picksRes.data
-  let seasonSlates = ((slates ?? []) as Slate[]).filter(slate => !pool.starts_on || slate.slate_date >= pool.starts_on)
+  const seasonSlates = ((slates ?? []) as Slate[]).filter(slate => !pool.starts_on || slate.slate_date >= pool.starts_on)
   const playerPicks = (picks ?? []) as PlayerPick[]
   let games = await loadGamesForSlates(db, seasonSlates.map((slate) => slate.id))
   const activeGames = games.filter((game) => game.slate_id === activeSlate.id)
@@ -93,7 +86,10 @@ export async function loadPickWindow(
       try {
         const { events } = await fetchDayScoreboard(slate.slate_date.replace(/-/g, ''), RESULT_REFRESH_SECONDS)
         const byEvent = new Map(events.map((event) => [event.id, resultOf(event)]))
-        games = games.map((game) => game.slate_id === slateId && byEvent.has(game.espn_event_id)
+        // A shared abbreviation cannot say which game the pick is on.
+        const ambiguous = ambiguousAbbreviations(games.filter((game) => game.slate_id === slateId))
+        games = games.map((game) => game.slate_id === slateId && byEvent.has(game.espn_event_id) &&
+          !ambiguous.has(game.home_team) && !ambiguous.has(game.away_team)
           ? { ...game, result: byEvent.get(game.espn_event_id)! }
           : game)
       } catch (error) {
@@ -106,39 +102,14 @@ export async function loadPickWindow(
     return { activeSlate, pickSlate: activeSlate, seasonSlates, games, picks: playerPicks }
   }
 
-  // Find the first playing day, including dark days. Sync it only after the
-  // player has won; normal traffic to a locked slate need not scan ahead.
+  // Find the first stored playing day, skipping dark days. A day with no
+  // saved games yet is simply not offered early.
   const activeDate = new Date(`${activeSlate.slate_date}T12:00:00Z`)
   for (let offset = 1; offset <= 10; offset++) {
     const date = new Date(activeDate.getTime() + offset * 86_400_000).toISOString().slice(0, 10)
-    let next = seasonSlates.find((slate) => slate.slate_date === date)
+    const next = seasonSlates.find((slate) => slate.slate_date === date)
     const nextId = next?.id
-    let nextGames = nextId ? games.filter((game) => game.slate_id === nextId) : []
-    if (!sandbox && !(nextGames.length > 0 && recentlySynced(next))) {
-      let synced: Awaited<ReturnType<typeof syncSlateFromEspn>>
-      try {
-        synced = await syncSlateFromEspn(db, date.replace(/-/g, ''), activeSlate.season_year, {
-          revalidateSeconds: NEXT_DAY_REVALIDATE_SECONDS,
-        })
-      } catch (error) {
-        console.error('Could not load the next game day', error)
-        break
-      }
-      // A failed conference might contain the earliest tip. Wait for a full
-      // schedule instead of offering a later deadline from incomplete data.
-      if (synced.partial?.length || (!synced.ok && !synced.error?.startsWith('No games found'))) break
-      if (!synced.ok && nextGames.length > 0) break
-      if (synced.ok && synced.slateId) {
-        const [{ data: freshSlates }, { data: freshGames }] = await Promise.all([
-          db.from('slates').select('*').eq('season_year', activeSlate.season_year),
-          db.from('games').select('*').eq('slate_id', synced.slateId),
-        ])
-        seasonSlates = ((freshSlates ?? seasonSlates) as Slate[]).filter(slate => !pool.starts_on || slate.slate_date >= pool.starts_on)
-        next = seasonSlates.find((slate) => slate.id === synced.slateId)
-        nextGames = (freshGames ?? []) as Game[]
-        games = [...games.filter((game) => game.slate_id !== synced.slateId), ...nextGames]
-      }
-    }
+    const nextGames = nextId ? games.filter((game) => game.slate_id === nextId) : []
     if (!next || nextGames.length === 0) continue
 
     const nextPeriod = buildPickPeriods(pool.competition_mode, seasonSlates, games)
