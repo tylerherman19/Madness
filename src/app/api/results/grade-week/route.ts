@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { gradeSlatePicks } from '@/lib/grading'
+import { logAudit } from '@/lib/audit'
 import type { Game } from '@/types'
 import { serverError } from '@/lib/alerts'
 
@@ -37,6 +38,20 @@ export async function POST(req: NextRequest) {
     }
 
     const grading = await gradeSlatePicks(supabase, slate.id, slate.slate_number, games as Game[])
+
+    // Grading is idempotent (already-eliminated entries are skipped), so a repeat
+    // run records an audit row with zero eliminations and changes nothing else.
+    await logAudit(supabase, {
+      event_type: 'slate-graded',
+      actor: 'admin',
+      message: `Admin graded slate ${slate.slate_number}: ${grading.eliminated.length} eliminated`,
+      details: {
+        slate_id: slate.id,
+        slate_number: slate.slate_number,
+        eliminated: grading.eliminated.length,
+        advanced: grading.advanced.length,
+      },
+    })
 
     revalidateContest()
     return NextResponse.json({ ok: true, grading })

@@ -11,10 +11,11 @@ import { loadMyPicks, type MyPick } from '@/lib/myEntry'
 import { buildTimeline } from '@/lib/timeline'
 import { brandFor } from '@/lib/teamBrand'
 import { capabilitiesFor } from '@/lib/competition'
-import { dayDate, eventLabel, pickDayTitle, tipTime } from '@/lib/poolTheme'
+import { dayDate, eventLabel, pickDayTitle } from '@/lib/poolTheme'
 import PoolShell from '../components/PoolShell'
 import ContestRefresh from '../components/ContestRefresh'
 import LockCountdown from '../components/LockCountdown'
+import LocalTime from '../components/LocalTime'
 import TeamLogo from '../components/TeamLogo'
 import StandingsTable from '../components/StandingsTable'
 import { StandingsTableSkeleton } from '../components/PageSkeletons'
@@ -63,7 +64,6 @@ export default async function Today() {
   const dayNumber = period ? periods.findIndex((p) => p.id === period.id) + 1 : 0
   const lock = slate ? slateDeadline(slate, data?.slateGames ?? []) : null
   const lockIso = lock?.toISOString() ?? null
-  const lockText = tipTime(lockIso)
   const now = data?.now ?? (await getEffectiveNow())
   const locked = lock ? lock <= now : false
 
@@ -105,14 +105,14 @@ export default async function Today() {
       ? { href: '/sweat', label: 'View picks' }
       : { href: '/pick', label: pick === 'submitted' ? 'Change pick' : 'Make your pick' }
   const entryDeadline = lockIso && me && (pick === 'open' || pick === 'submitted')
-    ? pick === 'submitted' ? `Change until ${lockText} CT` : `Picks lock at ${lockText} CT`
+    ? <>{pick === 'submitted' ? 'Change until' : 'Picks lock at'} <LocalTime iso={lockIso} /></>
     : null
 
   const survivors = (data?.players ?? []).filter((player) => player.status === 'alive')
   const winner = pool.status === 'completed' && survivors.length === 1 ? survivors[0].full_name : null
   const standingsProps = {
     dayLabel: period ? `Day ${dayNumber}` : 'Today',
-    hiddenUntil: slate && !locked ? lockText : null,
+    hiddenUntil: slate && !locked ? lockIso : null,
     showSeedTotal: capabilitiesFor(mode).showSeedTotal,
     signupsClosed: closed,
   }
@@ -142,7 +142,7 @@ export default async function Today() {
           <div className={s.meter}><span style={{ width: `${alive ? (submitted / alive) * 100 : 0}%` }} /></div>
         </div>
         <div className={s.scoreCell}>
-          <div className={s.cellLabel}>{entryDeadline ? 'Time to lock' : lockIso ? <>Locks<span className={s.liveExtra}> at first tip,</span> {lockText}</> : 'Lock time'}</div>
+          <div className={s.cellLabel}>{entryDeadline ? 'Time to lock' : lockIso ? <>Locks<span className={s.liveExtra}> at first tip,</span> <LocalTime iso={lockIso} /></> : 'Lock time'}</div>
           <div className={s.cellValue}>{lockIso ? <LockCountdown deadline={lockIso} soonClassName={s.clockSoon} /> : 'TBD'}</div>
         </div>
       </section>

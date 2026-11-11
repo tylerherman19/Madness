@@ -16,6 +16,7 @@ export const AUDIT_EVENT_TYPES: Record<string, string> = {
   'password-reset': 'Password reset',
   'players-imported': 'Players imported',
   'result-set': 'Result set',
+  'slate-graded': 'Slate graded',
   'results-synced': 'Results synced',
   'schedule-synced': 'Schedule synced',
   'slate-activated': 'Slate activated',

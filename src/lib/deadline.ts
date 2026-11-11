@@ -164,6 +164,52 @@ export function formatCentralTime(utcDate: Date | string): string {
   })
 }
 
+// Participant-facing clock times. The browser's zone is used when it can be
+// detected; everything else (server render, no JS, a failed or invalid
+// detection) falls back to Central, the pool's own zone. The offset always
+// comes from Intl for the deadline's own instant, so a March date after the US
+// clock change prints daylight time even if today is still winter. This is
+// display only: locking is decided by the database and the server.
+export const FALLBACK_TIME_ZONE = CHICAGO_TZ
+
+export function resolveTimeZone(timeZone: string | null | undefined): string {
+  if (!timeZone) return FALLBACK_TIME_ZONE
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone })
+    return timeZone
+  } catch {
+    return FALLBACK_TIME_ZONE
+  }
+}
+
+export function formatClockParts(
+  instant: Date | string | null | undefined,
+  timeZone?: string | null
+): { time: string; zone: string } | null {
+  if (!instant) return null
+  const date = typeof instant === 'string' ? new Date(instant) : instant
+  if (isNaN(date.getTime())) return null
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: resolveTimeZone(timeZone),
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).formatToParts(date)
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
+  return { time: `${get('hour')}:${get('minute')} ${get('dayPeriod')}`, zone: get('timeZoneName') }
+}
+
+// "5:00 PM CST", or "5:00 PM" when the zone label is left off.
+export function formatClock(
+  instant: Date | string | null | undefined,
+  timeZone?: string | null,
+  withZone = true
+): string {
+  const parts = formatClockParts(instant, timeZone)
+  if (!parts) return 'TBD'
+  return withZone && parts.zone ? `${parts.time} ${parts.zone}` : parts.time
+}
+
 // "Sat, Mar 21" — the label for a slate, which is now the period name.
 export function formatSlateDate(slateDate: string): string {
   // slate_date is a bare YYYY-MM-DD; parse as local noon so no timezone shift

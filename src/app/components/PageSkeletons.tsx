@@ -1,3 +1,4 @@
+import { INITIAL_ROWS } from '@/lib/standingsList'
 import { Bone, SkeletonRegion, times } from './Skeleton'
 import pp from './pp.module.css'
 
@@ -232,13 +233,13 @@ export function StandingsTableSkeleton({ alive, out, showSeedTotal }: { alive: n
       <section className={pp.stSection}>
         <div className={pp.stHead}><b className={pp.green}>{alive}</b><span>still alive</span></div>
         <div className={`${pp.stRow} ${pp.stLabels}`}><span>Entry</span><span>Status</span><span>Pick</span></div>
-        {times(alive, (i) => row(i, false))}
+        {times(Math.min(alive, INITIAL_ROWS), (i) => row(i, false))}
       </section>
       {out > 0 && (
         <section className={pp.stSection}>
           <div className={pp.stHead}><b className={pp.red}>{out}</b><span>eliminated</span></div>
           <div className={`${pp.stRow} ${pp.stLabels}`}><span>Entry</span><span>Out</span><span>Losing pick</span></div>
-          {times(out, (i) => row(i, true))}
+          {times(Math.min(out, INITIAL_ROWS), (i) => row(i, true))}
         </section>
       )}
     </SkeletonRegion>
