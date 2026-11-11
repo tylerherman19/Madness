@@ -27,6 +27,7 @@ export const AUDIT_EVENT_TYPES: Record<string, string> = {
   'schedule-synced': 'Schedule synced',
   'slate-activated': 'Slate activated',
   'slate-advanced': 'Slate advanced',
+  'slate-advance-requested': 'Advance requested',
   'broadcast-sent': 'Broadcast sent',
   'pool-reset': 'Pool reset',
   'pool-config-updated': 'Pool configuration updated',
