@@ -33,17 +33,26 @@ const event = (date = '2026-11-01T20:00:00Z', extra = {}) => ({
 // The response cap is deliberately TWO rows: use the real paging helper, and
 // ensure a picked period is found even when the first response is truncated.
 function fixture({games = [], slates = [], picks = [], directoryError = false, skipUpsert = false, legacy = false} = {}) {
- const state = {games: structuredClone(games), slates: structuredClone(slates), picks: structuredClone(picks), teams: [], audit_log: []}
+ const state = {games: structuredClone(games), slates: structuredClone(slates), picks: structuredClone(picks), teams: [], audit_log: [], incidents: []}
  const calls = [], incidents = []
  return {state, calls, incidents,
-  async rpc(name, args) {incidents.push({name, args}); return {error: null}},
+  async rpc(name, args) {
+   incidents.push({name, args})
+   if (name === 'record_incident') {
+    const old = state.incidents.find(row => row.key === args.p_key)
+    // Like the real function: reopen and count again on every call.
+    if (old) Object.assign(old, {impact: args.p_impact, details: args.p_detail, occurrences: old.occurrences + 1, status: 'open'})
+    else state.incidents.push({key: args.p_key, impact: args.p_impact, details: args.p_detail, occurrences: 1, status: 'open'})
+   }
+   return {error: null}
+  },
   from(table) {
-   const filters = []; let action, payload, conflict, columns, range
+   const filters = []; let action, payload, conflict, columns, range, sort, cap
    const query = {
     select(value) {if (legacy) assert.doesNotMatch(value, /home_team_id|away_team_id|game_id/); columns = value; return query},
     eq(key, value) {filters.push(row => row[key] === value); return query},
     in(key, values) {filters.push(row => values.includes(row[key])); return query},
-    order() {return query}, range(from, to) {range = [from, to]; return query},
+    order(column, options) {sort = [column, options?.ascending !== false]; return query}, limit(n) {cap = n; return query}, range(from, to) {range = [from, to]; return query},
     or() {return query},
     upsert(value, options) {action = 'upsert'; payload = value; conflict = options.onConflict; return query},
     update(value) {action = 'update'; payload = value; return query},
@@ -64,10 +73,13 @@ function fixture({games = [], slates = [], picks = [], directoryError = false, s
       if (existing) {Object.assign(existing, row); rows.push(existing)}
       else {const saved = {id: randomUUID(), ...row}; state[table].push(saved); rows.push(saved)}
      }
-    } else if (action === 'insert') {state[table].push(payload); rows = [payload]}
+    } else if (action === 'insert') {state[table].push({created_at: state[table].length, ...payload}); rows = [payload]}
     else if (action === 'update') rows.forEach(row => Object.assign(row, payload))
     else if (action === 'delete') state[table] = state[table].filter(row => !rows.includes(row))
-    else rows = range ? rows.slice(range[0], Math.min(range[1] + 1, range[0] + 2)) : rows.slice(0, 2)
+    else {
+     if (sort) rows = [...rows].sort((a, b) => (a[sort[0]] > b[sort[0]] ? 1 : a[sort[0]] < b[sort[0]] ? -1 : 0) * (sort[1] ? 1 : -1))
+     rows = range ? rows.slice(range[0], Math.min(range[1] + 1, range[0] + 2)) : rows.slice(0, cap ?? 2)
+    }
     return {data: structuredClone(rows), error: null}
    }
    return query
@@ -172,6 +184,40 @@ try {
  process.env.TOURNAMENT_RELIABILITY_ENABLED = 'true'
  assert.equal(legacyReview.state.games[0].result, 'home_win')
  assert.ok(legacyReview.state.audit_log.some(row => row.details?.key === 'result-review:game'), 'Legacy deployments record the review in the audit log')
+ // Incident flooding: an unchanged unclear feed is raised once, a changed state once more.
+ for (const legacy of [false, true]) {
+  process.env.TOURNAMENT_RELIABILITY_ENABLED = String(!legacy)
+  const flood = fixture({games: [finalGame], slates: currentDay, picks: picked, legacy})
+  for (let i = 0; i < 100; i++) await run(flood, [postponed])
+  const count = () => legacy ? flood.state.audit_log.filter(row => row.details?.key === 'result-review:game').length : flood.state.incidents.find(row => row.key === 'result-review:game')?.occurrences
+  assert.equal(count(), 1, `100 unchanged syncs raise one ${legacy ? 'audit row' : 'occurrence'}`)
+  const suspended = game('event', ['A', '1'], ['B', '2'], {name: 'STATUS_SUSPENDED', state: 'in', completed: false}, ['30', '28'])
+  for (let i = 0; i < 3; i++) await run(flood, [suspended])
+  assert.equal(count(), 2, 'A changed feed state raises one more')
+  const message = legacy ? flood.state.audit_log.at(-1).message : flood.state.incidents[0].impact
+  assert.match(message, /STATUS_SUSPENDED/, 'The message says what was observed')
+ }
+ // F-06: ESPN calls a never-graded game final but the score cannot be trusted.
+ for (const legacy of [false, true]) {
+  process.env.TOURNAMENT_RELIABILITY_ENABLED = String(!legacy)
+  const pendingGame = {...current, result: 'pending'}
+  const tied = game('event', ['A', '1'], ['B', '2'], FINAL, ['70', '70'])
+  const untrusted = fixture({games: [pendingGame], slates: currentDay, picks: picked, legacy})
+  for (let i = 0; i < 5; i++) await run(untrusted, [tied])
+  assert.equal(untrusted.state.games[0].result, 'pending', 'An untrusted final is not graded')
+  if (legacy) {
+   const rows = untrusted.state.audit_log.filter(row => row.details?.key === 'result-review:game')
+   assert.equal(rows.length, 1); assert.match(rows[0].message, /final but the result could not be trusted/)
+  } else {
+   assert.equal(untrusted.state.incidents.length, 1)
+   assert.equal(untrusted.state.incidents[0].occurrences, 1)
+   assert.match(untrusted.state.incidents[0].impact, /final but the result could not be trusted/)
+  }
+  const clean = fixture({games: [pendingGame], slates: currentDay, picks: picked, legacy})
+  await run(clean, [game('event', ['A', '1'], ['B', '2'], FINAL, ['70', '60'])])
+  assert.equal(clean.state.incidents.length + clean.state.audit_log.length, 0, 'A clean final raises nothing')
+ }
+ process.env.TOURNAMENT_RELIABILITY_ENABLED = 'true'
  console.log('PASS result safety: ambiguous abbreviations stay pending with an incident, saved finals survive unclear feeds, corrections are written')
  console.log('PASS schedule sync: wrong/mixed/invalid date fail closed, Central late tip, TBD placeholder, paged picked move, legacy audit, concurrent guard skip, directory failure and incomplete-feed preservation')
 } finally {

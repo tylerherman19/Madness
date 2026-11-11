@@ -6,7 +6,7 @@ import { getPoolConfig } from '@/lib/pool'
 import { getSession, getAdminSession } from '@/lib/session'
 import { isUuid } from '@/lib/api'
 import { isSlateLocked,slateDeadline } from '@/lib/deadline'
-import { loadPickWindow } from '@/lib/pickWindow'
+import { loadPickWindow, UNSTORED_DAY } from '@/lib/pickWindow'
 import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
 import { randomUUID } from 'node:crypto'
 import { adminSessionId } from '@/lib/session'
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   if(process.env.TOURNAMENT_RELIABILITY_ENABLED!=='true')return legacyPickPost(req)
   try {
     const body = await req.json()
-    const { slate_id, team, pick_id, expected_version, player_id_override, submitted_by_admin, request_id, reason } = body
+    const { slate_id: requestedSlate, team, pick_id, expected_version, player_id_override, submitted_by_admin, request_id, reason } = body
 
     // Allow admin to submit on behalf of a player
     const isAdmin = submitted_by_admin ? await getAdminSession() : false
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const { allowed } = await checkRateLimit(`pick:${playerId}`, 30, 60)
     if (!allowed) return NextResponse.json({ error: 'Too many pick changes. Try again in a minute.' }, { status: 429, headers: { 'Retry-After': '60' } })
 
-    if (!slate_id || typeof team !== 'string' || !team || team.length > 80) {
+    if (!requestedSlate || typeof team !== 'string' || !team || team.length > 80) {
       return NextResponse.json({ error: 'Missing slate_id or team' }, { status: 400 })
     }
 
@@ -47,7 +47,10 @@ export async function POST(req: NextRequest) {
     // listed, and the only legal picks are teams playing on this slate. The
     // "is not playing this slate" check further down enforces both at once.
 
-    if (!isUuid(slate_id)) {
+    // `espn:YYYY-MM-DD` names a next day the player was shown from ESPN
+    // before it was stored; saving the pick stores it first.
+    const unstoredDate = typeof requestedSlate === 'string' ? UNSTORED_DAY.exec(requestedSlate)?.[1] ?? null : null
+    if (!unstoredDate && !isUuid(requestedSlate)) {
       return NextResponse.json({ error: 'Invalid slate_id' }, { status: 400 })
     }
     if (pick_id && !isUuid(pick_id)) {
@@ -60,7 +63,7 @@ export async function POST(req: NextRequest) {
     const { data: prior, error: priorError } = await supabase.from('pick_requests').select('receipt,request').eq('player_id',playerId).eq('request_id',requestId).maybeSingle()
     if (priorError) throw priorError
     if (prior) {
-      if (prior.request.team !== team || prior.request.slate !== slate_id) return NextResponse.json({ error:'Request ID reused with different selection' },{status:409})
+      if (prior.request.team !== team || (!unstoredDate && prior.request.slate !== requestedSlate)) return NextResponse.json({ error:'Request ID reused with different selection' },{status:409})
       return NextResponse.json({ok:true,...prior.receipt})
     }
     const pool = await getPoolConfig(supabase, true)
@@ -78,7 +81,10 @@ export async function POST(req: NextRequest) {
     }
 
     const now = await getEffectiveNow()
-    const window = await loadPickWindow(supabase, playerId, pool, now, !isAdmin)
+    const window = await loadPickWindow(supabase, playerId, pool, now, !isAdmin, isAdmin ? null : unstoredDate)
+    const slate_id: string = unstoredDate
+      ? window.seasonSlates.find((row) => row.slate_date === unstoredDate && row.id === window.pickSlate?.id)?.id ?? requestedSlate
+      : requestedSlate
     const retry = !request_id && window.picks.find(pick=>pick.slate_id===slate_id&&pick.team===team&&(!pick_id||pick.id===pick_id))
     if(retry) return NextResponse.json({ok:true,pick:retry,version:retry.version??1,acceptedAt:retry.updated_at,periodId:retry.slate_id,deadline:slateDeadline(window.seasonSlates.find(s=>s.id===retry.slate_id)??null,window.games.filter(g=>g.slate_id===retry.slate_id))})
     const slate = window.seasonSlates.find((row) => row.id === slate_id)

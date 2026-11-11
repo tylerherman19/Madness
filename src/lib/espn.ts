@@ -274,6 +274,11 @@ export function resultOf(
   const type = event.competitions?.[0]?.status?.type
   if (!type || type.completed !== true || type.state !== 'post') return 'pending'
   if (!type.name || !FINAL_STATUS_NAMES.has(type.name)) return 'pending'
+  // Exactly two competitors, one home and one away. A third entry means the
+  // feed is not describing a plain two-team game, so nothing is graded.
+  const competitors = event.competitions[0].competitors ?? []
+  if (competitors.length !== 2 || competitors.filter((c) => c.homeAway === 'home').length !== 1 ||
+      competitors.filter((c) => c.homeAway === 'away').length !== 1) return 'pending'
   const teams = eventCompetitors(event)
   if (!teams) return 'pending'
   const { home, away } = teams
@@ -288,6 +293,22 @@ export function resultOf(
   // A side explicitly marked as not winning cannot be the higher score.
   if ((scored === 'home' ? home.winner : away.winner) === false) return 'pending'
   return scored === 'home' ? 'home_win' : 'away_win'
+}
+
+// ESPN itself calls the game over: a final status code, completed, post.
+// Whether the score can be trusted is resultOf's separate question.
+export function reportsFinal(event: EspnEvent): boolean {
+  const type = event.competitions?.[0]?.status?.type
+  return !!type && type.completed === true && type.state === 'post' && !!type.name && FINAL_STATUS_NAMES.has(type.name)
+}
+
+// A short, stable description of what the feed says about a game, for review
+// items. It changes exactly when the observed state changes.
+export function describeFeedState(event: EspnEvent): string {
+  const comp = event.competitions?.[0]
+  const type = comp?.status?.type
+  const sides = (comp?.competitors ?? []).map((c) => `${c.team?.abbreviation ?? '?'} ${c.score ?? 'no score'}${c.winner === true ? ' (winner flag)' : ''}`)
+  return `${type?.name ?? 'no status code'}, ${type?.state ?? 'no state'}${type?.completed ? ', completed' : ''}; ${sides.join(' vs ') || 'no competitors'}`
 }
 
 // The state a board may show. ESPN reports postponed and cancelled games as

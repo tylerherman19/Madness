@@ -85,17 +85,25 @@ export async function runTournamentJob(
     } else if (kind === 'schedule') {
       const pool = await getPoolConfig(db, true),
         today = centralClock(now).date
-      const response = await syncSlateFromEspn(
-        db,
-        today.replaceAll('-', ''),
-        pool.season_year,
-      )
-      if (
-        (!response.ok && !response.error?.startsWith('No games found')) ||
-        response.partial?.length
-      )
-        throw new Error(response.error ?? `Schedule feed incomplete: ${response.partial?.join(', ')}`)
-      progress = response
+      // Today and tomorrow: tomorrow's games must be stored before a player
+      // whose pick wins this afternoon can pick them tonight.
+      const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000)
+        .toISOString().slice(0, 10)
+      const responses = []
+      for (const date of [today, tomorrow]) {
+        const response = await syncSlateFromEspn(
+          db,
+          date.replaceAll('-', ''),
+          pool.season_year,
+        )
+        if (
+          (!response.ok && !response.error?.startsWith('No games found')) ||
+          response.partial?.length
+        )
+          throw new Error(response.error ?? `Schedule feed incomplete for ${date}: ${response.partial?.join(', ')}`)
+        responses.push(response)
+      }
+      progress = responses[0]
     } else if (kind === 'assignment') {
       const assignment = await runAutoAssignNow(db, now)
       if (!assignment.ok) throw new Error('Assignment batch incomplete')

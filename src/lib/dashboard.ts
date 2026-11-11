@@ -16,7 +16,7 @@ import {
   type PickPeriodGame,
   type PoolConfig,
 } from './competition'
-import { compareBySeedTotal, seedTotalsByPlayer } from './standings'
+import { compareBySeedTotal, revealedLosingPicks, seedTotalsByPlayer } from './standings'
 import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from './seasonData'
 import { isPickRevealed } from './deadline'
 import { getDb, getEffectiveNow } from './testMode'
@@ -312,19 +312,10 @@ export const getContestStandings = cache(async (core: ContestCore): Promise<Stan
 
     // The team that knocked each eliminated entry out: their pick on the day
     // they were eliminated. That day is locked and graded, so it is public.
-    const slateNumberById = new Map<string, number>(slates.map((w) => [w.id, w.slate_number]))
-    const eliminationSlateByPlayer = new Map<string, number>(
-      players
-        .filter((p) => p.status === 'eliminated' && p.elimination_slate != null)
-        .map((p) => [p.id, p.elimination_slate!])
-    )
-    const losingPicksByPlayer: Record<string, string[]> = {}
-    for (const pick of seasonPicks) {
-      const out = eliminationSlateByPlayer.get(pick.player_id)
-      if (out != null && slateNumberById.get(pick.slate_id) === out) {
-        losingPicksByPlayer[pick.player_id] = [...(losingPicksByPlayer[pick.player_id] ?? []), pick.team]
-      }
-    }
+    const losingPicksByPlayer = revealedLosingPicks(
+      players.filter((p) => p.status === 'eliminated' && p.elimination_slate != null)
+        .map((p) => ({ id: p.id, out: p.elimination_slate! })),
+      seasonPicks, slates, gamesBySlate, now)
 
     const standings: StandingRow[] = players.map((p) => ({
       player_id: p.id,

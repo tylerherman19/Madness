@@ -5,7 +5,8 @@ import {readFile,readdir} from 'node:fs/promises'
 import {createHash} from 'node:crypto'
 import bcrypt from 'bcryptjs'
 const PORT=Number(process.env.E2E_DB_PORT??54329)
-const db=new PGlite()
+// PostgREST returns a date column as YYYY-MM-DD, not a JavaScript Date.
+const db=new PGlite({parsers:{1082:value=>value}})
 await db.exec('create role anon;create role authenticated;create role service_role;create role authenticator;')
 for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&(process.env.FIXTURE_LEGACY_SCHEMA!=='true'||f<'025_')).sort())await db.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
 const hash=await bcrypt.hash('FixturePass123!',4)
@@ -38,7 +39,7 @@ createServer(async(req,res)=>{
   }
   const values=[],where=[]
   for(const[key,value]of url.searchParams){
-   if(['select','order','limit','offset','on_conflict'].includes(key))continue
+   if(['select','order','limit','offset','on_conflict','columns'].includes(key))continue
    const dot=value.indexOf('.'),op=value.slice(0,dot),val=value.slice(dot+1)
    if(op==='in'){const items=val.slice(1,-1).split(',').filter(Boolean).map(v=>v.replace(/^"|"$/g,''));const list=items.map(v=>{values.push(v);return '$'+values.length});where.push(list.length?`${ident(key)} in (${list.join(',')})`:'false')}
    else if(op==='is')where.push(`${ident(key)} is ${val==='null'?'null':val==='true'?'true':'false'}`)

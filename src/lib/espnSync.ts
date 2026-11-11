@@ -8,6 +8,8 @@ import {
   parseRound,
   broadcastOf,
   resultOf,
+  reportsFinal,
+  describeFeedState,
   seedOf,
   centralDateOf,
   easternDateOf,
@@ -233,10 +235,13 @@ export async function syncSlateFromEspn(
         'Two games on this day share a team abbreviation. Their results are not graded automatically; set them by hand after checking which team each pick means.',
         { requested_date: slateDate, espn_event_ids: ambiguousGames, abbreviations: [...ambiguous] })
     }
+    const gameIdsByEvent = new Map(storedGames.map((game) => [game.espn_event_id, game.id]))
+    const eventByGameId = new Map(dayEvents.flatMap((event) => gameIdsByEvent.has(event.id) ? [[gameIdsByEvent.get(event.id)!, event] as const] : []))
     for (const gameId of keptResults) {
+      const observed = describeFeedState(eventByGameId.get(gameId)!)
       await recordReview(supabase, reliable, `result-review:${gameId}`,
-        'ESPN no longer reports a clear final for a game that already has a result. The saved result was kept; check the game before changing it.',
-        { requested_date: slateDate, game_id: gameId })
+        `ESPN no longer reports a clear final for a game that already has a result (it now says: ${observed}). The saved result was kept; check the game before changing it.`,
+        { requested_date: slateDate, game_id: gameId, observed })
     }
 
     if (rows.length > 0) {
@@ -262,6 +267,21 @@ export async function syncSlateFromEspn(
         await recordScheduleReview(supabase, reliable, requestedDate, [...held.values()])
       }
       totalGames += saved?.length ?? 0
+      // ESPN calls a never-graded game final but the parser cannot trust it
+      // (equal scores, contradictory flags, a third competitor): it would
+      // stay pending with no sign why, so the organizer is told.
+      const savedIds = new Map((saved ?? []).map((row) => [row.espn_event_id as string, row.id as string]))
+      for (const incoming of dayEvents) {
+        const known = storedByEvent.get(incoming.id)
+        const gameId = known?.id ?? savedIds.get(incoming.id)
+        if (!gameId || held.has(incoming.id) || ambiguousGames.includes(incoming.id)) continue
+        if (known?.result && known.result !== 'pending') continue
+        if (!reportsFinal(incoming) || resultOf(oriented.get(incoming.id) ?? incoming) !== 'pending') continue
+        const observed = describeFeedState(incoming)
+        await recordReview(supabase, reliable, `result-review:${gameId}`,
+          `ESPN reports this game as final but the result could not be trusted (${observed}). It stays ungraded; set the result by hand after checking the score.`,
+          { requested_date: slateDate, game_id: gameId, observed })
+      }
     }
 
     if (slateDate === requestedDate && failedGroups.length === 0 && !held.size) {
@@ -335,15 +355,34 @@ async function recordScheduleReview(db: SupabaseClient, reliable: boolean, date:
 }
 
 // Organizer-visible review item: an incident (migration 025/026) when the
-// reliability schema is active, otherwise an audit-log entry.
+// reliability schema is active, otherwise an audit-log entry. The sync runs
+// every minute, so a condition is raised once per distinct observed state:
+// when the state recorded last time for this key is identical, nothing is
+// written (record_incident would otherwise reopen it and count it again).
 async function recordReview(db: SupabaseClient, reliable: boolean, key: string, message: string,
   details: Record<string, unknown>, legacyEvent = 'job-failed'): Promise<void> {
+  const state = JSON.stringify(details)
   if (reliable) {
+    const detail = state.slice(0, 1000)
+    const { data: last, error: readError } = await db.from('incidents').select('details,impact').eq('key', key).maybeSingle()
+    if (readError) throw readError
+    if (last && last.details === detail && last.impact === message) return
     const { error } = await db.rpc('record_incident', { p_key: key, p_impact: message,
-      p_correlation: randomUUID(), p_detail: JSON.stringify(details).slice(0, 1000) })
+      p_correlation: randomUUID(), p_detail: detail })
     if (error) throw error
   } else {
     // Pre-025 deployments have neither incidents nor stable team/game columns.
+    const { data: recent, error: readError } = await db.from('audit_log').select('details,message')
+      .eq('event_type', legacyEvent).order('created_at', { ascending: false }).limit(50)
+    if (readError) throw readError
+    const same = (row: { details?: Record<string, unknown> | null }) => legacyEvent === 'schedule-change'
+      ? row.details?.requested_date === details.requested_date
+      : row.details?.key === key
+    const last = (recent ?? []).find(same) as { details: Record<string, unknown>; message: string } | undefined
+    if (last) {
+      const lastState = Object.fromEntries(Object.entries(last.details ?? {}).filter(([name]) => name !== 'key'))
+      if (JSON.stringify(lastState) === state && last.message === message) return
+    }
     const { error } = await db.from('audit_log').insert({ event_type: legacyEvent, actor: 'system', message,
       details: legacyEvent === 'schedule-change' ? details : { key, ...details } })
     if (error) throw error
