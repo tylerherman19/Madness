@@ -149,6 +149,7 @@ export default async function GridPage() {
     if (game && game.result !== 'pending') {
       if (game.result === 'home_win') outcome = pick.team === game.home_team ? 'won' : 'lost'
       else if (game.result === 'away_win') outcome = pick.team === game.away_team ? 'won' : 'lost'
+      else if (game.result === 'void') outcome = 'won'
       else outcome = 'lost'
     }
     if (!resultMap[pick.player_id]) resultMap[pick.player_id] = {}

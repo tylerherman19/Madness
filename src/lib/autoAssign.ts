@@ -219,7 +219,9 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
   // retains its legacy behavior until the operations migration is activated.
   const snapshot = (slate as Slate & { assignment_schedule?: Game[] }).assignment_schedule
   if (token && !snapshot?.length) throw new Error('Frozen assignment schedule is unavailable; apply migration 022')
-  const assignmentGames = snapshot?.length ? snapshot : gamesData
+  // A voided game's teams are never handed out: the pick would be excused, a free pass.
+  const voided = new Set(gamesData.filter((game) => game.result === 'void').map((game) => game.id))
+  const assignmentGames = (snapshot?.length ? snapshot : gamesData).filter((game) => !voided.has(game.id))
   // Tournament ties on a seed line are broken by the AP snapshot saved with
   // the slate. Without one, assignments that need it wait (see below).
   const apRanks = useSeedPriority

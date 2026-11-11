@@ -1,5 +1,5 @@
 export type PlayerStatus = 'alive' | 'eliminated'
-export type GameResult = 'home_win' | 'away_win' | 'tie' | 'pending'
+export type GameResult = 'home_win' | 'away_win' | 'tie' | 'pending' | 'void'
 // ESPN's status.type.state
 export type GameState = 'pre' | 'in' | 'post'
 
@@ -63,6 +63,9 @@ export interface Game {
   home_score: number | null
   away_score: number | null
   result: GameResult
+  // Migration 033: 'admin' results (and voids) are never overwritten by the ESPN sync.
+  result_source?: 'espn' | 'admin'
+  result_note?: string | null
   created_at: string
 }
 

@@ -7,6 +7,15 @@ import { reportFailure } from './alerts'
 export interface GradeResult {
   eliminated: string[]
   advanced: string[]
+  // Entries put back because a corrected result left them with no losing pick.
+  restored?: string[]
+  // Entries grading eliminated that no longer lost, but a later day has locked: restore by hand.
+  needsManualRestore?: string[]
+}
+
+// Databases without migration 033 have no regrade_slate; keep the one-way path there.
+function isMissingFunction(error: { code?: string; message?: string }): boolean {
+  return error.code === 'PGRST202' || error.code === '42883' || /could not find the function|function .* does not exist/i.test(error.message ?? '')
 }
 
 // Teams that have already lost or tied in a decided (non-pending) game —
@@ -57,12 +66,27 @@ export async function gradeSlatePicks(
   }
   const losers = computeLosers(completedGames)
 
+  const regrade = await db.rpc('regrade_slate', { p_slate: slateId, p_games: completedGames.map((g) => g.id) })
+  if (regrade.error && !isMissingFunction(regrade.error)) throw regrade.error
+  const recomputed = !regrade.error && regrade.data ? regrade.data as { eliminated: string[]; restored: string[]; manual: string[] } : null
+
   const picks = await selectAll<{
     id: string; player_id: string; team: string; loss_excused?: boolean
     players: { id: string; full_name: string; email: string; status: string } | null
   }>((from, to) => db.from('picks')
     .select('id, player_id, team, loss_excused, players(id, full_name, email, status)')
     .eq('slate_id', slateId).order('id').range(from, to))
+
+  if (recomputed) {
+    // Statuses were recomputed from current results in the database; report who survived this slate.
+    const survivors = new Map<string, string>()
+    for (const pick of picks ?? []) {
+      const player = pick.players
+      if (!player || player.status !== 'alive' || survivors.has(player.id)) continue
+      if (picks.filter((row) => row.player_id === player.id).every((row) => row.loss_excused || winners.has(row.team))) survivors.set(player.id, player.full_name)
+    }
+    return { eliminated: recomputed.eliminated, advanced: [...survivors.values()], restored: recomputed.restored, needsManualRestore: recomputed.manual }
+  }
 
   const eliminated: string[] = []
   const advanced = new Map<string, string>()

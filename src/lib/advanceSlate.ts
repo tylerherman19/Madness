@@ -41,6 +41,14 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
     // Grade clean games even if another game is waiting for organizer review.
     const finals = currentGames.filter(game => !held.has(game.id) && game.result !== 'pending')
     await gradeSlatePicks(supabase, slate.id, slate.slate_number, finals)
+    // With every entry out after the contest started there is nothing to advance for. This is a
+    // normal resting state, not an error; restoring an entry lets the next run continue.
+    if (actor === 'system') {
+      const { data: contest } = await supabase.rpc('contest_state')
+      if ((contest as { stopped?: boolean } | null)?.stopped === true) {
+        return NextResponse.json({ ok: true, stopped: true, message: 'Stopped: no entries alive' })
+      }
+    }
     const complete = currentGames.length > 0 && finals.length === currentGames.length
     if (!complete) {
       const picks = await loadPicksForSlates<{team: string; loss_excused: boolean}>(supabase, [slate.id], 'team, loss_excused')

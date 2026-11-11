@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { pageMetadata } from '@/lib/site'
 import { getContestCore, getContestStandings, preloadContestStandings, type ContestCore } from '@/lib/dashboard'
 import { haveSignupsClosedCached } from '@/lib/season'
+import { getContestState } from '@/lib/contestState'
 import { getSession } from '@/lib/session'
 import { getPoolConfig } from '@/lib/pool'
 import { getEffectiveNow } from '@/lib/testMode'
@@ -37,11 +38,12 @@ export default async function Today() {
   // Your own picks are read as soon as the session is known, alongside the
   // pool's data rather than after it.
   const sessionRead = getSession()
-  const [data, closed, session, allMyPicks] = await Promise.all([
+  const [data, closed, session, allMyPicks, contest] = await Promise.all([
     getContestCore(),
     haveSignupsClosedCached(),
     sessionRead,
     sessionRead.then((current) => (current ? loadMyPicks(current.player_id) : [])),
+    getContestState(),
   ])
   // The standings started loading with everything else. When they are
   // already in hand — the usual, cached case — they render with the page;
@@ -134,7 +136,11 @@ export default async function Today() {
       {!data && <p role="status" className={s.notice}>Pool data is unavailable. Refresh to try again.</p>}
 
       <section className={s.scoreboard} aria-label="Pool scoreboard">
-        <div className={s.scoreCell}><span className={s.bigNum}>{alive}</span><span className={s.bigSub}> alive of {total}</span></div>
+        <div className={s.scoreCell}>
+          {contest && !contest.started
+            ? <><span className={s.bigNum}>{total}</span><span className={s.bigSub}> registered</span></>
+            : <><span className={s.bigNum}>{alive}</span><span className={s.bigSub}> alive of {total}</span></>}
+        </div>
         <div className={s.scoreCell}><div className={s.cellLabel}>Eliminated</div><div className={s.cellValue}>{data?.eliminatedCount ?? 0}</div></div>
         <div className={s.scoreCell}>
           <div className={s.cellLabel}>Picks submitted</div>

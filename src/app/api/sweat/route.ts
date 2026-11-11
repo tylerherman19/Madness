@@ -223,7 +223,7 @@ export async function GET(request: NextRequest) {
       // /admin/testing — a game only becomes "post" once explicitly finalized.
       for (const g of dbGames) {
         const state: 'pre' | 'in' | 'post' =
-          g.result !== 'pending' ? 'post' : now >= new Date(g.tip_time) ? 'in' : 'pre'
+          g.result !== 'pending' && g.result !== 'void' ? 'post' : now >= new Date(g.tip_time) && g.result !== 'void' ? 'in' : 'pre'
         espnGames.push({
           id: g.id,
           homeTeam: g.home_team,

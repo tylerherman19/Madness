@@ -94,7 +94,7 @@ export async function syncSlateFromEspn(
   const reliable = process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true'
   try {
     storedGames = await selectAllIn<StoredGame>(events.map(event => event.id), (batch, from, to) =>
-      supabase.from('games').select(`id,espn_event_id,slate_id,home_team,away_team,result${reliable ? ',home_team_id,away_team_id' : ''}`)
+      supabase.from('games').select(`id,espn_event_id,slate_id,home_team,away_team,result${reliable ? ',home_team_id,away_team_id,result_source' : ''}`)
         .in('espn_event_id', batch).order('id').range(from, to))
     storedSlates = await selectAllIn<{ id: string; slate_date: string }>(storedGames.map(game => game.slate_id), (batch, from, to) =>
       supabase.from('slates').select('id,slate_date').in('id', batch).order('id').range(from, to))
@@ -200,7 +200,10 @@ export async function syncSlateFromEspn(
       // a clear result (or a now-ambiguous team) keeps the saved outcome and
       // asks the organizer to look. A different definitive result is written
       // and flows through the result-correction trigger (migration 027).
-      if (result === 'pending' && stored?.result && stored.result !== 'pending') {
+      // An administrator's result (or void) outranks the feed; scores and status still refresh.
+      if (stored?.result_source === 'admin' && stored.result) {
+        result = stored.result as typeof result
+      } else if (result === 'pending' && stored?.result && stored.result !== 'pending') {
         keptResults.push(stored.id)
         result = stored.result as typeof result
       }
@@ -327,6 +330,7 @@ interface StoredGame {
   home_team_id?: string | null
   away_team_id?: string | null
   result?: string
+  result_source?: string
 }
 
 async function recordScheduleReview(db: SupabaseClient, reliable: boolean, date: string, gameIds: string[]): Promise<void> {

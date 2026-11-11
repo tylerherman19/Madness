@@ -50,6 +50,8 @@ export function generateRecap(input: RecapInput): string {
           ? `${game.home_team} wins`
           : game.result === 'away_win'
           ? `${game.away_team} wins`
+          : game.result === 'void'
+          ? 'VOID (picks survive)'
           : 'TIE'
       lines.push(`  ${game.away_team} @ ${game.home_team} — ${resultStr}`)
     }
