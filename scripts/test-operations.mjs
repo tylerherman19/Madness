@@ -2,7 +2,8 @@ import {PGlite} from '@electric-sql/pglite'
 import {readFile,readdir} from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import ts from 'typescript'
-import {encryptBackup,decryptBackup,fetchBackupSnapshot} from './backup.mjs'
+import {createCipheriv,randomBytes,scryptSync} from 'node:crypto'
+import {encryptBackup,decryptBackup,fetchBackupSnapshot,parseBackupKey} from './backup.mjs'
 import {restoreCheck} from './restore-check.mjs'
 import {configureScheduler} from './configure-scheduler.mjs'
 // Verify schema routing and identity before the archive/encryption boundary.
@@ -242,12 +243,32 @@ for(const schema of ['public','sandbox']) {
 }
 await db.exec('set search_path=public,pg_catalog')
 const snapshot=await scalar('select contest_backup()')
-const key='fixture-only-encryption-passphrase-123456789'
+// Backup keys are 32 random bytes; passphrases, short or repetitive values are refused.
+const key=randomBytes(32).toString('base64')
+assert.equal(parseBackupKey(key).length,32)
+assert.equal(parseBackupKey(randomBytes(32).toString('hex')).length,32)
+assert.equal(parseBackupKey(randomBytes(32).toString('base64url')).length,32)
+for(const weak of [undefined,'','short','fixture-only-encryption-passphrase-123456789','correcthorsebatterystaplecorrecthorsebatter','0'.repeat(64),'ab'.repeat(32),Buffer.alloc(32,7).toString('base64'),randomBytes(31).toString('base64'),randomBytes(33).toString('hex')])
+ assert.throws(()=>parseBackupKey(weak),/32 random bytes/)
+assert.throws(()=>encryptBackup(snapshot,'fixture-only-encryption-passphrase-123456789'),/32 random bytes/)
 const envelope=encryptBackup(snapshot,key)
+assert.equal(envelope.version,2)
 assert.equal(JSON.stringify(envelope).includes('private@example'),false)
+assert.notEqual(encryptBackup(snapshot,key).iv,envelope.iv,'every archive gets a fresh nonce')
 assert.deepEqual(decryptBackup(envelope,key),snapshot)
-assert.throws(()=>decryptBackup(envelope,key+'wrong'))
+assert.throws(()=>decryptBackup(envelope,randomBytes(32).toString('base64')))
+const flip=(value)=>{const bytes=Buffer.from(value,'base64');bytes[0]^=1;return bytes.toString('base64')}
+assert.throws(()=>decryptBackup({...envelope,ciphertext:flip(envelope.ciphertext)},key),'tampered ciphertext is rejected')
+assert.throws(()=>decryptBackup({...envelope,schema:'sandbox'},key),'authenticated header cannot be relabelled')
+assert.throws(()=>decryptBackup({...envelope,tag:Buffer.from(envelope.tag,'base64').subarray(0,8).toString('base64')},key),/Corrupt/)
+// Archives from before this change (scrypt passphrase, version 1) still open with their original passphrase.
+const legacyPassphrase='fixture-only-encryption-passphrase-123456789',salt=randomBytes(16),iv=randomBytes(12)
+const legacyCipher=createCipheriv('aes-256-gcm',scryptSync(legacyPassphrase,salt,32),iv)
+const legacyText=Buffer.concat([legacyCipher.update(JSON.stringify(snapshot)),legacyCipher.final()])
+const legacy={version:1,algorithm:'aes-256-gcm+scrypt',salt:salt.toString('base64'),iv:iv.toString('base64'),tag:legacyCipher.getAuthTag().toString('base64'),ciphertext:legacyText.toString('base64')}
+assert.deepEqual(decryptBackup(legacy,legacyPassphrase),snapshot)
+assert.throws(()=>decryptBackup(legacy,legacyPassphrase+'wrong'))
 const result=await restoreCheck(decryptBackup(envelope,key))
 assert.ok(result.rows>0)
-console.log(`PASS encrypted backup: authenticated encryption, wrong-key rejection and ${result.tables}-table isolated restore with row digests`)
+console.log(`PASS encrypted backup: random 32-byte key validation, fresh nonce, authenticated encryption and tamper/wrong-key rejection, legacy archive decrypt and ${result.tables}-table isolated restore with row digests`)
 await db.close()

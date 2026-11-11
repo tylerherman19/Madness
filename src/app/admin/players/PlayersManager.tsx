@@ -45,6 +45,9 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   const [addError, setAddError] = useState('')
   const [addingPlayer, setAddingPlayer] = useState(false)
   const [resettingPlayerId, setResettingPlayerId] = useState<string | null>(null)
+  // Shown once, held only in this component's memory; closing the dialog discards it.
+  const [resetLink, setResetLink] = useState<{ fullName: string; url: string; expiresAt: string; minutes: number } | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   const query = search.trim().toLowerCase()
   const filtered = query
@@ -100,20 +103,20 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   }
 
   async function requestPasswordReset(playerId: string, fullName: string) {
+    if (!confirm(`Create a one-time password reset link for ${fullName}? Any earlier unused link for this player stops working.`)) return
     setResettingPlayerId(playerId)
     setMessage('')
     try {
-      const res = await fetch(`/api/players/${playerId}/regen-pin`, { method: 'POST' })
+      const res = await fetch(`/api/players/${playerId}/regen-pin`, { method: 'POST', cache: 'no-store' })
       const data = await res.json().catch(() => null)
-      if (res.ok) {
-        setMessage(data?.emailSent
-          ? `Password reset email sent to ${fullName}`
-          : `Reset request created for ${fullName}. Email delivery is off, so no email was sent.`)
+      if (res.ok && typeof data?.resetUrl === 'string') {
+        setLinkCopied(false)
+        setResetLink({ fullName, url: data.resetUrl, expiresAt: data.expiresAt, minutes: data.expiresInMinutes ?? 60 })
       } else {
-        setMessage(data?.error || 'Failed to create reset request')
+        setMessage(data?.error || 'Failed to create reset link')
       }
     } catch {
-      setMessage('Failed to create reset request')
+      setMessage('Failed to create reset link')
     } finally {
       setResettingPlayerId(null)
     }
@@ -461,7 +464,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                   className="rounded border px-2 py-1 text-xs"
                   style={actionBtn('neutral')}
                 >
-                  {resettingPlayerId === p.id ? 'Creating request…' : 'Send Reset Email'}
+                  {resettingPlayerId === p.id ? 'Creating link…' : 'Reset Link'}
                 </button>
                 <button
                   onClick={() => toggleElimination(p)}
@@ -574,7 +577,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                         className="rounded border px-2 py-0.5 text-xs"
                         style={actionBtn('neutral')}
                       >
-                        {resettingPlayerId === p.id ? 'Creating request…' : 'Send Reset Email'}
+                        {resettingPlayerId === p.id ? 'Creating link…' : 'Reset Link'}
                       </button>
                       <button
                         onClick={() => toggleElimination(p)}
@@ -727,6 +730,43 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 Cancel
               </button>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* One-time reset link: shown once, never retrievable again */}
+      {resetLink && (
+        <Modal titleId="reset-link-title" onClose={() => setResetLink(null)}>
+          <div className="card p-6 w-full max-w-sm space-y-4" style={{ background: 'var(--surface)' }}>
+            <h3 id="reset-link-title" className="font-display text-2xl" style={{ color: 'var(--ink)' }}>Reset link for {resetLink.fullName}</h3>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              Send this link to {resetLink.fullName} yourself. No email is sent. It works once and expires in {resetLink.minutes} minutes
+              ({new Date(resetLink.expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}). It is shown only now; create a new one if it is lost.
+            </p>
+            <div>
+              <label htmlFor="reset-link-url" className="eyebrow block mb-1">One-time reset link</label>
+              <input id="reset-link-url" readOnly value={resetLink.url} onFocus={(e) => e.currentTarget.select()} className="field w-full px-3 py-2 text-xs font-mono" />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  try { await navigator.clipboard.writeText(resetLink.url); setLinkCopied(true) } catch { setLinkCopied(false) }
+                }}
+                className="btn-primary flex-1 py-2 font-semibold"
+              >
+                {linkCopied ? 'Copied' : 'Copy link'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setResetLink(null)}
+                className="flex-1 rounded-lg border py-2"
+                style={{ borderColor: 'var(--line)', color: 'var(--muted)' }}
+              >
+                Done
+              </button>
+            </div>
+            {linkCopied && <p role="status" className="text-xs" style={{ color: 'var(--success)' }}>Link copied to the clipboard.</p>}
           </div>
         </Modal>
       )}

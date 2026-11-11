@@ -7,15 +7,13 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import type { SessionPayload } from '@/types'
 import { isTestMode } from './testMode'
+import { sessionSecretKey } from './sessionSecret'
 
 const SESSION_COOKIE = 'survivor_session'
 const ADMIN_COOKIE = 'survivor_admin'
 
-function getSecret(): Uint8Array {
-  const s = process.env.SESSION_SECRET
-  if (!s) throw new Error('SESSION_SECRET env var is not set')
-  return new TextEncoder().encode(s)
-}
+// Validated lazily per request (length and placeholder checks in production).
+const getSecret = (): Uint8Array => sessionSecretKey()
 
 function environmentAudience(): string {
   return `madness:${process.env.VERCEL_ENV ?? 'local'}`

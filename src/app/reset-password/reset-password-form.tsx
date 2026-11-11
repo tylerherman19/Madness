@@ -2,14 +2,24 @@
 
 import Link from 'next/link'
 import css from '@/app/components/pp.module.css'
-import { useState, type FormEvent } from 'react'
+import { useState, useSyncExternalStore, type FormEvent } from 'react'
 
-export default function ResetPasswordForm({ token }: { token: string }) {
+const subscribeToHash = (onChange: () => void) => {
+  window.addEventListener('hashchange', onChange)
+  return () => window.removeEventListener('hashchange', onChange)
+}
+const hashToken = () => new URLSearchParams(window.location.hash.slice(1)).get('token') ?? ''
+
+export default function ResetPasswordForm({ token: queryToken }: { token?: string }) {
+  // null while the server render cannot see the fragment yet.
+  const fragmentToken = useSyncExternalStore(subscribeToHash, hashToken, () => null)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
+
+  const token = queryToken || fragmentToken
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -30,6 +40,8 @@ export default function ResetPasswordForm({ token }: { token: string }) {
         setError(data?.error || 'Could not reset password.')
         return
       }
+      // The link is spent; drop it from the address bar and history entry.
+      window.history.replaceState(null, '', '/reset-password')
       setDone(true)
     } catch {
       setError('Could not reset password. Try again.')
@@ -37,6 +49,9 @@ export default function ResetPasswordForm({ token }: { token: string }) {
       setSaving(false)
     }
   }
+
+  if (token === null && !done) return null
+  if (!token && !done) return <p className={css.authError}>This reset link isn’t valid. Ask the organizer for a new one.</p>
 
   if (done) return <div className="space-y-4"><p role="status">Password updated. Log in with your new password.</p><Link href="/login" className="btn-primary w-full py-3">Log in</Link></div>
 
