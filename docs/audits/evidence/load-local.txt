@@ -180,3 +180,63 @@ requests 25311  req/s 331.4  non-200 22090 (timeouts 198, errors 21892, http 0) 
   success rate (submit 200): 29.4%   db requests 18992 (183/s)  pool max busy 10, max waiting 570, avg waiting 2.87  next cpu avg 111% max 161%
   DB check: 294 pick rows; duplicates 0; 200 responses without a row 0; rows whose team differs from the last accepted request 1; players with a row but no 200 0 (expect 0 unless a response was lost)
   lock check: picks with updated_at after the lock instant 0 (expect 0); 200 responses 294, refused after lock 706
+seeded 5671 picks; entries 1114 (1002 alive), 5 finished days + future schedule
+
+===== 2026-11-12T01:50:59.765Z viewer stages 250 (latency 15 ms)
+
+--- viewers 250 (80% signed out, 20% signed in), 60s, load avg 10.81 8.92 7.81
+requests 2784  req/s 39.5  non-200 1438 (timeouts 155, errors 1283, http 0)  p50/p95/p99 1803/18708/28113 ms
+  /                  n=  844  p50/p95/p99 1636/9099/15945 ms  non-200 405
+  /api/live-scores   n=  683  p50/p95/p99 1931/10679/17347 ms  non-200 339
+  /api/sweat         n=  416  p50/p95/p99 3741/14947/19304 ms  non-200 229
+  /grid              n=  281  p50/p95/p99 17498/30770/35004 ms  non-200 160
+  /api/me            n=  271  p50/p95/p99 470/4204/10511 ms  non-200 147
+  /schedule          n=  151  p50/p95/p99 699/2767/14359 ms  non-200 82
+  /sweat             n=  138  p50/p95/p99 3265/14678/19364 ms  non-200 76
+  adapter db requests 3467 = 49.2/s; pool max busy 10/10, max waiting 73, avg waiting 1.34, pg avg query 59.4 ms, avg acquire 44.1 ms
+  next cpu% avg 100 max 151
+  failures: {"error Error: read ECONNRESET":62,"timeout timeout":155,"error Error: write EPIPE":548,"error Error: connect ECONNRESET 127.0.0.1:3917":666,"error Error: write ECONNRESET":7}
+
+===== 2026-11-12T01:52:17.537Z rush (latency 15 ms)
+
+--- pre-lock rush: 1000 participants over 120s, 250 viewers browsing, 122s wall, load avg 28.86 18.14 11.79
+  /pick page: {"200":445,"error Error: connect ECONNRESET 127.0.0.1:3917":177,"error Error: write EPIPE":275,"timeout timeout":81,"error Error: read ECONNRESET":12,"error Error: write ECONNRESET":10} p50/p95/p99 4737/13762/21575 ms
+  submit:     {"200":478,"error Error: connect ECONNRESET 127.0.0.1:3917":248,"error Error: write EPIPE":253,"error Error: read ECONNRESET":1,"timeout timeout":20} p50/p95/p99 7377/11006/11311 ms
+  change:     n=93 {"200":48,"error Error: write EPIPE":22,"error Error: connect ECONNRESET 127.0.0.1:3917":12,"error Error: read ECONNRESET":1,"timeout timeout":10} p50/p95/p99 7075/8524/8881 ms
+  viewers: 6967 requests, non-200 4919, p50/p95/p99 2403/7159/12457 ms
+  success rate (submit 200): 47.8%   db requests 20134 (164/s)  pool max busy 10, max waiting 842, avg waiting 5.73  next cpu avg 106% max 158%
+  DB check: 483 pick rows; duplicates 0; 200 responses without a row 0; rows whose team differs from the last accepted request 0; players with a row but no 200 5 (expect 0 unless a response was lost)
+
+######## Repeat with FIXTURE_DB_LATENCY_MS=15 (pool 10): 250-viewer stage and 2-minute rush
+seeded 5671 picks; entries 1114 (1002 alive), 5 finished days + future schedule
+
+===== 2026-11-12T01:50:59.765Z viewer stages 250 (latency 15 ms)
+
+--- viewers 250 (80% signed out, 20% signed in), 60s, load avg 10.81 8.92 7.81
+requests 2784  req/s 39.5  non-200 1438 (timeouts 155, errors 1283, http 0)  p50/p95/p99 1803/18708/28113 ms
+  /                  n=  844  p50/p95/p99 1636/9099/15945 ms  non-200 405
+  /api/live-scores   n=  683  p50/p95/p99 1931/10679/17347 ms  non-200 339
+  /api/sweat         n=  416  p50/p95/p99 3741/14947/19304 ms  non-200 229
+  /grid              n=  281  p50/p95/p99 17498/30770/35004 ms  non-200 160
+  /api/me            n=  271  p50/p95/p99 470/4204/10511 ms  non-200 147
+  /schedule          n=  151  p50/p95/p99 699/2767/14359 ms  non-200 82
+  /sweat             n=  138  p50/p95/p99 3265/14678/19364 ms  non-200 76
+  adapter db requests 3467 = 49.2/s; pool max busy 10/10, max waiting 73, avg waiting 1.34, pg avg query 59.4 ms, avg acquire 44.1 ms
+  next cpu% avg 100 max 151
+  failures: {"error Error: read ECONNRESET":62,"timeout timeout":155,"error Error: write EPIPE":548,"error Error: connect ECONNRESET 127.0.0.1:3917":666,"error Error: write ECONNRESET":7}
+
+===== 2026-11-12T01:52:17.537Z rush (latency 15 ms)
+
+--- pre-lock rush: 1000 participants over 120s, 250 viewers browsing, 122s wall, load avg 28.86 18.14 11.79
+  /pick page: {"200":445,"error Error: connect ECONNRESET 127.0.0.1:3917":177,"error Error: write EPIPE":275,"timeout timeout":81,"error Error: read ECONNRESET":12,"error Error: write ECONNRESET":10} p50/p95/p99 4737/13762/21575 ms
+  submit:     {"200":478,"error Error: connect ECONNRESET 127.0.0.1:3917":248,"error Error: write EPIPE":253,"error Error: read ECONNRESET":1,"timeout timeout":20} p50/p95/p99 7377/11006/11311 ms
+  change:     n=93 {"200":48,"error Error: write EPIPE":22,"error Error: connect ECONNRESET 127.0.0.1:3917":12,"error Error: read ECONNRESET":1,"timeout timeout":10} p50/p95/p99 7075/8524/8881 ms
+  viewers: 6967 requests, non-200 4919, p50/p95/p99 2403/7159/12457 ms
+  success rate (submit 200): 47.8%   db requests 20134 (164/s)  pool max busy 10, max waiting 842, avg waiting 5.73  next cpu avg 106% max 158%
+  DB check: 483 pick rows; duplicates 0; 200 responses without a row 0; rows whose team differs from the last accepted request 0; players with a row but no 200 5 (expect 0 unless a response was lost)
+
+######## What this does and does not show
+- Findings: on this laptop ONE Next production process (one Node thread) is saturated (~100-110% CPU, ~14 req/s at 50 visitors, ~47 req/s offered at 250) before the database is: Postgres averaged 1.5-5 ms per query and the pool (10) was never the limit for viewing; in the pick rush the adapter pool queue grew (max waiting 400-850) but p50 submit latency tracked Next CPU, not query time. From 250 visitors up, most failures are connection resets/EPIPE from the saturated listener (client-side symptoms of overload), not application errors; the application itself returned no 5xx. After the load stopped, health and home recovered immediately (home ~35 ms).
+- Pick rush: every accepted (HTTP 200) pick was in the database; no duplicates; the third run, with the lock moving mid-run, accepted no pick after the lock (0 rows with updated_at after the lock; 127 refused with the locked message). Picks whose response was lost to a reset/timeout were sometimes saved anyway (5-45 per run); the app's request-id reconciliation exists for that, but this script did not retry.
+- Not the production stack: a single laptop shared with other work (load average 5-29 during runs, iCloud daemons above 100% CPU), local PostgreSQL, a fake PostgREST adapter in a Node process, a load generator on the same machine, no Vercel functions (which scale horizontally per request), no Supabase API gateway, Free-tier connection/CPU limits or rate limits. The adapter pool has no acquire timeout, so overload shows as latency rather than PostgREST 504s. Cookies were minted, not logged in. 15 ms added latency approximates a remote database but not its variance. Local success or failure therefore does not prove or disprove production capacity; the numbers are useful for comparing code changes on the same machine and for finding which tier saturates first (here the Node render path).
+- Not done in this run: no code change to pickWindow/picks route (the database was not the bottleneck, so removing reads would not have been supported by the evidence); 500-visitor stage was run but 50/100 stages ran with a different HTTP client (fetch) than 250+ (node:http) after the first crashed with an undici socket error.
