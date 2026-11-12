@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { SignJWT } from 'jose'
+const FIXTURE_DB=`http://127.0.0.1:${process.env.E2E_DB_PORT??'54329'}`
 const secret = new TextEncoder().encode(
   'fixture-only-signing-secret-at-least-32-characters',
 )
@@ -26,7 +27,7 @@ async function admin(page: import('@playwright/test').Page) {
     ])
 }
 test.beforeEach(async ({ request }) => {
-  await request.post('http://127.0.0.1:54329/__test/reset')
+  await request.post(`${FIXTURE_DB}/__test/reset`)
 })
 test('both workspaces and mutation routes enforce the same admin authorization', async ({
   page,
@@ -143,5 +144,5 @@ test('a lost pick response reconciles the saved receipt without a duplicate subm
  await expect(receipt.getByText(/^Pick saved:/)).toBeVisible()
  await expect(receipt.getByText(/^Change until /)).toBeVisible()
  expect(posts).toBe(1);expect(reconciled).toBe(true)
- expect((await (await request.get('http://127.0.0.1:54329/picks')).json()).length).toBe(1)
+ expect((await (await request.get(`${FIXTURE_DB}/picks`)).json()).length).toBe(1)
 })

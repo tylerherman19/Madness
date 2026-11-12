@@ -6,6 +6,7 @@ import { createSession } from '@/lib/session'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
 import { serverError } from '@/lib/alerts'
+import { SessionSecretError } from '@/lib/sessionSecret'
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, full_name: player.full_name })
   } catch (err) {
+    if (err instanceof SessionSecretError) return serverError('api/auth/login', err, 'Sign-in is temporarily unavailable. Please tell the pool organizer.', 503)
     return serverError('api/auth/login', err)
   }
 }

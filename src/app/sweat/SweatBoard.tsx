@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { SweatGame, SweatResponse } from '@/app/api/sweat/route'
 import { tipTime } from '@/lib/poolTheme'
+import { formatClock } from '@/lib/deadline'
+import { useViewerTimeZone } from '@/app/components/LocalTime'
 import { RETRY_MS, nextPollMs } from '@/lib/livePolling'
 import { SweatBoardSkeleton } from '@/app/components/PoolLoading'
 import TeamLogo from '@/app/components/TeamLogo'
@@ -81,7 +83,8 @@ export default function SweatBoard({
   const teamBrands = useMemo(() => ({ ...pageBrands, ...(data?.brands ?? {}) }), [pageBrands, data?.brands])
   const name = (team: string) => teamBrands[team]?.shortName ?? team
   const revealed = data?.allRevealed ?? false
-  const lockText = tipTime(data?.locksAt)
+  const viewerZone = useViewerTimeZone()
+  const lockText = formatClock(data?.locksAt, viewerZone)
   const games = data?.games ?? []
   const gameOf = (team: string) => games.find((game) => game.homeTeam === team || game.awayTeam === team)
   const sideOf = (game: SweatGame, team: string): Side => (game.homeTeam === team ? 'home' : 'away')

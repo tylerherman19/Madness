@@ -331,6 +331,8 @@
 .stLabels { min-height: 0; padding: 8px 0; border-bottom-color: var(--pp-line); font-size: var(--pp-text-sm); color: var(--pp-ink-2); }
 .stLabels > span:first-child, .stLabels > span:nth-child(2) { font-size: var(--pp-text-sm); font-weight: var(--pp-regular); }
 .stRow[data-me=true] { padding: 0 10px; border-bottom-color: transparent; background: var(--pp-surface); box-shadow: inset 0 0 0 1px var(--pp-control); }
+.showMore { display: block; width: 100%; min-height: 44px; margin-top: 12px; padding: 0 12px; border: 1px solid var(--pp-control); border-radius: var(--pp-radius-sm); background: var(--pp-surface); color: var(--pp-ink); font: inherit; font-size: var(--pp-text-sm); font-weight: var(--pp-semibold); cursor: pointer; }
+.showMore span { color: var(--pp-ink-2); font-weight: var(--pp-regular); }
 .stOut { min-height: 42px; color: var(--pp-ink-2); }
 .stOut > span:first-child { font-size: var(--pp-text-sm); font-weight: var(--pp-regular); }
 .stOut > span:nth-child(2) { font-weight: var(--pp-regular); color: var(--pp-ink-2); }

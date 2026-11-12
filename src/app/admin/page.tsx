@@ -359,6 +359,7 @@ export default async function AdminDashboard() {
 
 function ResultBadge({ result, home, away }: { result: string; home: string; away: string }) {
   if (result === 'pending') return <span className="text-xs text-warning">pending</span>
+  if (result === 'void') return <span className="text-xs text-warning">voided</span>
   if (result === 'home_win') return <span className="text-xs font-semibold text-success">{home} won</span>
   if (result === 'away_win') return <span className="text-xs font-semibold text-success">{away} won</span>
   return <span className="text-xs font-semibold text-danger">tie</span>

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import { countPendingEliminations } from '@/lib/grading'
+import { getResultsAttention } from '@/lib/attention'
 import ResultsForm from './ResultsForm'
 import type { Game, Slate } from '@/types'
 
@@ -38,6 +39,8 @@ export default async function ResultsPage() {
     pendingEliminations = countPendingEliminations(picks, games)
   }
 
+  const attention = await getResultsAttention(supabase)
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
       <h1 className="text-2xl font-bold text-ink">Enter Results</h1>
@@ -45,7 +48,7 @@ export default async function ResultsPage() {
       {!activeSlate ? (
         <p className="text-muted">No active slate. Set up the schedule first.</p>
       ) : (
-        <ResultsForm slate={activeSlate as Slate} games={games} pendingEliminations={pendingEliminations} />
+        <ResultsForm slate={activeSlate as Slate} games={games} pendingEliminations={pendingEliminations} attention={attention} />
       )}
     </div>
   )

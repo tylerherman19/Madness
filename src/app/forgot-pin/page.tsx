@@ -8,11 +8,11 @@ export default function ForgotPinPage() {
   return (
     <AuthShell
       title="Forgot your password?"
-      description="The pool organizer resets passwords by hand while reset emails are switched off."
+      description="The pool organizer resets passwords by hand. No reset email is sent."
       links={[<Link key="login" href="/login">Back to log in</Link>]}
     >
       <div className="space-y-4">
-        <p>Email the organizer from the address you joined with. They’ll send you a link to choose a new password.</p>
+        <p>Email the organizer from the address you joined with. They’ll give you a one-time link to choose a new password. It works once and expires after 60 minutes.</p>
         <a className="btn-primary w-full py-3" href={`mailto:${supportEmail}?subject=${encodeURIComponent('Pick and Pray password reset')}`}>Email the organizer</a>
         <p>{supportEmail}</p>
       </div>

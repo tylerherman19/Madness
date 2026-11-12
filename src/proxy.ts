@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { sessionSecretKey } from '@/lib/sessionSecret'
 
 const ADMIN_COOKIE = 'survivor_admin'
 
@@ -26,9 +27,8 @@ export async function proxy(req: NextRequest) {
   }
 
   try {
-    const secret = process.env.SESSION_SECRET
-    if (!secret) return NextResponse.redirect(new URL('/admin/login', req.url))
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), { algorithms: ['HS256'], issuer: 'madness', audience: `madness:${process.env.VERCEL_ENV ?? 'local'}` })
+    // A missing secret (or a weak one in enforce mode) throws and fails closed to the login page.
+    const { payload } = await jwtVerify(token, sessionSecretKey(), { algorithms: ['HS256'], issuer: 'madness', audience: `madness:${process.env.VERCEL_ENV ?? 'local'}` })
     // A valid signature alone is insufficient: player session tokens are signed
     // with the same secret. Require the is_admin claim set only for admin sessions.
     if (payload.is_admin !== true || payload.purpose !== 'admin') {

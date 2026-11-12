@@ -13,9 +13,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Same answer for every address: no email is sent and nothing reveals
+    // whether an account exists. The organizer issues one-time reset links.
     await req.json().catch(() => null)
     return NextResponse.json(
-      { error: 'Ask the pool organizer to request a password reset for your entry.' },
+      { error: 'Contact the pool organizer. They can give you a one-time link to choose a new password.' },
       { status: 410 }
     )
   } catch (err) {

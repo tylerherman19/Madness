@@ -1,8 +1,9 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { pageMetadata } from '@/lib/site'
-import { getContestCore, getContestStandings, preloadContestStandings, type ContestCore } from '@/lib/dashboard'
+import { getContestCore, getContestStandings, type ContestCore } from '@/lib/dashboard'
 import { haveSignupsClosedCached } from '@/lib/season'
+import { getContestState } from '@/lib/contestState'
 import { getSession } from '@/lib/session'
 import { getPoolConfig } from '@/lib/pool'
 import { getEffectiveNow } from '@/lib/testMode'
@@ -11,10 +12,11 @@ import { loadMyPicks, type MyPick } from '@/lib/myEntry'
 import { buildTimeline } from '@/lib/timeline'
 import { brandFor } from '@/lib/teamBrand'
 import { capabilitiesFor } from '@/lib/competition'
-import { dayDate, eventLabel, pickDayTitle, tipTime } from '@/lib/poolTheme'
+import { dayDate, eventLabel, pickDayTitle } from '@/lib/poolTheme'
 import PoolShell from '../components/PoolShell'
 import ContestRefresh from '../components/ContestRefresh'
 import LockCountdown from '../components/LockCountdown'
+import LocalTime from '../components/LocalTime'
 import TeamLogo from '../components/TeamLogo'
 import StandingsTable from '../components/StandingsTable'
 import { StandingsTableSkeleton } from '../components/PageSkeletons'
@@ -32,20 +34,19 @@ export const dynamic = 'force-dynamic'
 export const metadata = pageMetadata('Today', 'Today in the Pick and Pray college basketball survivor pool.', '/', true)
 
 export default async function Today() {
-  preloadContestStandings()
   // Your own picks are read as soon as the session is known, alongside the
   // pool's data rather than after it.
   const sessionRead = getSession()
-  const [data, closed, session, allMyPicks] = await Promise.all([
+  const [data, closed, session, allMyPicks, contest] = await Promise.all([
     getContestCore(),
     haveSignupsClosedCached(),
     sessionRead,
     sessionRead.then((current) => (current ? loadMyPicks(current.player_id) : [])),
+    getContestState(),
   ])
-  // The standings started loading with everything else. When they are
-  // already in hand — the usual, cached case — they render with the page;
-  // only when they are still loading does the table stream in behind its
-  // placeholder.
+  // The standings are built from shared entries kept in memory, so they are
+  // normally in hand with the page; only when they are still loading does the
+  // table stream in behind its placeholder.
   const standingsRead = data ? getContestStandings(data) : Promise.resolve(null)
   const ready = await Promise.race([
     standingsRead.then((standings) => ({ standings })),
@@ -63,7 +64,6 @@ export default async function Today() {
   const dayNumber = period ? periods.findIndex((p) => p.id === period.id) + 1 : 0
   const lock = slate ? slateDeadline(slate, data?.slateGames ?? []) : null
   const lockIso = lock?.toISOString() ?? null
-  const lockText = tipTime(lockIso)
   const now = data?.now ?? (await getEffectiveNow())
   const locked = lock ? lock <= now : false
 
@@ -105,14 +105,13 @@ export default async function Today() {
       ? { href: '/sweat', label: 'View picks' }
       : { href: '/pick', label: pick === 'submitted' ? 'Change pick' : 'Make your pick' }
   const entryDeadline = lockIso && me && (pick === 'open' || pick === 'submitted')
-    ? pick === 'submitted' ? `Change until ${lockText} CT` : `Picks lock at ${lockText} CT`
+    ? <>{pick === 'submitted' ? 'Change until' : 'Picks lock at'} <LocalTime iso={lockIso} /></>
     : null
 
   const survivors = (data?.players ?? []).filter((player) => player.status === 'alive')
-  const winner = pool.status === 'completed' && survivors.length === 1 ? survivors[0].full_name : null
   const standingsProps = {
     dayLabel: period ? `Day ${dayNumber}` : 'Today',
-    hiddenUntil: slate && !locked ? lockText : null,
+    hiddenUntil: slate && !locked ? lockIso : null,
     showSeedTotal: capabilitiesFor(mode).showSeedTotal,
     signupsClosed: closed,
   }
@@ -134,7 +133,11 @@ export default async function Today() {
       {!data && <p role="status" className={s.notice}>Pool data is unavailable. Refresh to try again.</p>}
 
       <section className={s.scoreboard} aria-label="Pool scoreboard">
-        <div className={s.scoreCell}><span className={s.bigNum}>{alive}</span><span className={s.bigSub}> alive of {total}</span></div>
+        <div className={s.scoreCell}>
+          {contest && !contest.started
+            ? <><span className={s.bigNum}>{total}</span><span className={s.bigSub}> registered</span></>
+            : <><span className={s.bigNum}>{alive}</span><span className={s.bigSub}> alive of {total}</span></>}
+        </div>
         <div className={s.scoreCell}><div className={s.cellLabel}>Eliminated</div><div className={s.cellValue}>{data?.eliminatedCount ?? 0}</div></div>
         <div className={s.scoreCell}>
           <div className={s.cellLabel}>Picks submitted</div>
@@ -142,7 +145,7 @@ export default async function Today() {
           <div className={s.meter}><span style={{ width: `${alive ? (submitted / alive) * 100 : 0}%` }} /></div>
         </div>
         <div className={s.scoreCell}>
-          <div className={s.cellLabel}>{entryDeadline ? 'Time to lock' : lockIso ? <>Locks<span className={s.liveExtra}> at first tip,</span> {lockText}</> : 'Lock time'}</div>
+          <div className={s.cellLabel}>{entryDeadline ? 'Time to lock' : lockIso ? <>Locks<span className={s.liveExtra}> at first tip,</span> <LocalTime iso={lockIso} /></> : 'Lock time'}</div>
           <div className={s.cellValue}>{lockIso ? <LockCountdown deadline={lockIso} soonClassName={s.clockSoon} /> : 'TBD'}</div>
         </div>
       </section>
@@ -177,17 +180,16 @@ export default async function Today() {
 
       <section id="standings" className={s.homeSection} aria-label="Standings">
         <div className={s.sectionHead}><h2>Standings</h2><span>{period ? `Through day ${dayNumber}` : ''}</span></div>
-        {winner && <div className={s.winner}><span className={s.cellLabel}>Winner</span><b>{winner}</b></div>}
         {data && ready ? (
           <StandingsBlock standings={ready.standings} core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
         ) : data ? (
-          // Everything above is built from today's data; the table needs the
-          // whole season, so it streams in behind a same-size placeholder.
+          // Everything above is built from today's data; the table may need the
+          // season's finished days, so it can stream in behind a same-size placeholder.
           <Suspense fallback={<StandingsTableSkeleton alive={alive} out={total - alive} showSeedTotal={standingsProps.showSeedTotal} />}>
             <TodayStandings core={data} meId={session?.player_id} myTeams={todayPicks.map((p) => p.team)} {...standingsProps} />
           </Suspense>
         ) : (
-          <StandingsTable alive={[]} out={[]} teamBrands={{}} {...standingsProps} />
+          <StandingsTable alive={[]} out={[]} outLabels={{}} teamBrands={{}} {...standingsProps} />
         )}
       </section>
 
@@ -208,8 +210,8 @@ type StandingsTableProps = {
 
 function StandingsBlock({ standings, core, meId, myTeams, ...table }: StandingsTableProps & { standings: StandingRow[] | null }) {
   if (!standings) return <p role="status" className={s.notice}>Standings are unavailable. Refresh to try again.</p>
-  const rows = buildStandingsRows({ standings, periods: core.periods, meId, myTeams, brands: core.teamBrands })
-  return <StandingsTable alive={rows.alive} out={rows.out} teamBrands={rows.teamBrands} {...table} />
+  const rows = buildStandingsRows({ standings, periods: core.periods, meId, myTeams, brands: core.teamBrands, showSeedTotal: table.showSeedTotal })
+  return <StandingsTable alive={rows.alive} out={rows.out} outLabels={rows.outLabels} teamBrands={rows.teamBrands} {...table} />
 }
 
 async function TodayStandings(props: StandingsTableProps) {

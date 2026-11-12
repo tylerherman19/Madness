@@ -15,9 +15,10 @@ async function loadTs(file, dependencies = {}) {
 }
 const espn = await loadTs('src/lib/espn.ts', {'server-only': {}})
 const paging = await loadTs('src/lib/db.ts')
+const teams = await loadTs('src/lib/teams.ts', {'./db': paging})
 let feed, hooks
 const { syncSlateFromEspn } = await loadTs('src/lib/espnSync.ts', {
- 'server-only': {}, 'node:crypto': {randomUUID}, './db': paging,
+ 'server-only': {}, 'node:crypto': {randomUUID}, './db': paging, './teams': teams,
  './espn': {...espn, fetchDayScoreboard: async () => feed, fetchApRankings: async () => ({})},
  './slates': {
   getOrCreateSlate: async (_db, date) => {hooks.push(['create', date]); return {id: 'new-slate'}},
@@ -32,17 +33,26 @@ const event = (date = '2026-11-01T20:00:00Z', extra = {}) => ({
 // The response cap is deliberately TWO rows: use the real paging helper, and
 // ensure a picked period is found even when the first response is truncated.
 function fixture({games = [], slates = [], picks = [], directoryError = false, skipUpsert = false, legacy = false} = {}) {
- const state = {games: structuredClone(games), slates: structuredClone(slates), picks: structuredClone(picks), teams: [], audit_log: []}
+ const state = {games: structuredClone(games), slates: structuredClone(slates), picks: structuredClone(picks), teams: [], audit_log: [], incidents: []}
  const calls = [], incidents = []
  return {state, calls, incidents,
-  async rpc(name, args) {incidents.push({name, args}); return {error: null}},
+  async rpc(name, args) {
+   incidents.push({name, args})
+   if (name === 'record_incident') {
+    const old = state.incidents.find(row => row.key === args.p_key)
+    // Like the real function: reopen and count again on every call.
+    if (old) Object.assign(old, {impact: args.p_impact, details: args.p_detail, occurrences: old.occurrences + 1, status: 'open'})
+    else state.incidents.push({key: args.p_key, impact: args.p_impact, details: args.p_detail, occurrences: 1, status: 'open'})
+   }
+   return {error: null}
+  },
   from(table) {
-   const filters = []; let action, payload, conflict, columns, range
+   const filters = []; let action, payload, conflict, columns, range, sort, cap
    const query = {
     select(value) {if (legacy) assert.doesNotMatch(value, /home_team_id|away_team_id|game_id/); columns = value; return query},
     eq(key, value) {filters.push(row => row[key] === value); return query},
     in(key, values) {filters.push(row => values.includes(row[key])); return query},
-    order() {return query}, range(from, to) {range = [from, to]; return query},
+    order(column, options) {sort = [column, options?.ascending !== false]; return query}, limit(n) {cap = n; return query}, range(from, to) {range = [from, to]; return query},
     or() {return query},
     upsert(value, options) {action = 'upsert'; payload = value; conflict = options.onConflict; return query},
     update(value) {action = 'update'; payload = value; return query},
@@ -63,10 +73,13 @@ function fixture({games = [], slates = [], picks = [], directoryError = false, s
       if (existing) {Object.assign(existing, row); rows.push(existing)}
       else {const saved = {id: randomUUID(), ...row}; state[table].push(saved); rows.push(saved)}
      }
-    } else if (action === 'insert') {state[table].push(payload); rows = [payload]}
+    } else if (action === 'insert') {state[table].push({created_at: state[table].length, ...payload}); rows = [payload]}
     else if (action === 'update') rows.forEach(row => Object.assign(row, payload))
     else if (action === 'delete') state[table] = state[table].filter(row => !rows.includes(row))
-    else rows = range ? rows.slice(range[0], Math.min(range[1] + 1, range[0] + 2)) : rows.slice(0, 2)
+    else {
+     if (sort) rows = [...rows].sort((a, b) => (a[sort[0]] > b[sort[0]] ? 1 : a[sort[0]] < b[sort[0]] ? -1 : 0) * (sort[1] ? 1 : -1))
+     rows = range ? rows.slice(range[0], Math.min(range[1] + 1, range[0] + 2)) : rows.slice(0, cap ?? 2)
+    }
     return {data: structuredClone(rows), error: null}
    }
    return query
@@ -115,7 +128,7 @@ try {
  const currentDay = [{id: 'new-slate', slate_date: '2026-11-01', is_active: true}]
  const reversed = event()
  reversed.competitions[0].neutralSite = true
- reversed.competitions[0].status.type = {state: 'post', completed: true}
+ reversed.competitions[0].status.type = {name: 'STATUS_FINAL', state: 'post', completed: true}
  reversed.competitions[0].competitors = [
   {homeAway: 'home', team: {id: '2', abbreviation: 'B'}, score: '78', winner: true},
   {homeAway: 'away', team: {id: '1', abbreviation: 'A'}, score: '72', winner: false},
@@ -132,6 +145,7 @@ try {
  const changed = structuredClone(reversed)
  changed.competitions[0].competitors[1].team = {id: '3', abbreviation: 'C'}
  const unaffected = {...event(), id: 'unaffected'}
+ unaffected.competitions[0].competitors = [{homeAway: 'home', team: {id: '5', abbreviation: 'E'}}, {homeAway: 'away', team: {id: '6', abbreviation: 'F'}}]
  const conflict = fixture({games: [current], slates: currentDay, picks: picked})
  const isolated = await run(conflict, [changed, unaffected])
  assert.equal(isolated.gamesSynced, 1)
@@ -143,6 +157,68 @@ try {
  const partial = fixture({games: [{...oldGame, id: 'other', espn_event_id: 'absent', slate_id: 'new-slate'}]})
  assert.equal((await run(partial, [event()], ['SEC'])).ok, true)
  assert.ok(partial.state.games.some(game => game.id === 'other'), 'A failed conference must disable pruning')
+ // F-17: two schools ESPN abbreviates the same way on one day are never graded.
+ const game = (id, home, away, type, scores) => ({id, date: '2026-11-01T20:00:00Z', competitions: [{timeValid: true, status: {type},
+  competitors: [{homeAway: 'home', team: {id: home[1], abbreviation: home[0]}, score: scores?.[0]}, {homeAway: 'away', team: {id: away[1], abbreviation: away[0]}, score: scores?.[1]}]}]})
+ const FINAL = {name: 'STATUS_FINAL', state: 'post', completed: true}
+ const shared = fixture({slates: currentDay})
+ const sharedResult = await run(shared, [game('m1', ['MIA', '10'], ['X', '11'], FINAL, ['70', '60']), game('m2', ['MIA', '20'], ['Y', '21'], FINAL, ['55', '80']), game('ok', ['P', '30'], ['Q', '31'], FINAL, ['90', '80'])])
+ assert.equal(sharedResult.ok, true)
+ assert.deepEqual(shared.state.games.map(row => [row.espn_event_id, row.result]).sort(), [['m1', 'pending'], ['m2', 'pending'], ['ok', 'home_win']], 'Ambiguous abbreviation leaves both games pending; others grade')
+ assert.ok(shared.incidents.some(call => call.args.p_key === 'team-identity:2026-11-01'), 'Ambiguity raises an organizer incident')
+ // F-05: a stored final is not erased by a later unclear feed, but is flagged.
+ const finalGame = {...current, result: 'home_win', home_score: 72, away_score: 70}
+ const postponed = game('event', ['A', '1'], ['B', '2'], {name: 'STATUS_POSTPONED', state: 'post', completed: false}, ['0', '0'])
+ const kept = fixture({games: [finalGame], slates: currentDay, picks: picked})
+ await run(kept, [postponed])
+ assert.equal(kept.state.games[0].result, 'home_win', 'A saved final survives an unclear feed')
+ assert.ok(kept.incidents.some(call => call.args.p_key === 'result-review:game'))
+ // Delayed correction: a different definitive final is written, so the
+ // result-correction trigger (migration 027, exercised below) sees it.
+ const corrected = fixture({games: [finalGame], slates: currentDay, picks: picked})
+ await run(corrected, [game('event', ['A', '1'], ['B', '2'], FINAL, ['70', '72'])])
+ assert.equal(corrected.state.games[0].result, 'away_win', 'A corrected upstream final reaches the database')
+ const legacyReview = fixture({games: [finalGame], slates: currentDay, picks: picked, legacy: true})
+ process.env.TOURNAMENT_RELIABILITY_ENABLED = 'false'
+ await run(legacyReview, [postponed])
+ process.env.TOURNAMENT_RELIABILITY_ENABLED = 'true'
+ assert.equal(legacyReview.state.games[0].result, 'home_win')
+ assert.ok(legacyReview.state.audit_log.some(row => row.details?.key === 'result-review:game'), 'Legacy deployments record the review in the audit log')
+ // Incident flooding: an unchanged unclear feed is raised once, a changed state once more.
+ for (const legacy of [false, true]) {
+  process.env.TOURNAMENT_RELIABILITY_ENABLED = String(!legacy)
+  const flood = fixture({games: [finalGame], slates: currentDay, picks: picked, legacy})
+  for (let i = 0; i < 100; i++) await run(flood, [postponed])
+  const count = () => legacy ? flood.state.audit_log.filter(row => row.details?.key === 'result-review:game').length : flood.state.incidents.find(row => row.key === 'result-review:game')?.occurrences
+  assert.equal(count(), 1, `100 unchanged syncs raise one ${legacy ? 'audit row' : 'occurrence'}`)
+  const suspended = game('event', ['A', '1'], ['B', '2'], {name: 'STATUS_SUSPENDED', state: 'in', completed: false}, ['30', '28'])
+  for (let i = 0; i < 3; i++) await run(flood, [suspended])
+  assert.equal(count(), 2, 'A changed feed state raises one more')
+  const message = legacy ? flood.state.audit_log.at(-1).message : flood.state.incidents[0].impact
+  assert.match(message, /STATUS_SUSPENDED/, 'The message says what was observed')
+ }
+ // F-06: ESPN calls a never-graded game final but the score cannot be trusted.
+ for (const legacy of [false, true]) {
+  process.env.TOURNAMENT_RELIABILITY_ENABLED = String(!legacy)
+  const pendingGame = {...current, result: 'pending'}
+  const tied = game('event', ['A', '1'], ['B', '2'], FINAL, ['70', '70'])
+  const untrusted = fixture({games: [pendingGame], slates: currentDay, picks: picked, legacy})
+  for (let i = 0; i < 5; i++) await run(untrusted, [tied])
+  assert.equal(untrusted.state.games[0].result, 'pending', 'An untrusted final is not graded')
+  if (legacy) {
+   const rows = untrusted.state.audit_log.filter(row => row.details?.key === 'result-review:game')
+   assert.equal(rows.length, 1); assert.match(rows[0].message, /final but the result could not be trusted/)
+  } else {
+   assert.equal(untrusted.state.incidents.length, 1)
+   assert.equal(untrusted.state.incidents[0].occurrences, 1)
+   assert.match(untrusted.state.incidents[0].impact, /final but the result could not be trusted/)
+  }
+  const clean = fixture({games: [pendingGame], slates: currentDay, picks: picked, legacy})
+  await run(clean, [game('event', ['A', '1'], ['B', '2'], FINAL, ['70', '60'])])
+  assert.equal(clean.state.incidents.length + clean.state.audit_log.length, 0, 'A clean final raises nothing')
+ }
+ process.env.TOURNAMENT_RELIABILITY_ENABLED = 'true'
+ console.log('PASS result safety: ambiguous abbreviations stay pending with an incident, saved finals survive unclear feeds, corrections are written')
  console.log('PASS schedule sync: wrong/mixed/invalid date fail closed, Central late tip, TBD placeholder, paged picked move, legacy audit, concurrent guard skip, directory failure and incomplete-feed preservation')
 } finally {
  if (oldFlag === undefined) delete process.env.TOURNAMENT_RELIABILITY_ENABLED; else process.env.TOURNAMENT_RELIABILITY_ENABLED = oldFlag
@@ -197,6 +273,12 @@ for (const schema of ['public', 'sandbox']) {
  await db.exec(`update slates set locks_at='2099-03-20T18:00:00Z' where slate_number=2`)
  await db.query(activation)
  assert.equal(await scalar(`select slate_number from slates where is_active`), 2)
+ // Delayed correction path (027): a changed final is audited, ungraded and raised.
+ const corrected = await scalar(`select id from games where espn_event_id='move'`)
+ await db.exec(`update games set graded_at=now() where id='${corrected}'; update games set result='away_win' where id='${corrected}'`)
+ assert.equal(await scalar(`select graded_at from games where id=$1`, [corrected]), null, 'A correction clears graded_at for regrading')
+ assert.equal(await scalar(`select count(*)::int from incidents where key=$1 and status='open'`, [`result-correction:${corrected}`]), 1)
+ assert.equal(await scalar(`select count(*)::int from audit_log where event_type='result-corrected'`), 1)
  console.log(`PASS ${schema}: idempotent 028, unpicked move snapshots, legacy stable-ID fill, protected period/team/provider/game identity and delete, preserved outcome/linkage, live scores and restricted trigger ACL`)
 }
 await db.close()

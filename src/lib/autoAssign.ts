@@ -2,7 +2,8 @@ import { revalidateContest } from './revalidateContest'
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game, Slate } from '@/types'
-import { slateDeadline, autoAssignHighestSeed, autoAssignTeam, seedForTeam } from './deadline'
+import { randomUUID } from 'node:crypto'
+import { slateDeadline, highestSeedChoice, autoAssignTeam, seedForTeam } from './deadline'
 import { getPoolConfig } from './pool'
 import { buildPickPeriods, isFinalDayOfRound, sharedRoundPickQuota } from './competition'
 import { fetchApRankings } from './espn'
@@ -14,15 +15,16 @@ import { loadAll, loadGamesForSlates, loadPicksForSlates } from './seasonData'
 
 // Filling in picks for players who missed the lock.
 //
-// This runs as soon as the active slate's first game tips, not overnight:
-// the "latest game" rule exists to hand a missed player a game that has not
-// started yet, which only works while the day is still being played. It is
-// started from three places, all funnelling into runAutoAssign():
+// The choice comes from the frozen lock-time schedule (and, for the
+// tournament, frozen rankings), so a run after tip or final picks the same
+// team a run at first tip would have. Page views and public API reads never
+// start it: it runs only from scheduled or organizer-initiated work, all
+// funnelling into runAutoAssign():
 //
-//   * autoAssignIfDue(), called after responses the site serves constantly
-//     (the live-scores ticker, the sweat board, the pick page) — this is what
-//     makes it fire within a minute or two of first tip;
-//   * the daily Vercel cron, as a backstop for a day nobody visits;
+//   * the background worker (/api/cron/worker, every minute when
+//     AUTOMATION_V2_ENABLED) and its 'assignment' workload;
+//   * the daily Vercel cron (/api/cron/auto-assign) and the day turnover
+//     (advanceSlate), which refuses to advance until assignment is done;
 //   * the admin "Run Auto-Assign" button.
 //
 // Every entry point first claims the slate (slates.auto_assign_claimed_at),
@@ -117,27 +119,6 @@ export async function runAutoAssignNow(db: SupabaseClient, now: Date): Promise<A
   const outcome = await runAutoAssign(db, now)
   await finishClaim(db, slate.id, outcome)
   return outcome
-}
-
-// Lazy trigger: cheap to call on every request. Does nothing until the active
-// slate has locked, and nothing again once a run has completed for it.
-export async function autoAssignIfDue(db: SupabaseClient, now: Date): Promise<void> {
-  if(process.env.TOURNAMENT_RELIABILITY_ENABLED==='true')return // Durable scheduler owns assignment; visitors only read.
-
-  try {
-    const { data: slate, error } = await db
-      .from('slates')
-      .select('id, locks_at, auto_assign_completed_at')
-      .eq('is_active', true)
-      .maybeSingle()
-    if (error || !slate || slate.auto_assign_completed_at || !slate.locks_at) return
-    if (now < new Date(slate.locks_at)) return
-
-    await runAutoAssignNow(db, now)
-  } catch (err) {
-    console.error('lazy auto-assign failed', err)
-    await reportFailure(db, { kind: 'job-failed', source: 'auto-assign', message: 'Auto-assign failed after first tip', error: err })
-  }
 }
 
 // The work itself. Guards itself on the slate's own lock time: before first
@@ -238,17 +219,29 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
   // retains its legacy behavior until the operations migration is activated.
   const snapshot = (slate as Slate & { assignment_schedule?: Game[] }).assignment_schedule
   if (token && !snapshot?.length) throw new Error('Frozen assignment schedule is unavailable; apply migration 022')
-  const assignmentGames = snapshot?.length ? snapshot : gamesData
-  const frozenRanks = (slate as Slate & { assignment_rankings?: Record<string, number> }).assignment_rankings
-  if (token && useSeedPriority && !frozenRanks) throw new Error('Pre-lock rankings unavailable; organizer review required')
-  const apRanks: Record<string, number> = frozenRanks ?? (useSeedPriority ? await fetchApRankings() : {})
+  // A voided game's teams are never handed out: the pick would be excused, a free pass.
+  const voided = new Set(gamesData.filter((game) => game.result === 'void').map((game) => game.id))
+  const assignmentGames = (snapshot?.length ? snapshot : gamesData).filter((game) => !voided.has(game.id))
+  // Tournament ties on a seed line are broken by the AP snapshot saved with
+  // the slate. Without one, assignments that need it wait (see below).
+  const apRanks = useSeedPriority
+    ? await savedRankings(supabase, slate as Slate & { assignment_rankings?: Record<string, number> | null }, Boolean(token))
+    : {}
+  const deferred: string[] = []
+  const nameOrdered: string[] = []
 
 
   const results: { player: string; action: string }[] = []
 
-  for (const player of playersWithoutPick.slice(0, token ? ASSIGNMENT_BATCH_SIZE : playersWithoutPick.length)) {
+  // A durable run writes at most one batch. Entries left waiting for rankings
+  // do not use up the batch, so they cannot starve the entries behind them.
+  let writes = 0
+  let reachedEnd = true
+  for (const player of playersWithoutPick) {
+    if (token && writes >= ASSIGNMENT_BATCH_SIZE) { reachedEnd = false; break }
     const missing = requiredPicks - (periodPickCount.get(player.id) ?? 0)
     if (pool.auto_pick_behavior === 'eliminate') {
+      writes++
       const reason = sharedQuota
         ? `Missed the round quota — needed ${missing} more pick${missing === 1 ? '' : 's'}`
         : 'Missed the lock — pool rule eliminates entries without a pick'
@@ -288,16 +281,29 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
       playerPicks.map((pick) => pick.seed).filter((seed): seed is number => seed !== null)
     )
     const autoTeams: string[] = []
+    let needsRankings = false
     for (let index = 0; index < missing; index++) {
-      const autoTeam = useSeedPriority
-        ? autoAssignHighestSeed(assignmentGames, [...usedTeams], [...usedSeeds], apRanks)
-        : autoAssignTeam(assignmentGames, [...usedTeams])
+      const choice = useSeedPriority
+        ? highestSeedChoice(assignmentGames, [...usedTeams], [...usedSeeds], apRanks)
+        : { team: autoAssignTeam(assignmentGames, [...usedTeams]), needsRankings: false }
+      if (choice.needsRankings) { needsRankings = true; break }
+      if (choice.nameOrderTie) nameOrdered.push(player.full_name)
+      const autoTeam = choice.team
       if (!autoTeam) break
       autoTeams.push(autoTeam)
       usedTeams.add(autoTeam)
       const seed = seedForTeam(autoTeam, assignmentGames)
       if (seed !== null) usedSeeds.add(seed)
     }
+
+    if (needsRankings) {
+      // Never guess between same-seed teams: leave the entry alone and retry
+      // once a ranking snapshot exists. Other entries are still assigned.
+      deferred.push(player.id)
+      results.push({ player: player.full_name, action: 'waiting: AP ranking snapshot unavailable' })
+      continue
+    }
+    writes++
 
     if (autoTeams.length === missing) {
       const { error: insertError } = token
@@ -361,7 +367,9 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
   // Keep successful player writes, but fail a partial batch so durable retries
   // back off and eventually request review instead of reporting endless success.
   const skipped = results.filter((result) => result.action.startsWith('skipped:'))
-  const done = skipped.length === 0 && playersWithoutPick.length <= (token ? ASSIGNMENT_BATCH_SIZE : playersWithoutPick.length)
+  if (deferred.length) await recordRankingsMissing(supabase, slate, deferred.length)
+  if (nameOrdered.length) await recordNameOrderTie(supabase, slate, nameOrdered.length)
+  const done = skipped.length === 0 && deferred.length === 0 && reachedEnd
   if (skipped.length > 0) {
     await reportFailure(supabase, {
       kind: 'job-failed',
@@ -372,4 +380,62 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
   }
   if (results.length) revalidateContest()
   return { ok: skipped.length === 0, results, done }
+}
+
+// The AP snapshot for a tournament slate. It is saved before lock by the
+// schedule sync. If it was never saved, the first successful read is saved
+// now — once, never overwriting — so every later run uses the same ranks.
+// Returns null while no non-empty snapshot exists; the caller then defers any
+// choice that needs it instead of breaking a tie by name.
+async function savedRankings(
+  db: SupabaseClient,
+  slate: Slate & { assignment_rankings?: Record<string, number> | null },
+  durable: boolean
+): Promise<Record<string, number> | null> {
+  const frozen = slate.assignment_rankings
+  if (frozen && Object.keys(frozen).length > 0) return frozen
+  const fetched = await fetchApRankings()
+  if (Object.keys(fetched).length === 0) return null
+  const { data, error } = await db.from('slates').update({ assignment_rankings: fetched })
+    .eq('id', slate.id).is('assignment_rankings', null).select('assignment_rankings')
+  if (error) {
+    // Before migration 024 there is no column to save into; durable runs
+    // require it, the legacy path uses the read it just made.
+    if (durable) throw error
+    return fetched
+  }
+  if (data?.length) return fetched
+  // Another run saved first (or an empty snapshot is stored); use the stored copy.
+  const { data: stored, error: readError } = await db.from('slates').select('assignment_rankings').eq('id', slate.id).single()
+  if (readError) throw readError
+  const saved = stored?.assignment_rankings as Record<string, number> | null
+  return saved && Object.keys(saved).length > 0 ? saved : null
+}
+
+// Organizer-visible: the incident list when the reliability schema is on,
+// the failure trail otherwise. Repeats update the same open incident.
+async function recordRankingsMissing(db: SupabaseClient, slate: Slate, waiting: number): Promise<void> {
+  const message = `Tournament auto-assign is waiting on ${waiting} entr${waiting === 1 ? 'y' : 'ies'} for Slate ${slate.slate_number}: no AP ranking snapshot is available to separate teams on the same seed line. It retries automatically once rankings load; or enter those picks by hand.`
+  if (process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true') {
+    const { error } = await db.rpc('record_incident', { p_key: `assignment-rankings:${slate.id}`, p_impact: message,
+      p_correlation: randomUUID(), p_detail: JSON.stringify({ slate_id: slate.id, slate_number: slate.slate_number, waiting }) })
+    if (error) throw error
+  } else {
+    await reportFailure(db, { kind: 'job-failed', source: 'auto-assign', key: `assignment-rankings:${slate.id}`, message })
+  }
+}
+
+// Two teams on the chosen seed line that the saved AP snapshot cannot
+// separate (both unranked) are still decided by name, as before. That is the
+// rule's last resort, not a substitute for missing data, but the organizer is
+// told each time it decides an assignment.
+async function recordNameOrderTie(db: SupabaseClient, slate: Slate, count: number): Promise<void> {
+  const message = `Tournament auto-assign on Slate ${slate.slate_number} chose between same-seed teams the AP snapshot does not rank, by team name, for ${count} entr${count === 1 ? 'y' : 'ies'}. Review if the pool needs a different tiebreak.`
+  if (process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true') {
+    const { error } = await db.rpc('record_incident', { p_key: `assignment-name-order:${slate.id}`, p_impact: message,
+      p_correlation: randomUUID(), p_detail: JSON.stringify({ slate_id: slate.id, slate_number: slate.slate_number, count }) })
+    if (error) throw error
+  } else {
+    await reportFailure(db, { kind: 'job-failed', source: 'auto-assign', key: `assignment-name-order:${slate.id}`, message })
+  }
 }

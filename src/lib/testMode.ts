@@ -3,6 +3,7 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies, draftMode } from 'next/headers'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabase, sandboxSupabase } from './supabase'
+import { sessionSecretKey } from './sessionSecret'
 
 // Testing Mode: a black-box sandbox toggled from /admin/testing. Browsers
 // carrying the signed test-mode cookie get every query served from the
@@ -15,11 +16,7 @@ import { supabase, sandboxSupabase } from './supabase'
 
 const TEST_MODE_COOKIE = 'survivor_test_mode'
 
-function getSecret(): Uint8Array {
-  const s = process.env.SESSION_SECRET
-  if (!s) throw new Error('SESSION_SECRET env var is not set')
-  return new TextEncoder().encode(s)
-}
+const getSecret = (): Uint8Array => sessionSecretKey()
 
 export async function isTestMode(): Promise<boolean> {
   // Draft mode gates the cookie read: during static/ISR rendering it is

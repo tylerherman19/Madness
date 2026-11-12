@@ -2,6 +2,7 @@ import {PGlite} from '@electric-sql/pglite'
 import {readFile,readdir} from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import ts from 'typescript'
+import {randomUUID} from 'node:crypto'
 import {encryptBackup,decryptBackup,fetchBackupSnapshot} from './backup.mjs'
 import {restoreCheck} from './restore-check.mjs'
 import {configureScheduler} from './configure-scheduler.mjs'
@@ -90,7 +91,7 @@ const competition=await loadTs('src/lib/competition.ts')
 // Match PostgREST's JSON date/timestamp representation rather than Date objects.
 const rows=async table=>(await db.query(`select to_jsonb(r) as data from ${table} r`)).rows.map(row=>row.data)
 const {runAutoAssignNow}=await loadTs('src/lib/autoAssign.ts',{
- 'server-only':{},'./revalidateContest':{revalidateContest(){}},'./deadline':deadline,
+ 'server-only':{},'node:crypto':{randomUUID},'./revalidateContest':{revalidateContest(){}},'./deadline':deadline,
  './pool':{getPoolConfig:async()=>(await rows('pools')).find(row=>row.is_active)},
  './competition':competition,'./espn':{fetchApRankings:async()=>({})},'./operations':operations,
  './audit':{logAudit:async()=>{}},'./alerts':{reportFailure:async()=>{}},
@@ -251,3 +252,172 @@ const result=await restoreCheck(decryptBackup(envelope,key))
 assert.ok(result.rows>0)
 console.log(`PASS encrypted backup: authenticated encryption, wrong-key rejection and ${result.tables}-table isolated restore with row digests`)
 await db.close()
+
+// D-4: tournament auto-pick order with every migration applied. Ranking ties
+// are never broken by guess: no snapshot means affected entries wait, the
+// organizer sees an incident, and the run retries once rankings exist.
+{
+ const pg=new PGlite()
+ await pg.exec('create role anon;create role authenticated;create role service_role;create role authenticator;')
+ for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort()) await pg.exec(await readFile(`supabase/migrations/${file}`,'utf8'))
+ await pg.exec('set search_path=public,pg_catalog')
+ const one=async(sql,params=[])=>Object.values((await pg.query(sql,params)).rows[0])[0]
+ const tableRows=async table=>(await pg.query(`select to_jsonb(r) as data from ${table} r`)).rows.map(row=>row.data)
+ let liveRanks={}, rankReads=0
+ const failures=[]
+ const {runAutoAssignNow:assign}=await loadTs('src/lib/autoAssign.ts',{
+  'server-only':{},'node:crypto':{randomUUID},'./revalidateContest':{revalidateContest(){}},'./deadline':deadline,
+  './pool':{getPoolConfig:async()=>(await tableRows('pools')).find(row=>row.is_active)},
+  './competition':competition,'./espn':{fetchApRankings:async()=>{rankReads++;return liveRanks}},'./operations':operations,
+  './audit':{logAudit:async()=>{}},'./alerts':{reportFailure:async(_db,report)=>{failures.push(report)}},
+  './db':{selectAllIn:async()=>tableRows('picks')},
+  './seasonData':{
+   loadAll:async(_client,table)=>tableRows(table),
+   loadGamesForSlates:async(_client,ids)=>(await tableRows('games')).filter(row=>ids.includes(row.slate_id)),
+   loadPicksForSlates:async(_client,ids)=>(await tableRows('picks')).filter(row=>ids.includes(row.slate_id)),
+  },
+ })
+ // A small PostgREST stand-in over PGlite: select/eq/is/update/single and rpc.
+ // `beforeApply` lets a test act between the worker's read and its write.
+ function client(beforeApply) {
+  return {
+   from(table) {
+    const where=[],params=[];let patch=null,inserted=null
+    const run=async()=>{
+     const clause=where.length?` where ${where.join(' and ')}`:''
+     if(inserted){
+      try {
+       const saved=[]
+       for(const row of [inserted].flat()){
+        const keys=Object.keys(row)
+        saved.push((await pg.query(`insert into ${table}(${keys.join(',')}) values(${keys.map((_,index)=>`$${index+1}`).join(',')}) returning to_jsonb(${table}) as data`,keys.map(key=>row[key]))).rows[0].data)
+       }
+       return {data:saved,error:null}
+      } catch(error) {return {data:null,error}}
+     }
+     if(patch){
+      const keys=Object.keys(patch)
+      const sets=keys.map((key,index)=>`${key}=$${params.length+index+1}`)
+      const values=keys.map(key=>typeof patch[key]==='object'&&patch[key]!==null?JSON.stringify(patch[key]):patch[key])
+      return {data:(await pg.query(`update ${table} set ${sets.join(',')}${clause} returning to_jsonb(${table}) as data`,[...params,...values])).rows.map(row=>row.data),error:null}
+     }
+     return {data:(await pg.query(`select to_jsonb(r) as data from ${table} r${clause}`,params)).rows.map(row=>row.data),error:null}
+    }
+    const query={
+     select(){return query},
+     eq(key,value){params.push(value);where.push(`${key}=$${params.length}`);return query},
+     is(key,value){if(value!==null)throw new Error('fixture supports is(null) only');where.push(`${key} is null`);return query},
+     update(value){patch=value;return query},
+     insert(value){inserted=value;return query},
+     async maybeSingle(){const result=await run();return {...result,data:result.data[0]??null}},
+     async single(){return query.maybeSingle()},
+     then(resolve,reject){return run().then(resolve,reject)},
+    }
+    return query
+   },
+   async rpc(name,args) {
+    if(name==='apply_assignment'&&beforeApply)await beforeApply(args)
+    const entries=Object.entries(args)
+    const values=entries.map(([key,value])=>key==='p_teams'?JSON.stringify(value):key==='p_period_ids'?`{${value.join(',')}}`:value)
+    try {
+     const result=await pg.query(`select ${name}(${entries.map(([key],index)=>`${key}=>$${index+1}`).join(',')}) as result`,values)
+     return {data:result.rows[0].result,error:null}
+    } catch(error) {return {data:null,error}}
+   },
+  }
+ }
+ const slate='00000000-0000-4000-8000-0000000000d1'
+ const entries=['00000000-0000-4000-8000-0000000000e1','00000000-0000-4000-8000-0000000000e2','00000000-0000-4000-8000-0000000000e3']
+ async function resetBracket() {
+  await pg.exec(`set session_replication_role=replica;delete from picks;delete from players;delete from games;delete from slates;delete from incidents;delete from operation_runs;set session_replication_role=origin;
+   update pools set season_year=2099,competition_mode='march-madness',pick_frequency='every-game-day',auto_pick_behavior='highest-seed',starts_on=null;
+   insert into slates(id,slate_number,slate_date,season_year,is_active,locks_at) values('${slate}',1,'2099-03-19',2099,true,now()-interval '1 hour');
+   insert into players(id,full_name,email,pin_hash) values('${entries[0]}','Entry One','one@example.test','x'),('${entries[1]}','Entry Two','two@example.test','x'),('${entries[2]}','Entry Three','three@example.test','x');
+   insert into games(slate_id,espn_event_id,home_team,away_team,home_seed,away_seed,tip_time,round_label,result,status_state) values
+    ('${slate}','g1','ALPHA','SIXTEEN_A',1,16,now()-interval '1 hour','1st Round','pending','pre'),
+    ('${slate}','g2','ZETA','SIXTEEN_Z',1,16,now()-interval '2 hours','1st Round','pending','pre');`)
+  assert.equal(await one(`select jsonb_array_length(assignment_schedule) from slates where id='${slate}'`),2,'The frozen lock-time schedule exists')
+  assert.equal(await one(`select assignment_rankings from slates where id='${slate}'`),null)
+ }
+ const picksFor=async player=>(await pg.query(`select team,auto_assigned,submitted_by_admin from picks where player_id=$1 order by team`,[player])).rows
+ const env={v2:process.env.AUTOMATION_V2_ENABLED,reliable:process.env.TOURNAMENT_RELIABILITY_ENABLED}
+ try {
+  process.env.AUTOMATION_V2_ENABLED='true';process.env.TOURNAMENT_RELIABILITY_ENABLED='true'
+  // Two 1-seeds and no ranking snapshot: nobody is assigned by name order.
+  await resetBracket();liveRanks={}
+  const waiting=await assign(client(),new Date())
+  assert.equal(waiting.ok,true);assert.equal(waiting.done,false)
+  assert.equal(await one('select count(*)::int from picks'),0,'Missing rankings never fall back to alphabetical order')
+  assert.equal(await one(`select status from incidents where key='assignment-rankings:${slate}'`),'open','The organizer sees why assignment is waiting')
+  assert.equal(await one(`select status from operation_runs where key='assignment:${slate}'`),'pending','Waiting is a clean retry, not a failure toward review')
+  assert.equal(await one(`select attempts from operation_runs where key='assignment:${slate}'`),0)
+  assert.equal(await one(`select auto_assign_completed_at from slates where id='${slate}'`),null)
+  // Rankings load: the first good read is saved once and used for everyone.
+  liveRanks={ZETA:3,ALPHA:9}
+  const filled=await assign(client(),new Date())
+  assert.equal(filled.done,true)
+  assert.deepEqual(await one(`select assignment_rankings from slates where id='${slate}'`),{ZETA:3,ALPHA:9},'The snapshot is saved after lock when none existed')
+  for(const player of entries) assert.deepEqual(await picksFor(player),[{team:'ZETA',auto_assigned:true,submitted_by_admin:false}],'Seed line tie broken by AP rank, not name')
+  console.log('PASS D-4 durable: missing rankings wait with an incident and no failure budget, then a saved snapshot assigns by rank')
+
+  // A saved snapshot wins over a later, different feed read.
+  await resetBracket();await pg.exec(`update slates set assignment_rankings='{"ALPHA":2,"ZETA":7}' where id='${slate}'`)
+  liveRanks={ZETA:1};rankReads=0
+  assert.equal((await assign(client(),new Date())).done,true)
+  assert.equal(rankReads,0,'A saved snapshot is used without reading the feed')
+  assert.deepEqual((await picksFor(entries[0])).map(pick=>pick.team),['ALPHA'])
+  console.log('PASS D-4 durable: the saved pre-lock snapshot is authoritative')
+
+  // A snapshot that ranks neither team: the existing name order decides
+  // (owner decision pending), and the organizer is told it happened.
+  await resetBracket();await pg.exec(`update slates set assignment_rankings='{"OTHER":1}' where id='${slate}'`)
+  assert.equal((await assign(client(),new Date())).done,true)
+  assert.deepEqual((await picksFor(entries[0])).map(pick=>pick.team),['ALPHA'])
+  assert.equal(await one(`select status from incidents where key='assignment-name-order:${slate}'`),'open','A name-order tiebreak is never silent')
+  console.log('PASS D-4 durable: an unranked same-seed tie keeps name order but raises an incident')
+
+  // Simultaneous workers: exactly one claims, nobody gets two picks.
+  await resetBracket();liveRanks={ZETA:3,ALPHA:9}
+  const racing=await Promise.allSettled([assign(client(),new Date()),assign(client(),new Date()),assign(client(),new Date())])
+  assert.ok(racing.every(outcome=>outcome.status==='fulfilled'),'Losing workers back off without error')
+  assert.equal(await one('select count(*)::int from picks'),3)
+  assert.equal(await one('select count(distinct player_id)::int from picks'),3,'One assignment per entry under concurrent runs')
+  console.log('PASS D-4 durable: concurrent runs assign each entry once')
+
+  // An organizer's manual pick lands between the worker's read and its write.
+  await resetBracket();liveRanks={ZETA:3,ALPHA:9}
+  let raced=false
+  const manualFirst=client(async args=>{
+   if(raced||args.p_player_id!==entries[1])return
+   raced=true
+   await pg.query(`insert into picks(player_id,slate_id,team,auto_assigned,submitted_by_admin) values($1,$2,'ALPHA',false,true)`,[entries[1],slate])
+  })
+  await assert.rejects(assign(manualFirst,new Date()),/Assignment batch failed/)
+  assert.deepEqual(await picksFor(entries[1]),[{team:'ALPHA',auto_assigned:false,submitted_by_admin:true}],'The database rejects the stale automatic write; the manual pick stands')
+  assert.equal(await one(`select count(*)::int from picks where player_id=$1`,[entries[0]]),1,'Other entries in the batch are kept')
+  await pg.exec(`update operation_runs set next_attempt_at=now() where key='assignment:${slate}'`)
+  assert.equal((await assign(client(),new Date())).done,true,'The retry completes without touching the manual pick')
+  assert.deepEqual(await picksFor(entries[1]),[{team:'ALPHA',auto_assigned:false,submitted_by_admin:true}])
+  assert.equal(await one('select count(*)::int from picks'),3)
+  await assert.rejects(pg.query(`insert into picks(player_id,slate_id,team,auto_assigned,submitted_by_admin) values($1,$2,'ZETA',true,false)`,[entries[1],slate]),/quota|already/i,'Database constraints still stop a second pick for the period')
+  console.log('PASS D-4 durable: a manual pick racing an automatic one wins; retry and constraints prevent duplicates')
+
+  // Legacy path (flags off): the same wait, recorded in the failure trail.
+  process.env.AUTOMATION_V2_ENABLED='false';process.env.TOURNAMENT_RELIABILITY_ENABLED='false'
+  await resetBracket();liveRanks={};failures.length=0
+  const legacy=await assign(client(),new Date())
+  assert.equal(legacy.done,false);assert.equal(await one('select count(*)::int from picks'),0)
+  assert.ok(failures.some(report=>report.key===`assignment-rankings:${slate}`),'Legacy runs report the wait to the organizer')
+  // A single team on the best line needs no ranking at all.
+  await pg.exec(`update slates set auto_assign_claimed_at=null where id='${slate}';update games set home_seed=2 where espn_event_id='g2';update slates set assignment_schedule=null where id='${slate}';update games set tip_time=tip_time where slate_id='${slate}'`)
+  const unique=await assign(client(),new Date())
+  assert.equal(unique.done,true)
+  assert.deepEqual((await picksFor(entries[2])).map(pick=>pick.team),['ALPHA'],'An untied best seed is assigned without rankings')
+  console.log('PASS D-4 legacy: missing rankings wait and report; an untied seed line still assigns')
+ } finally {
+  for(const [name,value] of [['AUTOMATION_V2_ENABLED',env.v2],['TOURNAMENT_RELIABILITY_ENABLED',env.reliable]]) {
+   if(value===undefined)delete process.env[name];else process.env[name]=value
+  }
+  await pg.close()
+ }
+}

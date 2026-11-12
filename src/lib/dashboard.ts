@@ -1,11 +1,12 @@
 import 'server-only'
 import { cache } from 'react'
+import { randomUUID } from 'node:crypto'
 import { unstable_cache } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game, Slate, StandingRow } from '@/types'
 import { allRows, selectAll } from './db'
 import { publicPlayerLabels } from './playerLabels'
-import { survivedPeriodsByPlayer } from './survival'
+import { survivedPeriodsByOutcome } from './survival'
 import { readPoolConfig } from './pool'
 import {
   buildPickPeriods,
@@ -16,9 +17,9 @@ import {
   type PickPeriodGame,
   type PoolConfig,
 } from './competition'
-import { compareBySeedTotal, seedTotalsByPlayer } from './standings'
+import { compareBySeedTotal, revealedLosingPicks, seedTotalsByPlayer } from './standings'
 import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from './seasonData'
-import { isPickRevealed } from './deadline'
+import { isPickRevealed, slateDeadline } from './deadline'
 import { getDb, getEffectiveNow } from './testMode'
 import { CONTEST_TAG } from './cacheTags'
 import { clientFor, getTeamBrandDirectory, schemaOf, type Schema } from './sharedData'
@@ -26,20 +27,30 @@ import type { TeamBrandDirectory } from './teamBrand'
 
 // The pool's season, for the Today page and the sweat board.
 //
-// The same for every visitor, so most of it is cached on the server and
-// shared, in two pieces that load in parallel:
+// What every visitor sees is read once and shared. Next.js does not reuse a
+// cached function that is called from inside another one, so the layers are
+// separate cache entries that the request path puts together in memory:
 //
-//   * the outline — pool settings, the season's game days, every entry and
-//     its status. Small; the top of Today is built from it.
-//   * the history — every pick and result from days before the active one.
-//     The bulk of the season; only the standings need it.
+//   * the outline: pool settings, the season's days, every entry. 30 seconds.
+//   * the active day: its games and who has submitted, plus each submitted
+//     team once the day has locked. BOARD_SECONDS, keyed by the day AND by
+//     whether it has locked, so the copy built before the lock is never served
+//     after it. The unlocked copy is read without any pick's team at all.
+//   * one small entry per finished day: that day's picks reduced to who
+//     picked what and whether it won. A finished day does not change, so each
+//     lasts 15 minutes and is read from the database once per invalidation.
+//   * the lock lookup: the active day's id and lock instant, BOARD_SECONDS.
+//     The decision now >= lock is made on every request; it picks the key
+//     above, so the page flips at the lock instant.
 //
-// Both are invalidated by every write to contest data (revalidateContest)
-// and expire after 60 seconds regardless. What changes minute to minute is
-// read live on every request instead: the active day's games, and picks for
-// the active day and any later day, which players are still making.
+// Every entry carries CONTEST_TAG, so every write to contest data
+// (revalidateContest) discards all of it. The standings table is computed from
+// those entries once per instance and reused until one of them changes.
+// A signed-in visitor adds only their own small reads (lib/myEntry.ts).
 
-const CACHE_SECONDS = 60
+const BOARD_SECONDS = 10
+const OUTLINE_SECONDS = 30
+const FACTS_SECONDS = 900
 
 type PlayerStatus = 'alive' | 'eliminated'
 export interface SeasonPlayer {
@@ -52,6 +63,7 @@ export interface SeasonPlayer {
 }
 
 interface SeasonOutline {
+  v: string // changes whenever the entry is rebuilt; identifies this copy
   pool: PoolConfig
   slates: Slate[] // the season being played, from the pool's start date on
   activeSlateId: string | null
@@ -62,14 +74,11 @@ interface SeasonOutline {
 type SeasonPick = { player_id: string; slate_id: string; team: string; seed: number | null; loss_excused: boolean }
 type SeasonGame = Pick<Game, 'slate_id' | 'home_team' | 'away_team' | 'result' | 'tip_time' | 'time_tbd'>
 
-// The history is the largest cached item, and the data cache refuses items
-// over 2 MB, so it is stored as index-referenced tuples rather than objects.
-interface EncodedHistory {
-  openFrom: string | null // days on or after this date are not in it
-  slateIds: string[]
-  playerIds: string[]
-  picks: [player: number, slate: number, team: string, seed: number | null, lossExcused: 0 | 1][]
-  games: [slate: number, home: string, away: string, result: string, tip: string, tbd: 0 | 1][]
+// One finished day, as the standings need it. Picks are [player, team, seed, won].
+interface SlateFacts {
+  tip: string | null // earliest announced tip: the day's lock, when none is stored
+  picks: [player: string, team: string, seed: number | null, won: 0 | 1][]
+  games: [home: string, away: string, result: string, tip: string, tbd: 0 | 1][] // for naming the losing pick
 }
 
 // The contest season, scoped exactly as before: slates from the pool's start
@@ -98,6 +107,7 @@ async function readOutline(db: SupabaseClient): Promise<SeasonOutline> {
   const real = ((playersRes.data ?? []) as (SeasonPlayer & { email: string | null })[]).filter((p) => !internalAccount(p.email))
   const labels = publicPlayerLabels(real)
   return {
+    v: randomUUID(),
     pool,
     slates,
     activeSlateId: slates.find((s) => s.is_active)?.id ?? null,
@@ -113,218 +123,228 @@ async function readOutline(db: SupabaseClient): Promise<SeasonOutline> {
   }
 }
 
-async function readHistory(db: SupabaseClient): Promise<EncodedHistory> {
-  const [pool, weeks] = await Promise.all([
-    readPoolConfig(db),
-    loadAll<Slate>(db, 'slates', 'id, slate_number, slate_date, season_year, is_active, locks_at'),
-  ])
-  const season = seasonSlatesOf(weeks, pool)
-  const active = season.find((s) => s.is_active)
-  const openFrom = active ? String(active.slate_date) : null
-  const past = season.filter((s) => openFrom === null || String(s.slate_date) < openFrom)
-  const ids = past.map((s) => s.id)
+async function readSlateFacts(schema: Schema, slateId: string): Promise<SlateFacts> {
+  const db = clientFor(schema)
   const [picks, games] = await Promise.all([
-    loadPicksForSlates<SeasonPick>(db, ids, 'player_id, slate_id, team, seed, loss_excused'),
-    loadGamesForSlates<SeasonGame>(db, ids, 'slate_id, home_team, away_team, result, tip_time, time_tbd'),
+    loadPicksForSlates<SeasonPick>(db, [slateId], 'player_id, slate_id, team, seed, loss_excused'),
+    loadGamesForSlates<SeasonGame>(db, [slateId], 'slate_id, home_team, away_team, result, tip_time, time_tbd'),
   ])
-  const slateIndex = new Map(ids.map((id, i) => [id, i]))
-  const playerIds: string[] = []
-  const playerIndex = new Map<string, number>()
-  const indexOfPlayer = (id: string) => {
-    let i = playerIndex.get(id)
-    if (i === undefined) { i = playerIds.push(id) - 1; playerIndex.set(id, i) }
-    return i
+  const won = new Map<string, boolean>()
+  let tip: number | null = null
+  for (const game of games) {
+    // A voided game is resolved with no loser: its picks are excused, never losses.
+    won.set(game.home_team, game.result === 'home_win' || game.result === 'void')
+    won.set(game.away_team, game.result === 'away_win' || game.result === 'void')
+    const at = new Date(game.tip_time).getTime()
+    if (!game.time_tbd && !isNaN(at) && (tip === null || at < tip)) tip = at
   }
   return {
-    openFrom,
-    slateIds: ids,
-    playerIds,
-    picks: picks.map((p) => [indexOfPlayer(p.player_id), slateIndex.get(p.slate_id)!, p.team, p.seed ?? null, p.loss_excused ? 1 : 0]),
-    games: games.map((g) => [slateIndex.get(g.slate_id)!, g.home_team, g.away_team, g.result, g.tip_time, g.time_tbd ? 1 : 0]),
+    tip: tip === null ? null : new Date(tip).toISOString(),
+    picks: picks.map((p) => [p.player_id, p.team, p.seed ?? null, p.loss_excused || won.get(p.team) === true ? 1 : 0]),
+    games: games.map((g) => [g.home_team, g.away_team, g.result, g.tip_time, g.time_tbd ? 1 : 0]),
   }
 }
 
-function decodeHistory(history: EncodedHistory): { picks: SeasonPick[]; games: SeasonGame[] } {
-  return {
-    picks: history.picks.map(([player, slate, team, seed, excused]) => ({
-      player_id: history.playerIds[player], slate_id: history.slateIds[slate], team, seed, loss_excused: excused === 1,
-    })),
-    games: history.games.map(([slate, home_team, away_team, result, tip_time, tbd]) => ({
-      slate_id: history.slateIds[slate], home_team, away_team, result: result as Game['result'], tip_time, time_tbd: tbd === 1,
-    })),
+// Next.js builds a cached function's key from its source text. The pages and
+// route handlers are separate bundles, so the same function reads differently
+// in each and they would not share entries. A bound function's source text is
+// always the same, which makes the key depend only on the key parts below.
+function shared<A extends unknown[], R>(fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  return fn.bind(null)
+}
+
+// Two requests for the same key in one server instance share one build, so a
+// burst at the lock instant (when the locked key is first asked for) costs one
+// round of reads rather than one per viewer.
+const building = new Map<string, Promise<unknown>>()
+function coalesceByKey<R>(key: string, load: () => Promise<R>): Promise<R> {
+  const running = building.get(key) as Promise<R> | undefined
+  if (running) return running
+  const started = load().finally(() => building.delete(key))
+  building.set(key, started)
+  return started
+}
+function coalesced<A extends unknown[], R>(name: string, load: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  return (...args: A) => coalesceByKey(`${name}:${JSON.stringify(args)}`, () => load(...args))
+}
+
+const cachedOutline = coalesced('outline', unstable_cache(
+  shared(async (schema: Schema) => readOutline(clientFor(schema))),
+  ['contest-outline-v2'],
+  { tags: [CONTEST_TAG], revalidate: OUTLINE_SECONDS }
+))
+
+const cachedSlateFacts = coalesced('facts', unstable_cache(
+  shared(readSlateFacts),
+  ['contest-slate-facts-v2'],
+  { tags: [CONTEST_TAG], revalidate: FACTS_SECONDS }
+))
+
+// Changes exactly when the finished-day entries could have: after an
+// invalidation or an hour. Tells this instance when to forget its copy of them.
+const cachedFactsEpoch = unstable_cache(
+  shared(async (schema: Schema) => ({ v: randomUUID(), schema })),
+  ['contest-facts-epoch-v1'],
+  { tags: [CONTEST_TAG], revalidate: FACTS_SECONDS }
+)
+
+// The active day and its lock instant, for choosing the active day's key.
+interface ActiveLock { slateId: string | null; lock: string | null }
+const cachedActiveLock = coalesced('lock', unstable_cache(
+  shared(async (schema: Schema): Promise<ActiveLock> => {
+    const db = clientFor(schema)
+    const { data, error } = await db.from('slates').select('id, locks_at').eq('is_active', true).limit(1)
+    if (error) throw error
+    const slate = (data ?? [])[0] as { id: string; locks_at: string | null } | undefined
+    if (!slate) return { slateId: null, lock: null }
+    const { data: games, error: gamesError } = await db.from('games').select('tip_time, time_tbd').eq('slate_id', slate.id)
+    if (gamesError) throw gamesError
+    return { slateId: slate.id, lock: slateDeadline(slate, (games ?? []) as Game[])?.toISOString() ?? null }
+  }),
+  ['contest-active-lock-v1'],
+  { tags: [CONTEST_TAG], revalidate: BOARD_SECONDS }
+))
+
+interface ActiveDay {
+  v: string
+  slateId: string | null
+  games: Game[]
+  // True only when this build found the day locked AND the caller said so.
+  revealed: boolean
+  // Who has a pick on the day. Teams are read only when revealed.
+  submitters: string[]
+  picks: SeasonPick[]
+}
+
+// Builds the active day. `revealed` says the caller found the day locked: only
+// then are the day's teams read, and only if this build, from the day's own
+// slate and games, agrees. Anything doubtful falls on the hiding side.
+async function readActiveDay(schema: Schema, slateId: string | null, revealed: boolean, nowIso: string | null): Promise<ActiveDay> {
+  const empty: ActiveDay = { v: randomUUID(), slateId, games: [], revealed: false, submitters: [], picks: [] }
+  if (!slateId) return empty
+  const db = clientFor(schema)
+  const now = nowIso ? new Date(nowIso) : new Date()
+  const [slateRes, gamesRes] = await Promise.all([
+    db.from('slates').select('id, locks_at').eq('id', slateId).maybeSingle(),
+    db.from('games').select('*').eq('slate_id', slateId),
+  ])
+  if (slateRes.error) throw slateRes.error
+  if (gamesRes.error) throw gamesRes.error
+  const games = (gamesRes.data ?? []) as Game[]
+  const open = !!slateRes.data && revealed && isPickRevealed(slateRes.data as Slate, games, now)
+  if (open) {
+    const picks = await loadPicksForSlates<SeasonPick>(db, [slateId], 'player_id, slate_id, team, seed, loss_excused')
+    return { ...empty, games, revealed: true, submitters: picks.map((p) => p.player_id), picks }
   }
+  // Before the lock only who has picked is read, never what.
+  const submitters = (await loadPicksForSlates<{ player_id: string }>(db, [slateId], 'player_id')).map((p) => p.player_id)
+  return { ...empty, games, submitters }
 }
 
-const cachedOutline = unstable_cache(
-  async (schema: Schema) => readOutline(clientFor(schema)),
-  ['contest-outline-v1'],
-  { tags: [CONTEST_TAG], revalidate: CACHE_SECONDS }
-)
-const cachedHistory = unstable_cache(
-  async (schema: Schema) => readHistory(clientFor(schema)),
-  ['contest-history-v1'],
-  { tags: [CONTEST_TAG], revalidate: CACHE_SECONDS }
-)
+const cachedActiveDay = coalesced('active', unstable_cache(
+  shared(readActiveDay),
+  ['contest-active-day-v1'],
+  { tags: [CONTEST_TAG], revalidate: BOARD_SECONDS }
+))
 
-// One history read per request, started as early as the page likes.
-const historyFor = cache((schema: Schema) => cachedHistory(schema))
-
-// Start reading the standings' data now, alongside everything else, so that
-// on a cached visit the standings are ready by the time the page is sent and
-// their placeholder never appears.
-export function preloadContestStandings(): void {
-  getDb().then((db) => historyFor(schemaOf(db))).catch(() => {})
+interface ContestBoard {
+  standings: StandingRow[]
 }
 
-export interface ContestCore {
-  db: SupabaseClient
-  schema: Schema
-  now: Date
-  pool: PoolConfig
-  mode: CompetitionMode
-  slates: Slate[]
-  slate: Slate | null
-  periods: PickPeriod[]
-  currentPeriod: PickPeriod | null
-  slateGames: Game[] // the active day's games, read live
-  players: SeasonPlayer[]
-  aliveCount: number
-  eliminatedCount: number
-  totalPlayers: number
-  // Live picks for the active day and later: the ones still changing.
-  openFrom: string | null
-  openPicks: SeasonPick[]
-  currentPicks: Record<string, string[]> // active day only, real entries only
-  picksMade: number
-  teamBrands: TeamBrandDirectory
+// Per instance: finished-day facts for the current epoch, and the table built
+// from a given set of entries. Keyed by the entries' own version tokens, so a
+// rebuilt or invalidated entry can never be paired with an old table.
+let factsMemo: { key: string; facts: Map<string, SlateFacts> } | null = null
+const boardMemo = new Map<string, ContestBoard>()
+
+async function factsFor(schema: Schema, epoch: string, slateIds: string[]): Promise<SlateFacts[]> {
+  const key = `${schema}|${epoch}`
+  if (factsMemo?.key !== key) factsMemo = { key, facts: new Map() }
+  const memo = factsMemo.facts
+  const missing = slateIds.filter((id) => !memo.has(id))
+  const loaded = await Promise.all(missing.map((id) => cachedSlateFacts(schema, id)))
+  missing.forEach((id, i) => memo.set(id, loaded[i]))
+  return slateIds.map((id) => memo.get(id)!)
 }
 
-// Everything the top of Today and the sweat board need. Null when the
-// database can't be read, so the pages can say so instead of failing.
-export const getContestCore = cache(async (): Promise<ContestCore | null> => {
+function composeBoard(schema: Schema, epoch: string, outline: SeasonOutline, active: ActiveDay, now: Date): Promise<ContestBoard> {
+  const key = [schema, epoch, outline.v, active.v].join('|')
+  const memoised = boardMemo.get(key)
+  if (memoised) return Promise.resolve(memoised)
+  return coalesceByKey(`board:${key}`, () => buildBoard(key, schema, epoch, outline, active, now))
+}
+
+async function buildBoard(key: string, schema: Schema, epoch: string, outline: SeasonOutline, active: ActiveDay, now: Date): Promise<ContestBoard> {
+  const { pool, slates, players } = outline
+  const mode = pool.competition_mode
+  const slate = slates.find((s) => s.id === outline.activeSlateId) ?? null
+  const past = slate ? slates.filter((s) => s.id !== slate.id && String(s.slate_date) < String(slate.slate_date)) : slates
+  const facts = await factsFor(schema, epoch, past.map((s) => s.id))
+
+  // Only if the active day entry is for the day the outline calls active.
+  const today = slate && active.slateId === slate.id ? active : null
+  const slateRevealed = !!today?.revealed
+  const realIds = new Set(players.map((p) => p.id))
+  const todayPicks = slateRevealed ? today!.picks.filter((p) => realIds.has(p.player_id)) : []
+  const submitted = new Set(today?.submitters ?? [])
+  const currentPicks: Record<string, string[]> = {}
+  for (const pick of todayPicks) currentPicks[pick.player_id] = [...(currentPicks[pick.player_id] ?? []), pick.team]
+
+  let board: ContestBoard
   try {
-    const db = await getDb()
-    const schema = schemaOf(db)
-    const [outline, teamBrands, now] = await Promise.all([cachedOutline(schema), getTeamBrandDirectory(), getEffectiveNow()])
-    const { pool, slates, players } = outline
-    const mode = pool.competition_mode
-    const slate = slates.find((s) => s.id === outline.activeSlateId) ?? null
-    const openFrom = slate ? String(slate.slate_date) : null
-    const openIds = openFrom ? slates.filter((s) => String(s.slate_date) >= openFrom).map((s) => s.id) : []
-
-    const [openPicks, gamesRes] = await Promise.all([
-      loadPicksForSlates<SeasonPick>(db, openIds, 'player_id, slate_id, team, seed, loss_excused'),
-      slate ? db.from('games').select('*').eq('slate_id', slate.id) : Promise.resolve({ data: [] as Game[], error: null }),
-    ])
-    if (gamesRes.error) throw gamesRes.error
-    const slateGames = (gamesRes.data ?? []) as Game[]
-
-    const realIds = new Set(players.map((p) => p.id))
-    const currentPicks: Record<string, string[]> = {}
-    for (const pick of openPicks) {
-      if (pick.slate_id !== slate?.id || !realIds.has(pick.player_id)) continue
-      currentPicks[pick.player_id] = [...(currentPicks[pick.player_id] ?? []), pick.team]
-    }
-
-    // Pick periods: the season's playing days, labelled for the active
-    // competition. Regular season reads "Saturday, January 24"; the
-    // tournament reads "First Round · Thursday".
     const periods = buildPickPeriods(
       mode,
       slates.map((w) => ({ id: w.id, slate_number: w.slate_number, slate_date: String(w.slate_date), locks_at: w.locks_at })),
       outline.rounds
     )
-    const currentPeriod = slate ? periods.find((p) => p.id === slate.id) ?? null : null
-
-    const alive = players.filter((p) => p.status === 'alive')
-
-    return {
-      db,
-      schema,
-      now,
-      pool,
-      mode,
-      slates,
-      slate,
-      periods,
-      currentPeriod,
-      slateGames,
-      players,
-      aliveCount: alive.length,
-      eliminatedCount: players.length - alive.length,
-      totalPlayers: players.length,
-      openFrom,
-      openPicks,
-      currentPicks,
-      picksMade: alive.filter((p) => (currentPicks[p.id]?.length ?? 0) > 0).length,
-      teamBrands,
+    const gameOutcome = new Map<string, boolean>()
+    for (const game of today?.games ?? []) {
+      gameOutcome.set(game.home_team, game.result === 'home_win' || game.result === 'void')
+      gameOutcome.set(game.away_team, game.result === 'away_win' || game.result === 'void')
     }
-  } catch (error) {
-    console.error('contest data unavailable', error)
-    return null
-  }
-})
 
-// The standings: every entry's days survived, seed total and losing pick,
-// sorted. Needs the whole season's picks, so it comes from the history.
-export const getContestStandings = cache(async (core: ContestCore): Promise<StandingRow[] | null> => {
-  try {
-    const history = await historyFor(core.schema)
-    const { pool, mode, slates, slate, players, now } = core
-    const { picks: pastPicks, games: pastGames } = decodeHistory(history)
+    // Every pick the standings count, with whether it won, flattened from the
+    // per-day facts plus the active day's picks (only once it has locked).
+    const seasonPicks: (SeasonPick & { won: boolean })[] = []
+    const visibleSlateIds = new Set<string>()
+    past.forEach((day, i) => {
+      for (const [player_id, team, seed, won] of facts[i].picks) {
+        if (realIds.has(player_id)) seasonPicks.push({ player_id, slate_id: day.id, team, seed, loss_excused: false, won: won === 1 })
+      }
+      const tipped = [{ tip_time: facts[i].tip, time_tbd: false }] as unknown as Game[]
+      if (isPickRevealed(day, facts[i].tip ? tipped : [], now)) visibleSlateIds.add(day.id)
+    })
+    if (slate && slateRevealed) {
+      visibleSlateIds.add(slate.id)
+      for (const pick of todayPicks) seasonPicks.push({ ...pick, won: pick.loss_excused || gameOutcome.get(pick.team) === true })
+    }
 
-    // What is live wins. If the two cached pieces were built either side of a
-    // day change, read any day neither of them covers.
-    const openIds = new Set(core.openFrom ? slates.filter((s) => String(s.slate_date) >= core.openFrom!).map((s) => s.id) : [])
-    const covered = new Set([...history.slateIds, ...openIds])
-    const gapIds = slates.filter((s) => !covered.has(s.id) && slate?.id !== s.id).map((s) => s.id)
-    const [gapPicks, gapGames] = gapIds.length
-      ? await Promise.all([
-          loadPicksForSlates<SeasonPick>(core.db, gapIds, 'player_id, slate_id, team, seed, loss_excused'),
-          loadGamesForSlates<SeasonGame>(core.db, gapIds, 'slate_id, home_team, away_team, result, tip_time, time_tbd'),
-        ])
-      : [[], []]
+    // Each day's games, for deciding which losing picks may be named. Finished
+    // days come from the facts; the active day's picks are only in seasonPicks
+    // once it has locked, and revealedLosingPicks re-checks the reveal itself.
+    const gamesBySlate = new Map<string, { home_team: string; away_team: string; result: string; tip_time?: string; time_tbd?: boolean }[]>()
+    past.forEach((day, i) => gamesBySlate.set(day.id, facts[i].games.map(([home_team, away_team, result, tip_time, tbd]) => ({ home_team, away_team, result, tip_time, time_tbd: tbd === 1 }))))
+    if (slate && today) gamesBySlate.set(slate.id, today.games)
 
-    const seasonWeekIds = new Set(slates.map((s) => s.id))
-    const realPlayerIds = new Set(players.map((p) => p.id))
-    const seasonPicks = [...pastPicks.filter((p) => !openIds.has(p.slate_id)), ...gapPicks, ...core.openPicks]
-      .filter((p) => seasonWeekIds.has(p.slate_id) && realPlayerIds.has(p.player_id))
-    const allGames: SeasonGame[] = [...pastGames.filter((g) => g.slate_id !== slate?.id), ...gapGames, ...core.slateGames]
-    const gamesBySlate = new Map<string, SeasonGame[]>()
-    for (const game of allGames) gamesBySlate.set(game.slate_id, [...(gamesBySlate.get(game.slate_id) ?? []), game])
-
-    // The slate reveals as a unit at its first tip, so this is one decision
-    // for every pick rather than a per-team lookup.
-    const currentPicks = core.currentPicks
     const revealedPicks: Record<string, string> = {}
-    if (slate && isPickRevealed(slate, (gamesBySlate.get(slate.id) ?? []) as Game[], now)) {
+    if (slateRevealed) {
       for (const [playerId, teams] of Object.entries(currentPicks)) revealedPicks[playerId] = teams.join(', ')
     }
 
     // Count slates survived per player from this season's picks (including current slate)
-    const periodScopes = Object.fromEntries(core.periods.map((period) => {
+    const periodScopes = Object.fromEntries(periods.map((period) => {
       const quota = sharedRoundPickQuota(mode, pool.pick_frequency, period.round)
       return [period.id, { key: quota ? period.round! : period.id, quota: quota ?? 1 }]
     }))
-    const weeksSurvivedByPlayer = survivedPeriodsByPlayer(seasonPicks, allGames, periodScopes)
-    const visibleSlateIds = new Set(slates.filter((day) => isPickRevealed(day, (gamesBySlate.get(day.id) ?? []) as Game[], now)).map((day) => day.id))
+    const weeksSurvivedByPlayer = survivedPeriodsByOutcome(seasonPicks, periodScopes)
     const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks.filter((p) => visibleSlateIds.has(p.slate_id)))
 
     // The team that knocked each eliminated entry out: their pick on the day
     // they were eliminated. That day is locked and graded, so it is public.
-    const slateNumberById = new Map<string, number>(slates.map((w) => [w.id, w.slate_number]))
-    const eliminationSlateByPlayer = new Map<string, number>(
-      players
-        .filter((p) => p.status === 'eliminated' && p.elimination_slate != null)
-        .map((p) => [p.id, p.elimination_slate!])
-    )
-    const losingPicksByPlayer: Record<string, string[]> = {}
-    for (const pick of seasonPicks) {
-      const out = eliminationSlateByPlayer.get(pick.player_id)
-      if (out != null && slateNumberById.get(pick.slate_id) === out) {
-        losingPicksByPlayer[pick.player_id] = [...(losingPicksByPlayer[pick.player_id] ?? []), pick.team]
-      }
-    }
+    const losingPicksByPlayer = revealedLosingPicks(
+      players.filter((p) => p.status === 'eliminated' && p.elimination_slate != null)
+        .map((p) => ({ id: p.id, out: p.elimination_slate! })),
+      seasonPicks, slates, gamesBySlate, now)
 
     const standings: StandingRow[] = players.map((p) => ({
       player_id: p.id,
@@ -334,7 +354,7 @@ export const getContestStandings = cache(async (core: ContestCore): Promise<Stan
       seed_total: seedTotalByPlayer[p.id] || 0,
       current_pick: revealedPicks[p.id] ? currentPicks[p.id]?.[0] || null : null,
       current_picks: revealedPicks[p.id] ? currentPicks[p.id] || [] : [],
-      pick_locked: (currentPicks[p.id]?.length ?? 0) > 0,
+      pick_locked: submitted.has(p.id),
       pick_revealed: !!revealedPicks[p.id],
       elimination_reason: p.elimination_reason,
       elimination_slate: p.elimination_slate,
@@ -347,7 +367,98 @@ export const getContestStandings = cache(async (core: ContestCore): Promise<Stan
         ? compareBySeedTotal(a, b)
         : b.slates_survived - a.slates_survived || a.full_name.localeCompare(b.full_name)
     })
-    return standings
+    board = { standings }
+  } catch (error) {
+    console.error('standings unavailable', error)
+    throw error
+  }
+  boardMemo.set(key, board)
+  while (boardMemo.size > 6) boardMemo.delete(boardMemo.keys().next().value!)
+  return board
+}
+
+export interface ContestCore {
+  // What the standings table is built from; see getContestStandings.
+  board: { schema: Schema; epoch: string; outline: SeasonOutline; active: ActiveDay }
+  db: SupabaseClient
+  schema: Schema
+  now: Date
+  pool: PoolConfig
+  mode: CompetitionMode
+  slates: Slate[]
+  slate: Slate | null
+  periods: PickPeriod[]
+  currentPeriod: PickPeriod | null
+  slateGames: Game[] // the active day's games
+  players: SeasonPlayer[]
+  aliveCount: number
+  eliminatedCount: number
+  totalPlayers: number
+  picksMade: number
+  teamBrands: TeamBrandDirectory
+}
+
+// Everything the top of Today and the sweat board need. Null when the
+// database can't be read, so the pages can say so instead of failing.
+export const getContestCore = cache(async (): Promise<ContestCore | null> => {
+  try {
+    const db = await getDb()
+    const schema = schemaOf(db)
+    const sandbox = schema === 'sandbox'
+    const [lookup, outline, epoch, teamBrands, now] = await Promise.all([
+      cachedActiveLock(schema),
+      cachedOutline(schema),
+      cachedFactsEpoch(schema),
+      getTeamBrandDirectory(),
+      getEffectiveNow(),
+    ])
+    // The lock decision, made now: it picks which active-day entry is served.
+    const revealed = !!lookup.lock && now >= new Date(lookup.lock)
+    const active = await cachedActiveDay(schema, lookup.slateId, revealed, sandbox ? now.toISOString() : null)
+    const { pool, slates, players } = outline
+    const mode = pool.competition_mode
+    const slate = slates.find((s) => s.id === outline.activeSlateId) ?? null
+    const periods = buildPickPeriods(
+      mode,
+      slates.map((w) => ({ id: w.id, slate_number: w.slate_number, slate_date: String(w.slate_date), locks_at: w.locks_at })),
+      outline.rounds
+    )
+    const currentPeriod = slate ? periods.find((p) => p.id === slate.id) ?? null : null
+    const alive = players.filter((p) => p.status === 'alive')
+    const submitted = new Set(slate && active.slateId === slate.id ? active.submitters : [])
+    return {
+      board: { schema, epoch: epoch.v, outline, active },
+      db,
+      schema,
+      now,
+      pool,
+      mode,
+      slates,
+      slate,
+      periods,
+      currentPeriod,
+      slateGames: slate && active.slateId === slate.id ? active.games : [],
+      players,
+      aliveCount: alive.length,
+      eliminatedCount: players.length - alive.length,
+      totalPlayers: players.length,
+      picksMade: alive.filter((p) => submitted.has(p.id)).length,
+      teamBrands,
+    }
+  } catch (error) {
+    console.error('contest data unavailable', error)
+    return null
+  }
+})
+
+// The standings: every entry's days survived, seed total and losing pick,
+// sorted. Built once per instance from the shared entries and reused until one
+// of them changes; null when the table can't be built, so the page can say so.
+export const getContestStandings = cache(async (core: ContestCore): Promise<StandingRow[] | null> => {
+  try {
+    const { schema, epoch, outline, active } = core.board
+    const board = await composeBoard(schema, epoch, outline, active, core.now)
+    return board.standings
   } catch (error) {
     console.error('standings unavailable', error)
     return null

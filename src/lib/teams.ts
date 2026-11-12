@@ -49,6 +49,23 @@ export async function getSlateTeams(db: SupabaseClient, slateId: string): Promis
   return [...set].sort()
 }
 
+// Abbreviations that appear more than once among a day's games. Picks,
+// grading and the boards name a team by abbreviation within a day, so when two
+// schools share one (or a feed lists a team twice) the abbreviation no longer
+// identifies a single game. Callers refuse to grade or match those games.
+export function ambiguousAbbreviations(games: { home_team: string; away_team: string }[]): Set<string> {
+  const seen = new Set<string>()
+  const ambiguous = new Set<string>()
+  for (const game of games) {
+    for (const team of [game.home_team, game.away_team]) {
+      if (!team) continue
+      if (seen.has(team)) ambiguous.add(team)
+      seen.add(team)
+    }
+  }
+  return ambiguous
+}
+
 // Conference per team, for grouping regular-season games.
 export async function getTeamConferences(db: SupabaseClient): Promise<Record<string, string>> {
   const data = await selectAll<{ abbr: string; conference: string | null }>((from, to) =>

@@ -8,6 +8,8 @@ import {
   parseRound,
   broadcastOf,
   resultOf,
+  reportsFinal,
+  describeFeedState,
   seedOf,
   centralDateOf,
   easternDateOf,
@@ -16,6 +18,7 @@ import {
 } from './espn'
 import { getOrCreateSlate, refreshLockTime, renumberSlates } from './slates'
 import { selectAllIn } from './db'
+import { ambiguousAbbreviations } from './teams'
 
 export interface SyncResult {
   ok: boolean
@@ -93,7 +96,7 @@ export async function syncSlateFromEspn(
   const reliable = process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true'
   try {
     storedGames = await selectAllIn<StoredGame>(events.map(event => event.id), (batch, from, to) =>
-      supabase.from('games').select(`id,espn_event_id,slate_id,home_team,away_team${reliable ? ',home_team_id,away_team_id' : ''}`)
+      supabase.from('games').select(`id,espn_event_id,slate_id,home_team,away_team,result${reliable ? ',home_team_id,away_team_id,result_source' : ''}`)
         .in('espn_event_id', batch).order('id').range(from, to))
     storedSlates = await selectAllIn<{ id: string; slate_date: string }>(storedGames.map(game => game.slate_id), (batch, from, to) =>
       supabase.from('slates').select('id,slate_date').in('id', batch).order('id').range(from, to))
@@ -149,6 +152,16 @@ export async function syncSlateFromEspn(
     if (slateDate === requestedDate) primarySlateId = slateId
 
     const rows = []
+    // An abbreviation that appears more than once on a day (two schools ESPN
+    // writes the same way) cannot say which game a pick belongs to, so those
+    // games are never graded automatically.
+    const ambiguous = ambiguousAbbreviations(dayEvents.flatMap((dayEvent) => {
+      const sides = eventCompetitors(dayEvent)
+      return sides ? [{ home_team: sides.home.team.abbreviation ?? '', away_team: sides.away.team.abbreviation ?? '' }] : []
+    }))
+    const storedByEvent = new Map(storedGames.map((game) => [game.espn_event_id, game]))
+    const ambiguousGames: string[] = []
+    const keptResults: string[] = []
 
     for (const incoming of dayEvents) {
       if (held.has(incoming.id)) continue
@@ -179,6 +192,23 @@ export async function syncSlateFromEspn(
       const state = comp.status?.type?.state
       const homeScore = teams.home.score != null ? Number(teams.home.score) : null
       const awayScore = teams.away.score != null ? Number(teams.away.score) : null
+      const stored = storedByEvent.get(event.id)
+      let result = resultOf(event)
+      if (ambiguous.has(homeAbbr) || ambiguous.has(awayAbbr)) {
+        ambiguousGames.push(event.id)
+        result = 'pending'
+      }
+      // A stored final is never silently erased: a feed that no longer gives
+      // a clear result (or a now-ambiguous team) keeps the saved outcome and
+      // asks the organizer to look. A different definitive result is written
+      // and flows through the result-correction trigger (migration 027).
+      // An administrator's result (or void) outranks the feed; scores and status still refresh.
+      if (stored?.result_source === 'admin' && stored.result) {
+        result = stored.result as typeof result
+      } else if (result === 'pending' && stored?.result && stored.result !== 'pending') {
+        keptResults.push(stored.id)
+        result = stored.result as typeof result
+      }
 
       rows.push({
         slate_id: slateId,
@@ -199,8 +229,22 @@ export async function syncSlateFromEspn(
         display_clock: comp.status?.displayClock ?? null,
         home_score: Number.isNaN(homeScore) ? null : homeScore,
         away_score: Number.isNaN(awayScore) ? null : awayScore,
-        result: resultOf(event),
+        result,
       })
+    }
+
+    if (ambiguousGames.length) {
+      await recordReview(supabase, reliable, `team-identity:${slateDate}`,
+        'Two games on this day share a team abbreviation. Their results are not graded automatically; set them by hand after checking which team each pick means.',
+        { requested_date: slateDate, espn_event_ids: ambiguousGames, abbreviations: [...ambiguous] })
+    }
+    const gameIdsByEvent = new Map(storedGames.map((game) => [game.espn_event_id, game.id]))
+    const eventByGameId = new Map(dayEvents.flatMap((event) => gameIdsByEvent.has(event.id) ? [[gameIdsByEvent.get(event.id)!, event] as const] : []))
+    for (const gameId of keptResults) {
+      const observed = describeFeedState(eventByGameId.get(gameId)!)
+      await recordReview(supabase, reliable, `result-review:${gameId}`,
+        `ESPN no longer reports a clear final for a game that already has a result (it now says: ${observed}). The saved result was kept; check the game before changing it.`,
+        { requested_date: slateDate, game_id: gameId, observed })
     }
 
     if (rows.length > 0) {
@@ -226,6 +270,21 @@ export async function syncSlateFromEspn(
         await recordScheduleReview(supabase, reliable, requestedDate, [...held.values()])
       }
       totalGames += saved?.length ?? 0
+      // ESPN calls a never-graded game final but the parser cannot trust it
+      // (equal scores, contradictory flags, a third competitor): it would
+      // stay pending with no sign why, so the organizer is told.
+      const savedIds = new Map((saved ?? []).map((row) => [row.espn_event_id as string, row.id as string]))
+      for (const incoming of dayEvents) {
+        const known = storedByEvent.get(incoming.id)
+        const gameId = known?.id ?? savedIds.get(incoming.id)
+        if (!gameId || held.has(incoming.id) || ambiguousGames.includes(incoming.id)) continue
+        if (known?.result && known.result !== 'pending') continue
+        if (!reportsFinal(incoming) || resultOf(oriented.get(incoming.id) ?? incoming) !== 'pending') continue
+        const observed = describeFeedState(incoming)
+        await recordReview(supabase, reliable, `result-review:${gameId}`,
+          `ESPN reports this game as final but the result could not be trusted (${observed}). It stays ungraded; set the result by hand after checking the score.`,
+          { requested_date: slateDate, game_id: gameId, observed })
+      }
     }
 
     if (slateDate === requestedDate && failedGroups.length === 0 && !held.size) {
@@ -236,13 +295,15 @@ export async function syncSlateFromEspn(
 
     // Manual games count; placeholder tips do not.
     await refreshLockTime(supabase, slateId)
-    if (process.env.AUTOMATION_V2_ENABLED === 'true') {
-      const ranks = await fetchApRankings()
-      if (Object.keys(ranks).length > 0) {
-        const { error: rankError } = await supabase.from('slates').update({ assignment_rankings: ranks }).eq('id', slateId)
-          .or(`locks_at.is.null,locks_at.gt.${new Date().toISOString()}`)
-        if (rankError) throw rankError
-      }
+    // Save the AP snapshot the tournament auto-pick breaks seed-line ties
+    // with, refreshed until lock and fixed after it. An empty (failed) read
+    // never replaces a saved one. Durable automation requires the column;
+    // the legacy path tolerates a database without migration 024.
+    const ranks = await fetchApRankings()
+    if (Object.keys(ranks).length > 0) {
+      const { error: rankError } = await supabase.from('slates').update({ assignment_rankings: ranks }).eq('id', slateId)
+        .or(`locks_at.is.null,locks_at.gt.${new Date().toISOString()}`)
+      if (rankError && process.env.AUTOMATION_V2_ENABLED === 'true') throw rankError
     }
   }
 
@@ -288,18 +349,46 @@ interface StoredGame {
   away_team: string
   home_team_id?: string | null
   away_team_id?: string | null
+  result?: string
+  result_source?: string
 }
 
 async function recordScheduleReview(db: SupabaseClient, reliable: boolean, date: string, gameIds: string[]): Promise<void> {
   const message = 'Schedule identity changed after picks. Review the affected games before changing periods, teams or outcomes.'
-  const details = { requested_date: date, game_ids: gameIds }
+  await recordReview(db, reliable, `schedule-sync:${date}`, message, { requested_date: date, game_ids: gameIds }, 'schedule-change')
+}
+
+// Organizer-visible review item: an incident (migration 025/026) when the
+// reliability schema is active, otherwise an audit-log entry. The sync runs
+// every minute, so a condition is raised once per distinct observed state:
+// when the state recorded last time for this key is identical, nothing is
+// written (record_incident would otherwise reopen it and count it again).
+async function recordReview(db: SupabaseClient, reliable: boolean, key: string, message: string,
+  details: Record<string, unknown>, legacyEvent = 'job-failed'): Promise<void> {
+  const state = JSON.stringify(details)
   if (reliable) {
-    const { error } = await db.rpc('record_incident', { p_key: `schedule-sync:${date}`, p_impact: message,
-      p_correlation: randomUUID(), p_detail: JSON.stringify(details).slice(0, 1000) })
+    const detail = state.slice(0, 1000)
+    const { data: last, error: readError } = await db.from('incidents').select('details,impact').eq('key', key).maybeSingle()
+    if (readError) throw readError
+    if (last && last.details === detail && last.impact === message) return
+    const { error } = await db.rpc('record_incident', { p_key: key, p_impact: message,
+      p_correlation: randomUUID(), p_detail: detail })
     if (error) throw error
   } else {
     // Pre-025 deployments have neither incidents nor stable team/game columns.
-    const { error } = await db.from('audit_log').insert({ event_type: 'schedule-change', actor: 'system', message, details })
+    const { data: recent, error: readError } = await db.from('audit_log').select('details,message')
+      .eq('event_type', legacyEvent).order('created_at', { ascending: false }).limit(50)
+    if (readError) throw readError
+    const same = (row: { details?: Record<string, unknown> | null }) => legacyEvent === 'schedule-change'
+      ? row.details?.requested_date === details.requested_date
+      : row.details?.key === key
+    const last = (recent ?? []).find(same) as { details: Record<string, unknown>; message: string } | undefined
+    if (last) {
+      const lastState = Object.fromEntries(Object.entries(last.details ?? {}).filter(([name]) => name !== 'key'))
+      if (JSON.stringify(lastState) === state && last.message === message) return
+    }
+    const { error } = await db.from('audit_log').insert({ event_type: legacyEvent, actor: 'system', message,
+      details: legacyEvent === 'schedule-change' ? details : { key, ...details } })
     if (error) throw error
   }
 }

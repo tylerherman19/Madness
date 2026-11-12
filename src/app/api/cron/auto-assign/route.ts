@@ -7,9 +7,10 @@ import { serverError } from '@/lib/alerts'
 // Per-player DB round trips plus awaited emails — allow a big no-pick cohort.
 export const maxDuration = 300
 
-// Backstop only. Auto-assign normally fires within minutes of the day's first
-// tip via autoAssignIfDue() (see lib/autoAssign.ts); this daily Vercel Cron
-// catches a day nobody visited the site. Re-running is harmless.
+// Daily Vercel Cron. With AUTOMATION_V2_ENABLED the minute worker assigns
+// soon after first tip and this is a backstop; without it, this run (and the
+// day turnover, which refuses to advance until assignment is done) is when
+// missed picks are filled. Page views never assign. Re-running is harmless.
 //
 // GET is Vercel Cron's method and accepts only the cron secret. Admins trigger
 // a run with POST, which a cross-site link or image can't forge with the admin

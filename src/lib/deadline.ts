@@ -123,12 +123,16 @@ type SeedCandidate = {
 // If a late-round slate contains only seed values the player has already
 // used, fall back to the best unused team still playing rather than eliminate
 // the player for a bracket shape they cannot control.
-export function autoAssignHighestSeed(
+//
+// `apRanks` null means the ranking snapshot is unavailable. Then a choice
+// that needs it — two or more teams on the best line — is not guessed:
+// the result is `{ team: null, needsRankings: true }` and the caller defers.
+export function highestSeedChoice(
   games: Game[],
   usedTeams: string[],
   usedSeeds: number[],
-  apRanks: Record<string, number>
-): string | null {
+  apRanks: Record<string, number> | null
+): { team: string | null; needsRankings: boolean; nameOrderTie?: boolean } {
   const usedTeamSet = new Set(usedTeams)
   const usedSeedSet = new Set(usedSeeds.filter((seed) => Number.isInteger(seed) && seed >= 1 && seed <= 16))
   const candidates: SeedCandidate[] = []
@@ -140,14 +144,31 @@ export function autoAssignHighestSeed(
       [game.home_team, game.home_seed],
     ] as const) {
       if (usedTeamSet.has(team) || seed === null || seed < 1 || seed > 16) continue
-      candidates.push({ team, seed, apRank: apRanks[team] ?? Number.MAX_SAFE_INTEGER })
+      candidates.push({ team, seed, apRank: apRanks?.[team] ?? Number.MAX_SAFE_INTEGER })
     }
   }
 
-  const compare = (a: SeedCandidate, b: SeedCandidate) =>
-    a.seed - b.seed || a.apRank - b.apRank || a.team.localeCompare(b.team)
-  const freshSeedCandidates = candidates.filter((candidate) => !usedSeedSet.has(candidate.seed)).sort(compare)
-  return freshSeedCandidates[0]?.team ?? candidates.sort(compare)[0]?.team ?? null
+  const fresh = candidates.filter((candidate) => !usedSeedSet.has(candidate.seed))
+  const pool = fresh.length ? fresh : candidates
+  if (!pool.length) return { team: null, needsRankings: false }
+  const bestSeed = Math.min(...pool.map((candidate) => candidate.seed))
+  const line = pool.filter((candidate) => candidate.seed === bestSeed)
+  if (line.length > 1 && apRanks === null) return { team: null, needsRankings: true }
+  // With a snapshot, an unranked team sorts after every ranked one. Two
+  // teams the snapshot cannot separate (both unranked) keep the existing
+  // name order, but the caller is told so it can surface it to the organizer.
+  line.sort((a, b) => a.apRank - b.apRank || a.team.localeCompare(b.team))
+  const nameOrderTie = line.length > 1 && line[0].apRank === line[1].apRank
+  return { team: line[0].team, needsRankings: false, nameOrderTie }
+}
+
+export function autoAssignHighestSeed(
+  games: Game[],
+  usedTeams: string[],
+  usedSeeds: number[],
+  apRanks: Record<string, number>
+): string | null {
+  return highestSeedChoice(games, usedTeams, usedSeeds, apRanks).team
 }
 
 // Format a UTC date as a human-readable Central time string
@@ -162,6 +183,52 @@ export function formatCentralTime(utcDate: Date | string): string {
     minute: '2-digit',
     timeZoneName: 'short',
   })
+}
+
+// Participant-facing clock times. The browser's zone is used when it can be
+// detected; everything else (server render, no JS, a failed or invalid
+// detection) falls back to Central, the pool's own zone. The offset always
+// comes from Intl for the deadline's own instant, so a March date after the US
+// clock change prints daylight time even if today is still winter. This is
+// display only: locking is decided by the database and the server.
+export const FALLBACK_TIME_ZONE = CHICAGO_TZ
+
+export function resolveTimeZone(timeZone: string | null | undefined): string {
+  if (!timeZone) return FALLBACK_TIME_ZONE
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone })
+    return timeZone
+  } catch {
+    return FALLBACK_TIME_ZONE
+  }
+}
+
+export function formatClockParts(
+  instant: Date | string | null | undefined,
+  timeZone?: string | null
+): { time: string; zone: string } | null {
+  if (!instant) return null
+  const date = typeof instant === 'string' ? new Date(instant) : instant
+  if (isNaN(date.getTime())) return null
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: resolveTimeZone(timeZone),
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).formatToParts(date)
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
+  return { time: `${get('hour')}:${get('minute')} ${get('dayPeriod')}`, zone: get('timeZoneName') }
+}
+
+// "5:00 PM CST", or "5:00 PM" when the zone label is left off.
+export function formatClock(
+  instant: Date | string | null | undefined,
+  timeZone?: string | null,
+  withZone = true
+): string {
+  const parts = formatClockParts(instant, timeZone)
+  if (!parts) return 'TBD'
+  return withZone && parts.zone ? `${parts.time} ${parts.zone}` : parts.time
 }
 
 // "Sat, Mar 21" — the label for a slate, which is now the period name.

@@ -59,7 +59,8 @@ export interface EspnEvent {
     timeValid?: boolean
     neutralSite?: boolean
     status: {
-      type: { state: string; shortDetail?: string; completed: boolean }
+      // `name` is ESPN's status code (STATUS_FINAL, STATUS_POSTPONED, ...).
+      type: { name?: string; state: string; detail?: string; shortDetail?: string; completed: boolean }
       displayClock?: string
       period?: number
     }
@@ -193,6 +194,30 @@ export function eventCompetitors(
   return home && away ? { home, away } : null
 }
 
+// Pair an ESPN event with the stored game it was matched to by event id, and
+// return its competitors in the stored orientation. A side matches on ESPN's
+// stable team id when both the stored row and the feed carry one, and on the
+// abbreviation only for legacy rows without ids. A neutral-site event ESPN
+// lists the other way round is flipped back. Null when the teams differ —
+// the board then shows the stored schedule rather than someone else's game.
+export function scheduledEventSides(
+  stored: { home_team: string; away_team: string; home_team_id?: string | null; away_team_id?: string | null },
+  event: EspnEvent
+): { home: EspnCompetitor; away: EspnCompetitor; flipped: boolean } | null {
+  const teams = eventCompetitors(event)
+  if (!teams?.home.team.abbreviation || !teams.away.team.abbreviation) return null
+  const is = (abbr: string, id: string | null | undefined, side: EspnCompetitor) =>
+    id && side.team.id ? id === side.team.id : abbr === side.team.abbreviation
+  if (is(stored.home_team, stored.home_team_id, teams.home) && is(stored.away_team, stored.away_team_id, teams.away)) {
+    return { home: teams.home, away: teams.away, flipped: false }
+  }
+  if (event.competitions[0].neutralSite === true &&
+      is(stored.home_team, stored.home_team_id, teams.away) && is(stored.away_team, stored.away_team_id, teams.home)) {
+    return { home: teams.away, away: teams.home, flipped: true }
+  }
+  return null
+}
+
 export interface RoundInfo {
   roundLabel: string | null
   region: string | null
@@ -218,23 +243,84 @@ export function broadcastOf(event: EspnEvent): string | null {
   return names.length > 0 ? names.join(', ') : null
 }
 
-// Translate ESPN's status into the stored result. A college game cannot end
-// in a tie (it goes to overtime), so 'tie' exists in the column only as a
-// carry-over from the NFL schema and is never written here.
+// ESPN status codes that mean the game is over and the score stands. Overtime
+// finals keep STATUS_FINAL (the detail reads "Final/OT"); STATUS_FINAL_OT is
+// what ESPN uses for the same thing in other sports. Every other code —
+// STATUS_POSTPONED, STATUS_CANCELED, STATUS_SUSPENDED, STATUS_FORFEIT,
+// STATUS_DELAYED, STATUS_ABANDONED, a missing code, or one ESPN adds later —
+// is treated as unresolved, never as a result.
+const FINAL_STATUS_NAMES = new Set(['STATUS_FINAL', 'STATUS_FINAL_OT'])
+
+function finalScore(competitor: EspnCompetitor): number | null {
+  const raw = typeof competitor.score === 'string' ? competitor.score.trim() : ''
+  return /^\d+$/.test(raw) ? Number(raw) : null
+}
+
+function sameTeam(a: EspnCompetitor, b: EspnCompetitor): boolean {
+  if (a.team.id && b.team.id) return a.team.id === b.team.id
+  return a.team.abbreviation === b.team.abbreviation
+}
+
+// Translate ESPN's status into the stored result. A game is graded only when
+// ESPN calls it final, both sides are identified, both final scores are
+// present and unequal, and any winner flag agrees with the scores. Anything
+// else — postponed, cancelled, suspended, a 0–0 placeholder, a missing score,
+// a flag contradicting the score — stays 'pending' for an organizer to
+// resolve. A college game cannot end in a tie (it goes to overtime), so equal
+// scores are an unresolved feed, not a tie: 'tie' is never written here.
 export function resultOf(
   event: EspnEvent
 ): 'home_win' | 'away_win' | 'pending' {
-  const comp = event.competitions?.[0]
-  if (!comp?.status?.type?.completed) return 'pending'
+  const type = event.competitions?.[0]?.status?.type
+  if (!type || type.completed !== true || type.state !== 'post') return 'pending'
+  if (!type.name || !FINAL_STATUS_NAMES.has(type.name)) return 'pending'
+  // Exactly two competitors, one home and one away. A third entry means the
+  // feed is not describing a plain two-team game, so nothing is graded.
+  const competitors = event.competitions[0].competitors ?? []
+  if (competitors.length !== 2 || competitors.filter((c) => c.homeAway === 'home').length !== 1 ||
+      competitors.filter((c) => c.homeAway === 'away').length !== 1) return 'pending'
   const teams = eventCompetitors(event)
   if (!teams) return 'pending'
-  if (teams.home.winner) return 'home_win'
-  if (teams.away.winner) return 'away_win'
-  // Completed but no winner flag — fall back to the scores.
-  const homeScore = Number(teams.home.score ?? NaN)
-  const awayScore = Number(teams.away.score ?? NaN)
-  if (Number.isNaN(homeScore) || Number.isNaN(awayScore)) return 'pending'
-  return homeScore > awayScore ? 'home_win' : 'away_win'
+  const { home, away } = teams
+  if (!home.team?.abbreviation || !away.team?.abbreviation || sameTeam(home, away)) return 'pending'
+  const homeScore = finalScore(home)
+  const awayScore = finalScore(away)
+  if (homeScore === null || awayScore === null || homeScore === awayScore) return 'pending'
+  const scored: 'home' | 'away' = homeScore > awayScore ? 'home' : 'away'
+  const flagged = [home.winner === true ? 'home' : null, away.winner === true ? 'away' : null].filter(Boolean)
+  // Both flagged, or one flagged against the score, is a feed error.
+  if (flagged.length > 1 || (flagged.length === 1 && flagged[0] !== scored)) return 'pending'
+  // A side explicitly marked as not winning cannot be the higher score.
+  if ((scored === 'home' ? home.winner : away.winner) === false) return 'pending'
+  return scored === 'home' ? 'home_win' : 'away_win'
+}
+
+// ESPN itself calls the game over: a final status code, completed, post.
+// Whether the score can be trusted is resultOf's separate question.
+export function reportsFinal(event: EspnEvent): boolean {
+  const type = event.competitions?.[0]?.status?.type
+  return !!type && type.completed === true && type.state === 'post' && !!type.name && FINAL_STATUS_NAMES.has(type.name)
+}
+
+// A short, stable description of what the feed says about a game, for review
+// items. It changes exactly when the observed state changes.
+export function describeFeedState(event: EspnEvent): string {
+  const comp = event.competitions?.[0]
+  const type = comp?.status?.type
+  const sides = (comp?.competitors ?? []).map((c) => `${c.team?.abbreviation ?? '?'} ${c.score ?? 'no score'}${c.winner === true ? ' (winner flag)' : ''}`)
+  return `${type?.name ?? 'no status code'}, ${type?.state ?? 'no state'}${type?.completed ? ', completed' : ''}; ${sides.join(' vs ') || 'no competitors'}`
+}
+
+// The state a board may show. ESPN reports postponed and cancelled games as
+// 'post' with a 0–0 score, and every board reads 'post' as "final, compare
+// the scores" — which would show both sides as having lost. Only a game with
+// a definitive result is 'post' here; an unresolved one shows as not started,
+// with ESPN's own status text ("Postponed") left for the caller to display.
+export function displayStateOf(event: EspnEvent): 'pre' | 'in' | 'post' {
+  const state = event.competitions?.[0]?.status?.type?.state
+  if (state === 'in') return 'in'
+  if (state === 'post' && resultOf(event) !== 'pending') return 'post'
+  return 'pre'
 }
 
 // Whether ESPN has actually announced this tip time. A placeholder event
