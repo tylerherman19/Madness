@@ -1,0 +1,71 @@
+Simulation start 2026-11-12T01:25:27.533Z entries=1000 (real HTTP signups: 100, rest seeded by SQL with a cheap bcrypt cost)
+PASS  admin signs in over HTTP  [status 200]
+
+== Step 1: start a March Madness contest (admin flow)
+PASS  admin syncs tournament day 1 from the (fake) feed  [status 200 {"ok":true,"slate_id":"e42f39f6-e8c4-4bb8-8ed8-a4895c9dcb05","games_synced":16,"teams_seen":32}]
+PASS  admin syncs tournament day 2 from the (fake) feed  [status 200 {"ok":true,"slate_id":"9dfdf6de-de09-492d-b1cf-d69d904b59b6","games_synced":16,"teams_seen":32}]
+PASS  start route archives the old contest and opens the tournament  [status 200 {"ok":true,"archive_id":"913c8438-aca8-47e9-b5e8-061f072611f4"}]
+PASS  new pool is march-madness, tournament-round, highest-seed  [march-madness/tournament-round/highest-seed]
+PASS  active slate is round one day one, no entries remain
+
+== Step 2: 1000 participants register and sign in
+PASS  100 entries register over HTTP  [statuses 200 in 27s]
+PASS  duplicate email (case variant) is refused  [status 409]
+PASS  all 1000 entries sign in over HTTP  [statuses 200]
+PASS  registered count in the database
+
+== Step 3: round 1 day 1 picks before lock
+NOTE  /api/me sample keys: name,signupsClosed,pick
+submitted 1350 picks in 5s; failures {}
+PASS  picks stored match accepted picks (no duplicates, no extras)  [1350 rows vs 1350 accepted]
+PASS  players with one pick: 1 row; two picks: 2 rows  [900 players with picks]
+PASS  200 pick changes before lock succeed  [200/200 ok; failures {}]
+PASS  a change replaces the pick instead of adding one  [1350 rows]
+PASS  a third pick in a two-pick round is refused (quota)  [409 You already made all 2 required picks for this round]
+NOTE  re-submitting the same team without request id: 200 {"ok":true,"pick":{"id":"84977bfa-b1b0-4a5f-a78a-f1e067d2fd16","player_id":"e854bff2-d9e2-49bb-821d- (idempotent retry)
+PASS  a team not playing today is refused  [400 ZZZ is not playing this slate]
+PASS  picking tomorrow before any result is refused  [400 This game day is not open for you yet. Your previous pick must finish with a win first.]
+PASS  before lock, no one else can see an entry's pick (home, sweat, live-scores, grid, export, me)  [statuses 200,200,200,200,200,200,200,308]
+PASS  own pick is visible to its owner (/pick)  [status 200]
+
+== Step 4: lock passes
+  workers after lock: schedule:ran grading:ran
+PASS  a pick change after lock is refused  [400 Picks for today are locked — the first game has tipped off]
+PASS  a first pick after lock is refused  [400 Picks for today are locked — the first game has tipped off]
+PASS  day-one lock does not assign (round stays open on day two)  [{"ok":true,"message":"Round remains open on a later game day","done":true} picks 1350->1350]
+PASS  after lock picks are visible (grid shows the pick next to the entry)  [grid 200, sweat shows pick: true]
+
+== Step 5: results arrive (normal, overtime, postponed, corrected, flip)
+  workers games in progress: results:ran
+PASS  nothing is graded while games are in progress
+  workers first finals: results:ran grading:ran
+PASS  postponed game (post, 0-0) stays pending  [pending]
+FAIL  nobody was eliminated by the postponed game  [13 eliminated among its pickers]
+PASS  overtime final graded
+PASS  after first results (corrected/manual games temporarily home wins): standings equal ground truth (alive 599, eliminated 401)  [0 mismatches]
+  workers correction: results:ran grading:ran
+PASS  corrected game result follows the feed to the right winner
+  workers flip to B: results:ran grading:ran
+  workers flip back to A: results:ran grading:ran
+PASS  flipped game ends on its final result
+PASS  after correction and flip: standings equal ground truth (alive 598, eliminated 402)  [0 mismatches]
+
+== Step 6: administrator void and manual result
+PASS  void without a reason is refused  [400]
+PASS  admin voids the postponed game with a reason  [200 {"ok":true,"changed":true,"game":{"id":"eb44fb53-79b4-4e02-bb34-56c2649f5112","slate_id":"e42f39f6-e]
+PASS  a void never counts as a loss  [0 eliminated with only void picks]
+PASS  admin enters a manual result the feed disagrees with  [200 {"ok":true,"changed":true,"game":{"id":"148280b7-9155-4490-8589-9ad7eda14bb2","slate_id":"e42f39f6-e]
+PASS  the manual result survives 20 result syncs
+  workers after admin actions: results:ran grading:ran
+PASS  after void and manual result: standings equal ground truth (alive 580, eliminated 420)  [0 mismatches]
+PASS  survivor header shows registered entries until round 1 is fully graded  [{"reg":"1000","status":200}]
+
+== Step 7: winners pick the next day early; losers cannot pick
+PASS  a winner with a spare pick can pick the next day early  [200 ]
+PASS  an eliminated entry cannot pick  [403 You are eliminated]
+PASS  an eliminated entry cannot pick the locked day either  [403]
+PASS  an alive entry with no round-one pick cannot jump ahead of the active day  [400 This game day is not open for you yet. Your previous pick must finish with a win first.]
+PASS  re-using a team from an earlier day is refused  [400 This game day is not open for you yet. Your previous pick must finish with a win first.]
+  workers turnover to R1D2: schedule:ran advance:ran
+PASS  the scheduled turnover opens round one day two  [2026-11-11]
+TOTAL so far pass=43 fail=1 nobody was eliminated by the postponed game

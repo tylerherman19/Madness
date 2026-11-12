@@ -136,7 +136,7 @@ export const sim = { current: 0, phase: 'pre', today: null, rankings: {} }
 export function tipOf(game, day, current, phase, now = new Date()) {
   const date = addDays(sim.today, day - current)
   const index = gamesOfDay(day).indexOf(game)
-  if (day === current && phase === 'pre') return new Date(now.getTime() + 2 * 3600e3 + index * 600e3)
+  if (day === current && phase === 'pre') return new Date(now.getTime() + 15 * 60e3 + index * 60e3)
   if (day === current) return new Date(centralInstant(date, '00:30').getTime() + index * 300e3)
   return new Date(centralInstant(date, '18:00').getTime() + index * 600e3)
 }
