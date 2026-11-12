@@ -173,6 +173,16 @@ for (const schema of ['public', 'sandbox']) {
   await sql(`update players set status='eliminated',elimination_reason='Removed again',elimination_slate=1 where id='${P(2)}'`)
   await setResult(1, 'away_win', 'Flip'); await regrade(1)
   assert.equal((await status(2)).status, 'eliminated', 'a manual re-elimination is not mistaken for grading')
+  // an admin who rewrites the reason of a grading elimination has made a ruling; a later correction must not undo it
+  await reset(schema)
+  for (const n of [1, 2]) await player(n)
+  await slate(1, { active: true }); await game(1, 1, 'A', 'B')
+  await pick(1, 1, 'A'); await pick(2, 1, 'B')
+  await setResult(1, 'home_win'); await regrade(1)
+  assert.equal((await status(2)).status, 'eliminated')
+  await sql(`update players set elimination_reason='Organizer ruling' where id='${P(2)}'`)
+  await setResult(1, 'away_win', 'Flip'); await regrade(1)
+  assert.equal((await status(2)).status, 'eliminated', 'an elimination the admin has edited is not auto-restored')
   console.log(`PASS ${schema}: manual eliminations are never auto-restored`)
 
   // ---- 6. Two-pick round -------------------------------------------------------------------------------
@@ -256,6 +266,9 @@ for (const schema of ['public', 'sandbox']) {
   await setResult(1, 'home_win'); await regrade(1)
   cs = await state7()
   assert.deepEqual(cs, { registered: 2, alive: 0, eliminated: 2, started: true, stopped: true })
+  await sql(`insert into players(id,full_name,email,pin_hash) values('${P(99)}','Internal','t@nflsurvivor.internal','x')`)
+  assert.equal((await state7()).stopped, true, 'an alive internal test account does not keep the contest open')
+  await sql(`delete from players where id='${P(99)}'`)
   const poolBefore = await q('select status,is_active from pools where is_active')
   await fails(`insert into picks(player_id,slate_id,team,auto_assigned) values('${P(1)}','${SL(2)}','M',false)`, /no entries left alive/)
   assert.deepEqual(await q('select status,is_active from pools where is_active'), poolBefore, 'pool status is not changed')

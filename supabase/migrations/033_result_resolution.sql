@@ -38,7 +38,11 @@ end $fn$;
 -- Alive entries are always cleared of the grading marker, so a later manual elimination can never look automatic.
 create or replace function __SCHEMA__.clear_elimination_source() returns trigger language plpgsql set search_path=__SCHEMA__,pg_catalog as $fn$
 begin
- if new.status='alive' then new.elimination_source:=null; end if;
+ if new.status='alive' then new.elimination_source:=null;
+ -- An admin who rewrites the reason or day of an existing elimination has made a ruling: a later regrade must not undo it.
+ elsif old.status='eliminated' and (new.elimination_reason is distinct from old.elimination_reason or new.elimination_slate is distinct from old.elimination_slate) then
+  new.elimination_source:=null;
+ end if;
  return new;
 end $fn$;
 drop trigger if exists players_00_elimination_source on __SCHEMA__.players;
@@ -199,7 +203,9 @@ create or replace function __SCHEMA__.contest_state() returns jsonb language plp
 declare cfg __SCHEMA__.pools%rowtype; registered bigint; alive bigint; eliminated bigint; started boolean:=false; first_tip timestamptz;
 begin
  select * into cfg from __SCHEMA__.pools where is_active;
- select count(*),count(*) filter(where status='alive'),count(*) filter(where status='eliminated') into registered,alive,eliminated from __SCHEMA__.players;
+ select count(*),count(*) filter(where status='alive'),count(*) filter(where status='eliminated') into registered,alive,eliminated from __SCHEMA__.players
+  where email is null or email not like '%@nflsurvivor.internal'; -- internal test accounts never keep a contest open
+
  if found and cfg.id is not null then
   if cfg.competition_mode='march-madness' then
    select exists(select 1 from __SCHEMA__.games g join __SCHEMA__.slates s on s.id=g.slate_id where s.season_year=cfg.season_year and __SCHEMA__.canonical_round(g.round_label)='1st Round')
@@ -217,7 +223,7 @@ end $fn$;
 create or replace function __SCHEMA__.refuse_picks_when_stopped() returns trigger language plpgsql set search_path=__SCHEMA__,pg_catalog as $fn$
 begin
  if TG_OP='UPDATE' and new.team is not distinct from old.team then return new; end if;
- if exists(select 1 from __SCHEMA__.players where status='alive') then return new; end if;
+ if exists(select 1 from __SCHEMA__.players where status='alive' and (email is null or email not like '%@nflsurvivor.internal')) then return new; end if;
  if (__SCHEMA__.contest_state()->>'stopped')::boolean then raise exception 'The contest has no entries left alive; picks are closed'; end if;
  return new;
 end $fn$;
