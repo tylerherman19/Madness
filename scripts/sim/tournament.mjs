@@ -1,9 +1,8 @@
 // Part A: tournament simulation with 1,000 entries, driven through the HTTP API and the
 // cron/worker endpoints. Requires the stack from scripts/sim/run-stack.sh.
 import bcrypt from 'bcryptjs'
-import { randomUUID } from 'node:crypto'
 import {
-  Evidence, http, cookieFrom, pmap, nextIp, sql, rows, scalar, worker, cron, sleep, centralHour, closeSql,
+  Evidence, http, cookieFrom, pmap, nextIp, sql, rows, scalar, worker, cron, centralHour, closeSql,
 } from './lib.mjs'
 import * as W from './world.mjs'
 
@@ -203,7 +202,6 @@ async function groundTruth(label) {
 }
 async function headerText() {
   const res = await http('GET', '/', { ip: nextIp(), raw: true })
-  const m = res.text.match(/(\d+)<!-- --> <!-- -->registered|(\d+)<\/span><span[^>]*> alive of <!-- -->(\d+)|alive of/)
   const text = res.text.replace(/<!--.*?-->/g, '')
   const reg = text.match(/>(\d+)<\/span><span[^>]*> registered/), al = text.match(/>(\d+)<\/span><span[^>]*> alive of (\d+)/)
   return { reg: reg?.[1], alive: al?.[1], of: al?.[2], status: res.status }

@@ -103,7 +103,7 @@ async function rush(windowSecs, lockMid, users, viewers = 250) {
   const poolSamples = []
   const ps = setInterval(async () => poolSamples.push((await stats()).pool), 2000)
   const results = [], vsamples = []
-  const start = performance.now(); const end = start + (windowSecs + 5) * 1000
+  const start = performance.now()
   let lockAt = null
   const vstop = { v: false }
   const vwork = Array.from({ length: viewers }, async (_, v) => { const signed = v % 5 === 0 ? users[(v * 7) % users.length] : null; const ip = nextIp(); while (!vstop.v) { vsamples.push(await timed(pickRoute(), { cookie: signed?.cookie, ip })); await sleep(1000 + Math.random() * 2000) } })
@@ -145,7 +145,6 @@ async function rush(windowSecs, lockMid, users, viewers = 250) {
   if (lockMid) {
     const lock = (await sqlq(`select locks_at from public.slates where id=$1`, [ACTIVE])).rows[0].locks_at
     const after = (await sqlq(`select count(*)::int n from public.picks where slate_id=$1 and updated_at > $2::timestamptz`, [ACTIVE, lock])).rows[0].n
-    const lateOk = results.filter((r) => r.post.status === 200 && r.post.t0 && lockAt).length
     log(`  lock check: picks with updated_at after the lock instant ${after} (expect 0); 200 responses ${ok200}, refused after lock ${posts.filter((p) => p.status !== 200).length}`)
   }
 }
