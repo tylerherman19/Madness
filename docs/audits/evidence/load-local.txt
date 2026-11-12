@@ -46,3 +46,137 @@ requests 3272  req/s 46.9  non-200 579 (timeouts 192, errors 387, http 0)  p50/p
   adapter db requests 6162 = 88.2/s; pool max busy 10/10, max waiting 27, avg waiting 0.10, pg avg query 4.1 ms, avg acquire 1.6 ms
   next cpu% avg 110 max 181
   failures: {"error Error: write EPIPE":203,"error Error: connect ECONNRESET 127.0.0.1:3917":178,"timeout timeout":192,"error Error: read ECONNRESET":6}
+
+--- viewers 500 (80% signed out, 20% signed in), 60s, load avg 6.81 6.98 6.74
+requests 10272  req/s 141.8  non-200 6836 (timeouts 192, errors 6644, http 0)  p50/p95/p99 1406/4365/14135 ms
+  /                  n= 3153  p50/p95/p99 1696/4602/17430 ms  non-200 2086
+  /api/live-scores   n= 2558  p50/p95/p99 1353/3713/14260 ms  non-200 1708
+  /api/sweat         n= 1538  p50/p95/p99 2067/5372/12279 ms  non-200 1016
+  /grid              n= 1014  p50/p95/p99 383/1060/13419 ms  non-200 685
+  /api/me            n= 1004  p50/p95/p99 390/3940/12858 ms  non-200 665
+  /schedule          n=  480  p50/p95/p99 311/864/7003 ms  non-200 320
+  /sweat             n=  525  p50/p95/p99 1592/4274/16201 ms  non-200 356
+  adapter db requests 8262 = 114.1/s; pool max busy 10/10, max waiting 55, avg waiting 0.50, pg avg query 5.3 ms, avg acquire 2.9 ms
+  next cpu% avg 109 max 164
+  failures: {"error Error: write EPIPE":2907,"error Error: connect ECONNRESET 127.0.0.1:3917":3541,"error Error: read ECONNRESET":144,"error Error: write ECONNRESET":52,"timeout timeout":192}
+
+--- viewers 1000 (80% signed out, 20% signed in), 60s, load avg 9.38 7.53 6.96
+requests 25311  req/s 331.4  non-200 22090 (timeouts 198, errors 21892, http 0)  p50/p95/p99 1594/4053/12920 ms
+  /                  n= 7854  p50/p95/p99 1823/4386/12080 ms  non-200 6805
+  /api/live-scores   n= 6251  p50/p95/p99 1522/3201/10630 ms  non-200 5458
+  /api/sweat         n= 3684  p50/p95/p99 2372/4735/13947 ms  non-200 3235
+  /grid              n= 2539  p50/p95/p99 344/1097/16255 ms  non-200 2242
+  /api/me            n= 2539  p50/p95/p99 397/2386/12497 ms  non-200 2237
+  /schedule          n= 1217  p50/p95/p99 327/1068/18880 ms  non-200 1055
+  /sweat             n= 1227  p50/p95/p99 1829/4090/15824 ms  non-200 1058
+  adapter db requests 7920 = 103.7/s; pool max busy 10/10, max waiting 42, avg waiting 0.41, pg avg query 5.7 ms, avg acquire 3.2 ms
+  next cpu% avg 109 max 185
+  failures: {"error Error: write EPIPE":5649,"error Error: connect ECONNRESET 127.0.0.1:3917":15188,"error Error: read ECONNRESET":911,"error Error: write ECONNRESET":144,"timeout timeout":198}
+===== 2026-11-12T01:36:20.025Z viewer stages 250,500,1000 (latency 0 ms)
+
+--- viewers 250 (80% signed out, 20% signed in), 60s, load avg 10.29 7.33 6.83
+requests 3272  req/s 46.9  non-200 579 (timeouts 192, errors 387, http 0)  p50/p95/p99 1216/5754/16216 ms
+  /                  n=  942  p50/p95/p99 1666/7150/19093 ms  non-200 161
+  /api/live-scores   n=  830  p50/p95/p99 1298/5220/19211 ms  non-200 151
+  /api/sweat         n=  454  p50/p95/p99 2025/5883/11215 ms  non-200 82
+  /grid              n=  360  p50/p95/p99 379/4918/15515 ms  non-200 70
+  /api/me            n=  347  p50/p95/p99 351/8685/16216 ms  non-200 64
+  /schedule          n=  156  p50/p95/p99 271/1335/5613 ms  non-200 26
+  /sweat             n=  183  p50/p95/p99 1677/5187/11127 ms  non-200 25
+  adapter db requests 6162 = 88.2/s; pool max busy 10/10, max waiting 27, avg waiting 0.10, pg avg query 4.1 ms, avg acquire 1.6 ms
+  next cpu% avg 110 max 181
+  failures: {"error Error: write EPIPE":203,"error Error: connect ECONNRESET 127.0.0.1:3917":178,"timeout timeout":192,"error Error: read ECONNRESET":6}
+
+--- viewers 500 (80% signed out, 20% signed in), 60s, load avg 6.81 6.98 6.74
+requests 10272  req/s 141.8  non-200 6836 (timeouts 192, errors 6644, http 0)  p50/p95/p99 1406/4365/14135 ms
+  /                  n= 3153  p50/p95/p99 1696/4602/17430 ms  non-200 2086
+  /api/live-scores   n= 2558  p50/p95/p99 1353/3713/14260 ms  non-200 1708
+  /api/sweat         n= 1538  p50/p95/p99 2067/5372/12279 ms  non-200 1016
+  /grid              n= 1014  p50/p95/p99 383/1060/13419 ms  non-200 685
+  /api/me            n= 1004  p50/p95/p99 390/3940/12858 ms  non-200 665
+  /schedule          n=  480  p50/p95/p99 311/864/7003 ms  non-200 320
+  /sweat             n=  525  p50/p95/p99 1592/4274/16201 ms  non-200 356
+  adapter db requests 8262 = 114.1/s; pool max busy 10/10, max waiting 55, avg waiting 0.50, pg avg query 5.3 ms, avg acquire 2.9 ms
+  next cpu% avg 109 max 164
+  failures: {"error Error: write EPIPE":2907,"error Error: connect ECONNRESET 127.0.0.1:3917":3541,"error Error: read ECONNRESET":144,"error Error: write ECONNRESET":52,"timeout timeout":192}
+
+--- viewers 1000 (80% signed out, 20% signed in), 60s, load avg 9.38 7.53 6.96
+requests 25311  req/s 331.4  non-200 22090 (timeouts 198, errors 21892, http 0)  p50/p95/p99 1594/4053/12920 ms
+  /                  n= 7854  p50/p95/p99 1823/4386/12080 ms  non-200 6805
+  /api/live-scores   n= 6251  p50/p95/p99 1522/3201/10630 ms  non-200 5458
+  /api/sweat         n= 3684  p50/p95/p99 2372/4735/13947 ms  non-200 3235
+  /grid              n= 2539  p50/p95/p99 344/1097/16255 ms  non-200 2242
+  /api/me            n= 2539  p50/p95/p99 397/2386/12497 ms  non-200 2237
+  /schedule          n= 1217  p50/p95/p99 327/1068/18880 ms  non-200 1055
+  /sweat             n= 1227  p50/p95/p99 1829/4090/15824 ms  non-200 1058
+  adapter db requests 7920 = 103.7/s; pool max busy 10/10, max waiting 42, avg waiting 0.41, pg avg query 5.7 ms, avg acquire 3.2 ms
+  next cpu% avg 109 max 185
+  failures: {"error Error: write EPIPE":5649,"error Error: connect ECONNRESET 127.0.0.1:3917":15188,"error Error: read ECONNRESET":911,"error Error: write ECONNRESET":144,"timeout timeout":198}
+
+--- recovery: health and home every 2 s for 120s
+  health: first 30s 7/35/35 ms, last 30s 6/7/7 ms, non-200 0/59
+  home: first 30s 36/108/108 ms, last 30s 35/63/63 ms, non-200 0/59
+
+===== 2026-11-12T01:43:35.350Z rush (latency 0 ms)
+
+--- pre-lock rush: 1000 participants over 120s, 250 viewers browsing, 165s wall, load avg 9.92 8.14 7.31
+  /pick page: {"200":582,"error Error: write EPIPE":218,"error Error: connect ECONNRESET 127.0.0.1:3917":126,"error Error: read ECONNRESET":13,"timeout timeout":49,"error Error: write ECONNRESET":12} p50/p95/p99 5600/12944/22411 ms
+  submit:     {"200":580,"error Error: connect ECONNRESET 127.0.0.1:3917":159,"error Error: write EPIPE":217,"error Error: read ECONNRESET":3,"timeout timeout":41} p50/p95/p99 8428/13007/14740 ms
+  change:     n=120 {"200":77,"error Error: connect ECONNRESET 127.0.0.1:3917":8,"error Error: write EPIPE":22,"timeout timeout":13} p50/p95/p99 8213/11973/12748 ms
+  viewers: 7535 requests, non-200 3932, p50/p95/p99 2603/8442/19957 ms
+  success rate (submit 200): 58.0%   db requests 28101 (171/s)  pool max busy 10, max waiting 556, avg waiting 2.50  next cpu avg 113% max 179%
+  DB check: 614 pick rows; duplicates 0; 200 responses without a row 0; rows whose team differs from the last accepted request 9; players with a row but no 200 34 (expect 0 unless a response was lost)
+
+===== 2026-11-12T01:43:35.350Z rush (latency 0 ms)
+
+--- pre-lock rush: 1000 participants over 120s, 250 viewers browsing, 165s wall, load avg 9.92 8.14 7.31
+  /pick page: {"200":582,"error Error: write EPIPE":218,"error Error: connect ECONNRESET 127.0.0.1:3917":126,"error Error: read ECONNRESET":13,"timeout timeout":49,"error Error: write ECONNRESET":12} p50/p95/p99 5600/12944/22411 ms
+  submit:     {"200":580,"error Error: connect ECONNRESET 127.0.0.1:3917":159,"error Error: write EPIPE":217,"error Error: read ECONNRESET":3,"timeout timeout":41} p50/p95/p99 8428/13007/14740 ms
+  change:     n=120 {"200":77,"error Error: connect ECONNRESET 127.0.0.1:3917":8,"error Error: write EPIPE":22,"timeout timeout":13} p50/p95/p99 8213/11973/12748 ms
+  viewers: 7535 requests, non-200 3932, p50/p95/p99 2603/8442/19957 ms
+  success rate (submit 200): 58.0%   db requests 28101 (171/s)  pool max busy 10, max waiting 556, avg waiting 2.50  next cpu avg 113% max 179%
+  DB check: 614 pick rows; duplicates 0; 200 responses without a row 0; rows whose team differs from the last accepted request 9; players with a row but no 200 34 (expect 0 unless a response was lost)
+
+===== 2026-11-12T01:46:49.575Z rush (latency 0 ms)
+
+--- pre-lock rush: 1000 participants over 30s, 250 viewers browsing, 71s wall, load avg 6.33 7.30 7.07
+  /pick page: {"200":442,"error Error: connect ECONNRESET 127.0.0.1:3917":206,"error Error: write EPIPE":292,"error Error: read ECONNRESET":2,"error Error: write ECONNRESET":3,"timeout timeout":55} p50/p95/p99 4661/9116/15762 ms
+  submit:     {"200":421,"error Error: connect ECONNRESET 127.0.0.1:3917":254,"error Error: write EPIPE":272,"error Error: read ECONNRESET":7,"timeout timeout":46} p50/p95/p99 5987/9024/9447 ms
+  change:     n=90 {"200":18,"error Error: write EPIPE":20,"error Error: connect ECONNRESET 127.0.0.1:3917":12,"error Error: read ECONNRESET":6,"timeout timeout":34} p50/p95/p99 6290/19655/19655 ms
+  viewers: 2737 requests, non-200 1732, p50/p95/p99 2641/22037/25822 ms
+  success rate (submit 200): 42.1%   db requests 15603 (220/s)  pool max busy 10, max waiting 485, avg waiting 4.74  next cpu avg 111% max 155%
+  DB check: 466 pick rows; duplicates 0; 200 responses without a row 0; rows whose team differs from the last accepted request 26; players with a row but no 200 45 (expect 0 unless a response was lost)
+
+===== 2026-11-12T01:48:21.108Z rush (latency 0 ms)
+  lock moved to 2026-11-12T01:48:51.172614+00:00 at +30s
+
+--- pre-lock rush: 1000 participants over 60s (lock passes mid-run), 250 viewers browsing, 104s wall, load avg 11.58 8.55 7.56
+  /pick page: {"200":481,"error Error: connect ECONNRESET 127.0.0.1:3917":169,"error Error: write EPIPE":272,"timeout timeout":64,"error Error: write ECONNRESET":6,"error Error: read ECONNRESET":8} p50/p95/p99 3416/22378/25129 ms
+  submit:     {"200":294,"error Error: connect ECONNRESET 127.0.0.1:3917":233,"error Error: write EPIPE":259,"error Error: read ECONNRESET":6,"timeout timeout":81,"400 Picks for today are locked — the first game has tipped off":127} p50/p95/p99 5213/7904/8016 ms
+  change:     n=72 {"200":41,"error Error: write EPIPE":8,"error Error: connect ECONNRESET 127.0.0.1:3917":4,"timeout timeout":19} p50/p95/p99 5286/6036/6267 ms
+  viewers: 4859 requests, non-200 3179, p50/p95/p99 1943/18577/24231 ms
+  success rate (submit 200): 29.4%   db requests 18992 (183/s)  pool max busy 10, max waiting 570, avg waiting 2.87  next cpu avg 111% max 161%
+  DB check: 294 pick rows; duplicates 0; 200 responses without a row 0; rows whose team differs from the last accepted request 1; players with a row but no 200 0 (expect 0 unless a response was lost)
+  lock check: picks with updated_at after the lock instant 0 (expect 0); 200 responses 294, refused after lock 706
+
+===== 2026-11-12T01:46:49.575Z rush (latency 0 ms)
+
+--- pre-lock rush: 1000 participants over 30s, 250 viewers browsing, 71s wall, load avg 6.33 7.30 7.07
+  /pick page: {"200":442,"error Error: connect ECONNRESET 127.0.0.1:3917":206,"error Error: write EPIPE":292,"error Error: read ECONNRESET":2,"error Error: write ECONNRESET":3,"timeout timeout":55} p50/p95/p99 4661/9116/15762 ms
+  submit:     {"200":421,"error Error: connect ECONNRESET 127.0.0.1:3917":254,"error Error: write EPIPE":272,"error Error: read ECONNRESET":7,"timeout timeout":46} p50/p95/p99 5987/9024/9447 ms
+  change:     n=90 {"200":18,"error Error: write EPIPE":20,"error Error: connect ECONNRESET 127.0.0.1:3917":12,"error Error: read ECONNRESET":6,"timeout timeout":34} p50/p95/p99 6290/19655/19655 ms
+  viewers: 2737 requests, non-200 1732, p50/p95/p99 2641/22037/25822 ms
+  success rate (submit 200): 42.1%   db requests 15603 (220/s)  pool max busy 10, max waiting 485, avg waiting 4.74  next cpu avg 111% max 155%
+  DB check: 466 pick rows; duplicates 0; 200 responses without a row 0; rows whose team differs from the last accepted request 26; players with a row but no 200 45 (expect 0 unless a response was lost)
+
+===== 2026-11-12T01:48:21.108Z rush (latency 0 ms)
+  lock moved to 2026-11-12T01:48:51.172614+00:00 at +30s
+
+--- pre-lock rush: 1000 participants over 60s (lock passes mid-run), 250 viewers browsing, 104s wall, load avg 11.58 8.55 7.56
+  /pick page: {"200":481,"error Error: connect ECONNRESET 127.0.0.1:3917":169,"error Error: write EPIPE":272,"timeout timeout":64,"error Error: write ECONNRESET":6,"error Error: read ECONNRESET":8} p50/p95/p99 3416/22378/25129 ms
+  submit:     {"200":294,"error Error: connect ECONNRESET 127.0.0.1:3917":233,"error Error: write EPIPE":259,"error Error: read ECONNRESET":6,"timeout timeout":81,"400 Picks for today are locked — the first game has tipped off":127} p50/p95/p99 5213/7904/8016 ms
+  change:     n=72 {"200":41,"error Error: write EPIPE":8,"error Error: connect ECONNRESET 127.0.0.1:3917":4,"timeout timeout":19} p50/p95/p99 5286/6036/6267 ms
+  viewers: 4859 requests, non-200 3179, p50/p95/p99 1943/18577/24231 ms
+  success rate (submit 200): 29.4%   db requests 18992 (183/s)  pool max busy 10, max waiting 570, avg waiting 2.87  next cpu avg 111% max 161%
+  DB check: 294 pick rows; duplicates 0; 200 responses without a row 0; rows whose team differs from the last accepted request 1; players with a row but no 200 0 (expect 0 unless a response was lost)
+  lock check: picks with updated_at after the lock instant 0 (expect 0); 200 responses 294, refused after lock 706
