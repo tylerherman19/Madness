@@ -2,13 +2,13 @@
 // cron/worker endpoints. Requires the stack from scripts/sim/run-stack.sh.
 import bcrypt from 'bcryptjs'
 import {
-  Evidence, http, cookieFrom, pmap, nextIp, sql, rows, scalar, worker, cron, centralHour, closeSql,
+  Evidence, http, cookieFrom, pmap, nextIp, sql, rows, scalar, worker, cron, centralHour, closeSql, addDays, sleep,
 } from './lib.mjs'
 import * as W from './world.mjs'
 
 const N = Number(process.env.SIM_ENTRIES ?? 1000)
 const REAL_SIGNUPS = Number(process.env.SIM_REAL_SIGNUPS ?? 100)
-const ev = new Evidence('docs/audits/evidence/simulation-run.txt')
+const ev = new Evidence(process.env.SIM_EVIDENCE ?? 'docs/audits/evidence/simulation-run.txt')
 const E = (label, ok, detail) => ev.check(label, ok, detail)
 if (centralHour() >= 23) throw new Error('Run before 8 PM Central: pick windows are placed on today')
 
@@ -20,6 +20,12 @@ W.sim.today = (await import('./lib.mjs')).centralDate()
 W.sim.rankings = { E01: 1, W01: 2, S01: 3, M01: 4, E02: 6, W02: 7, S02: 8, M02: 9, E03: 12, W03: 13 }
 // decide every round-one result now; later rounds are built as earlier ones finish
 for (const g of W.games) g.truth = W.decide(g)
+// The whole bracket is decided up front (results do not depend on anyone's picks), so that a scripted entry can be planned
+// to survive: it only ever picks winners that never reach the Final Four, then the two finalists it has not used.
+for (let r = 1; r <= 5; r++) {
+  W.buildRound(r); W.assignIds()
+  for (const g of W.gamesOfRound(r)) g.truth = r === 4 ? 'away' : W.decide(g) // Final Four: the west and midwest winners advance
+}
 await W.applyCalendar(0, 'pre') // nothing stored yet: only writes the fake ESPN file
 
 const admin = { cookie: null }
@@ -90,8 +96,28 @@ const players = Array.from({ length: N }, (_, i) => ({
 const P = (p, method, path, body) => http(method, path, { cookie: p.cookie, body, ip: p.ip })
 
 // ----------------------------------------------------------- pick helpers
+const S = players[N - 1] // the scripted survivor
+const plan = {} // day -> teams S picks that day
+{
+  const win = (g) => (g.truth === 'home' ? g.home : g.away)
+  const ff = new Set(W.gamesOfRound(4).flatMap((g) => [g.home.abbr, g.away.abbr]))
+  const taken = new Set() // a team can be picked once in the whole contest: winners of earlier rounds are used up
+  for (const r of [0, 1, 2]) {
+    let need = W.QUOTA[r]
+    for (const d of W.ROUND_LABEL_DAYS[r]) {
+      const cands = W.gamesOfDay(d).filter((g) => !W.SCRIPT[g.key]).map(win).filter((t) => !ff.has(t.abbr) && !taken.has(t.abbr))
+      plan[d] = cands.slice(0, need).map((t) => t.abbr); need -= plan[d].length
+      for (const abbr of plan[d]) taken.add(abbr)
+    }
+  }
+  const e8 = W.gamesOfRound(3), ffg = W.gamesOfRound(4)
+  plan[6] = [win(e8[0]).abbr]; plan[7] = [win(e8[2]).abbr] // one Final Four team from each side, both unused afterwards
+  plan[8] = [ffg[0].away.abbr] // the Final Four team of S's own side that it has not used wins; the other finalist is unused too
+  plan[9] = [ffg[1].away.abbr]
+}
 const gameOfTeam = (day, abbr) => W.gamesOfDay(day).find((g) => g.home.abbr === abbr || g.away.abbr === abbr)
 function choose(p, day, strength = 0.03) {
+  if (p === S && plan[day]) { const abbr = plan[day].find((a) => !p.used.has(a)); return abbr ? { abbr, seed: 0 } : null }
   const options = []
   for (const g of W.gamesOfDay(day)) for (const t of [g.home, g.away]) if (!p.used.has(t.abbr)) options.push([t, g])
   if (!options.length) return null
@@ -183,13 +209,16 @@ const groups = { none: players.slice(0, 100), one: players.slice(100, 550), two:
 }
 
 // ----------------------------------------------------------- shared checks
+// Entries the rules themselves eliminate (no team left to pick when the round's last day locks); the script computes
+// them from the picks table so the ground truth can include them.
+const missed = new Set()
 const winnerAbbr = (g) => (g.truth === 'home' ? g.home.abbr : g.away.abbr)
 async function groundTruth(label) {
   const picks = await rows(`select p.player_id, p.team, p.slate_id, p.loss_excused from public.picks p`)
   const dayOf = Object.fromEntries(Object.entries(slateOfDay).map(([d, id]) => [id, Number(d)]))
   const byPlayer = new Map()
   for (const k of picks) { (byPlayer.get(k.player_id) ?? byPlayer.set(k.player_id, []).get(k.player_id)).push(k) }
-  const expectedDead = new Set()
+  const expectedDead = new Set(missed)
   for (const p of players) for (const k of byPlayer.get(p.id) ?? []) {
     const g = gameOfTeam(dayOf[k.slate_id], k.team)
     if (g?.settled && !g.void && winnerAbbr(g) !== k.team) expectedDead.add(p.id)
@@ -349,8 +378,8 @@ ev.section('Step 4b: round 1 day 2, lock, auto-assignment of missed picks (final
   await runWorkers(['schedule', 'grading'], 'day two locked')
   const before = new Map((await rows(`select player_id, count(*)::int n from public.picks group by 1`)).map((r) => [r.player_id, r.n]))
   const needing = players.filter((p) => p.alive && (before.get(p.id) ?? 0) < 2)
-  let a1 = await worker('assignment'), batches = 1
-  while (!a1.progress?.done && batches < 15) { a1 = await worker('assignment'); batches++ }
+  let a1, batches = 0
+  await W.withRealWeekday(1, async () => { do { a1 = await worker('assignment'); batches++ } while (!a1.progress?.done && batches < 15) })
   const afterPicks = await rows(`select p.player_id, p.team, p.seed, p.slate_id, p.auto_assigned from public.picks p`)
   const auto = afterPicks.filter((r) => r.auto_assigned)
   E('every alive entry short of the quota received exactly the missing picks', needing.every((p) => afterPicks.filter((r) => r.player_id === p.id).length === 2), `${needing.length} entries needed picks; ${auto.length} auto picks; ${batches} scheduler batches of at most 50 (done=${a1.progress?.done})`)
@@ -379,6 +408,227 @@ ev.section('Step 4b: round 1 day 2, lock, auto-assignment of missed picks (final
   E('auto-assigned teams follow the highest-unused-seed rule (AP rank, then name)', wrong === 0 && checked > 0, `${checked} checked, ${wrong} differ`)
   const flagged = (await rows(`select count(*)::int n from public.picks where auto_assigned and seed is null`))[0].n
   ev.note(`auto picks without a stored seed: ${flagged}`)
+}
+
+// ================================================================== step 8
+ev.section('Step 8: rounds 2 to the championship with shrinking survivors')
+const roundOf = (d) => W.DAYS[d].round
+const firstDay = (r) => W.ROUND_LABEL_DAYS[r][0]
+const lastDay = (r) => W.ROUND_LABEL_DAYS[r].at(-1)
+const dayLabel = (d) => `${W.ROUNDS[roundOf(d)]} day ${d - firstDay(roundOf(d)) + 1}`
+const dayOfSlate = () => Object.fromEntries(Object.entries(slateOfDay).map(([d, id]) => [id, Number(d)]))
+const aliveInDb = async () => Number(await scalar(`select count(*)::int from public.players where status='alive'`))
+const contestState = async () => (await rows(`select public.contest_state() as s`))[0].s
+const survivor = S
+const hooks = {}
+
+async function finishDay(d) {
+  const gs = W.gamesOfDay(d)
+  for (const g of gs) g.feed = 'in'
+  await W.applyCalendar(d, 'locked')
+  await runWorkers(['results'], `${dayLabel(d)} in progress`)
+  for (const g of gs) finishFeed(g)
+  await W.applyCalendar(d, 'locked')
+  await runWorkers(['results', 'grading'], `${dayLabel(d)} finals`)
+}
+
+async function openDay(d) {
+  const r = roundOf(d)
+  if (d === firstDay(r)) {
+    if (hooks[r]) await hooks[r]()
+    await W.applyCalendar(d, 'pre')
+    for (const k of W.ROUND_LABEL_DAYS[r]) {
+      const date = addDays(W.sim.today, k - d)
+      const res = await A('POST', '/api/schedule/sync-espn', { date, season_year: pool0.season_year })
+      E(`admin syncs ${dayLabel(k)} from the (fake) feed`, res.status === 200, `status ${res.status}`)
+    }
+  }
+  await W.applyCalendar(d, 'pre')
+  await runWorkers(['schedule', 'advance'], `turnover to ${dayLabel(d)}`)
+  await mapSlates()
+  const active = (await rows(`select slate_date::text d from public.slates where is_active`))[0]?.d
+  E(`the scheduled turnover opens ${dayLabel(d)}`, active === W.sim.today, `${active}`)
+}
+
+async function pickDay(d) {
+  const r = roundOf(d), quota = W.QUOTA[r], final = d === lastDay(r), single = W.ROUND_LABEL_DAYS[r].length === 1
+  const before = stats.ok
+  const live = players.filter((p) => p.alive)
+  await pmap(live, 8, async (p) => {
+    const mine = () => p.picks.filter((k) => roundOf(k.day) === r).length
+    if (p === S) {
+      for (const abbr of plan[d] ?? []) if (!p.used.has(abbr) && mine() < quota) { const res = await submit(p, d, abbr); if (d >= 6) E(`${dayLabel(d)}: the scripted survivor's pick ${abbr} is accepted`, res.status === 200, `${res.status} ${res.json?.error ?? ''}`) }
+      return
+    }
+    const take = single ? p.i % 4 !== 0 : final ? p.i % 9 !== 0 : p.i % 4 !== 0
+    if (!take) return
+    while (mine() < quota) { const t = choose(p, d); if (!t) break; const res = await submit(p, d, t.abbr); if (res.status !== 200) break }
+  })
+  ev.line(`  ${dayLabel(d)}: ${live.length} alive entries, ${stats.ok - before} picks accepted (failures so far ${JSON.stringify(stats.fail)})`)
+}
+
+async function lockDay(d) {
+  const r = roundOf(d), quota = W.QUOTA[r]
+  await W.applyCalendar(d, 'locked')
+  await runWorkers(['schedule', 'grading'], `${dayLabel(d)} locked`)
+  const late = players.find((p) => p.alive)
+  if (late) {
+    const t = choose(late, d)
+    if (t) { const res = await P(late, 'POST', '/api/picks', { slate_id: slateOfDay[d], team: t.abbr }); E(`${dayLabel(d)}: a pick after the lock is refused`, res.status >= 400 && res.status < 500, `${res.status} ${res.json?.error}`) }
+  }
+  if (d !== lastDay(r)) return
+  const dayOf = dayOfSlate()
+  const all = await rows(`select player_id, team, slate_id from public.picks`)
+  const byPlayer = new Map()
+  for (const k of all) (byPlayer.get(k.player_id) ?? byPlayer.set(k.player_id, []).get(k.player_id)).push(k)
+  const dayTeams = W.gamesOfDay(d).flatMap((g) => [g.home.abbr, g.away.abbr])
+  const needing = []
+  for (const p of players) {
+    if (!p.alive) continue
+    const mine = byPlayer.get(p.id) ?? []
+    const need = quota - mine.filter((k) => roundOf(dayOf[k.slate_id]) === r).length
+    if (need <= 0) continue
+    const usedSet = new Set(mine.map((k) => k.team))
+    needing.push({ p, need })
+    if (dayTeams.filter((t) => !usedSet.has(t)).length < need) missed.add(p.id)
+  }
+  let a, batches = 0
+  await W.withRealWeekday(d, async () => { do { a = await worker('assignment'); batches++ } while (!a.progress?.done && batches < 60) })
+  const afterRows = await rows(`select player_id, slate_id from public.picks`)
+  const inRound = (pid) => afterRows.filter((k) => k.player_id === pid && roundOf(dayOf[k.slate_id]) === r).length
+  const bad = needing.filter(({ p }) => !missed.has(p.id) && inRound(p.id) !== quota)
+  E(`${dayLabel(d)}: every alive entry short of the quota was assigned the missing picks (or, with no team left to pick, eliminated)`, bad.length === 0 && a.progress?.done !== false, `${needing.length} entries short, ${missed.size} with no team left (cumulative), ${batches} batches, ${bad.length} wrong`)
+  const alive = await aliveInDb()
+  ev.note(`  alive after the lock-time assignment: ${alive}`)
+}
+
+async function checkHeader(label) {
+  const h = await headerText(), alive = await aliveInDb()
+  E(`${label}: home page header equals the database (${alive} alive of ${N})`, h.alive === String(alive) && h.of === String(N), JSON.stringify(h))
+}
+
+// "Winner" or "champion" wording must appear nowhere, other than the published rules text and the round name.
+const plain = (t) => t.replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/&[#a-z0-9]+;/g, ' ').replace(/\s+/g, ' ')
+async function noWinnerShown(label, cookie) {
+  const rulesPage = plain((await http('GET', '/rules', { ip: nextIp(), raw: true })).text)
+  const bad = []
+  for (const path of ['/', '/grid', '/sweat', '/schedule', '/api/sweat', '/api/live-scores']) {
+    const res = await http('GET', path, { ip: nextIp(), cookie, raw: true })
+    const text = path.startsWith('/api') ? res.text : plain(res.text)
+    for (const m of text.matchAll(/winners?|champion(?!ship)|crowned|co-?champs?/gi)) {
+      const ctx = text.slice(Math.max(0, m.index - 24), m.index + m[0].length + 24)
+      const roundName = /National Championship/i.test(text.slice(Math.max(0, m.index - 10), m.index + m[0].length + 10))
+      if (!roundName && !rulesPage.includes(ctx.trim()) && !rulesPage.includes(text.slice(m.index - 8, m.index + m[0].length + 8))) bad.push(`${path}: ...${ctx}...`)
+    }
+  }
+  const cols = await rows(`select table_name, column_name from information_schema.columns where table_schema='public' and column_name ~* '(winner|champion)'`)
+  const events = (await rows(`select event_type, message from public.audit_log`)).filter((e) => /winner|champion(?!ship)/i.test(`${e.event_type} ${e.message}`))
+  E(`${label}: no winner or champion is recorded or shown (home, grid, sweat, schedule, feeds, columns, audit log)`, bad.length === 0 && cols.length === 0 && events.length === 0, bad.slice(0, 3).join(' | ') || `columns ${cols.length}, audit events ${events.length}`)
+}
+
+// -- rounds 2 to the Elite 8: natural shrinking
+await finishDay(1)
+await groundTruth('round 1 final day graded')
+await checkHeader('after round 1')
+// A: before the Final Four, reduce to one survivor (SQL, an explicit setup step), so the end of the contest is exercised with one entry.
+hooks[4] = async () => {
+  const alive = players.filter((p) => p.alive)
+  E('the scripted survivor is still alive after the Elite 8 (it only picked winners)', S.alive, `${alive.length} alive in total`)
+  ev.note(`before the Final Four: ${alive.length} alive: ${alive.map((p) => p.name.slice(-4)).join(', ')}`)
+  for (const p of alive) if (p !== S) missed.add(p.id) // expected out: set aside by the setup
+  const slateNo = await scalar(`select slate_number from public.slates where id=$1`, [slateOfDay[7]])
+  await sql(`update public.players set status='eliminated', elimination_slate=$2, elimination_reason='Simulation setup: reduced to one survivor' where status='alive' and id<>$1`, [S.id, slateNo])
+  for (const p of players) p.alive = p === S
+  ev.note(`SETUP BY SQL: every alive entry except ${S.name} marked eliminated before the Final Four, so exactly one survivor reaches the end (natural attrition had left ${alive.length}); the app's own grading is used from here on`)
+  await sleep(32000) // the shared outline is cached for 30 s
+}
+for (let d = 2; d <= 7; d++) {
+  await openDay(d)
+  await pickDay(d)
+  await lockDay(d)
+  await finishDay(d)
+  await groundTruth(`${dayLabel(d)} graded`)
+  await checkHeader(dayLabel(d))
+}
+ev.line(`  survivors after the Elite 8 (before the one-survivor setup): ${await aliveInDb()}`)
+
+// -- Final Four with one survivor: the contest continues normally
+await openDay(8)
+{
+  const st = await contestState()
+  E('with one survivor the contest is not stopped', st.alive === 1 && st.stopped === false && st.started === true, JSON.stringify(st))
+  await checkHeader('Final Four, one survivor')
+  const out = players.find((p) => !p.alive)
+  const ff = W.gamesOfDay(8)
+  const t = choose(out, 8)
+  const refused = await P(out, 'POST', '/api/picks', { slate_id: slateOfDay[8], team: t.abbr })
+  E('an eliminated entry cannot pick the Final Four', refused.status >= 400 && refused.status < 500, `${refused.status} ${refused.json?.error}`)
+  ev.note(`Final Four games: ${ff.map((g) => `${g.away.abbr}@${g.home.abbr}`).join(', ')}`)
+}
+await pickDay(8)
+await lockDay(8)
+await finishDay(8)
+await groundTruth('Final Four graded (the survivor advances)')
+E('the lone survivor is still alive after the Final Four', (await aliveInDb()) === 1 && survivor.alive, `${await aliveInDb()} alive`)
+await checkHeader('after the Final Four')
+
+// -- championship day: survivor picks the unused finalist; first the result eliminates everyone, then it is corrected
+await openDay(9)
+await pickDay(9)
+await lockDay(9)
+const ncg = W.gamesOfDay(9)[0]
+const survivorTeam = plan[9][0]
+const survivorSide = ncg.home.abbr === survivorTeam ? 'home' : 'away'
+const otherSide = survivorSide === 'home' ? 'away' : 'home'
+{
+  // (i) the survivor's team loses: nobody is left
+  ncg.feed = 'in'; await W.applyCalendar(9, 'locked'); await runWorkers(['results'], 'championship in progress')
+  W.setFinal(ncg, otherSide); ncg.truth = otherSide; ncg.settled = true
+  await W.applyCalendar(9, 'locked')
+  await runWorkers(['results', 'grading'], 'championship final: the survivor loses')
+  await groundTruth('championship: the survivor lost, everyone is out')
+  const st = await contestState()
+  E('when everyone is eliminated the contest reports stopped', st.alive === 0 && st.stopped === true && st.eliminated === N, JSON.stringify(st))
+  await checkHeader('all eliminated')
+  await W.applyCalendar(10, 'pre') // the championship day is now yesterday: the overnight turnover is due
+  const adv = await worker('advance')
+  E('the advance worker stops advancing when no entry is alive', adv.claimed && JSON.stringify(adv.body).includes('stopped'), JSON.stringify(adv.body).slice(0, 160))
+  const stillActive = await scalar(`select count(*)::int from public.slates where is_active and id=$1`, [slateOfDay[9]])
+  const poolStatus = await scalar(`select status from public.pools where is_active`)
+  E('nothing advanced and the pool is not marked completed', stillActive === 1 && poolStatus !== 'completed', `active championship slate ${stillActive}, pool ${poolStatus}`)
+  const picksBefore = await scalar('select count(*)::int from public.picks')
+  const tryAll = await pmap([survivor, ...players.filter((p) => !p.alive).slice(0, 7)], 4, (p) => P(p, 'POST', '/api/picks', { slate_id: slateOfDay[9], team: survivorTeam }))
+  E('picks are refused for every entry while none is alive', tryAll.every((r) => r.status >= 400 && r.status < 500) && (await scalar('select count(*)::int from public.picks')) === picksBefore, `${tryAll.map((r) => r.status)} ${tryAll[0].json?.error}`)
+  await noWinnerShown('all eliminated', survivor.cookie)
+  // (ii) a correction restores the survivor; the contest then completes normally
+  ncg.truth = survivorSide; W.setFinal(ncg, survivorSide); await W.applyCalendar(9, 'locked')
+  await runWorkers(['results', 'grading'], 'championship corrected: the survivor wins')
+  await groundTruth('championship corrected: the survivor wins')
+  const st2 = await contestState()
+  E('the correction restores the survivor and the contest is no longer stopped', st2.alive === 1 && st2.stopped === false, JSON.stringify(st2))
+  await W.applyCalendar(10, 'pre')
+  const adv2 = await worker('advance')
+  const poolAfter = (await rows(`select status from public.pools where is_active or status='completed' order by created_at desc limit 1`))[0]
+  E('the tournament completes normally when a survivor remains through the championship', adv2.claimed && poolAfter?.status === 'completed', `${JSON.stringify(adv2.body).slice(0, 140)} pool ${poolAfter?.status}`)
+  await checkHeader('completed with one survivor')
+  await noWinnerShown('completed with a survivor', survivor.cookie)
+  const done = await rows(`select event_type, message from public.audit_log where event_type='tournament-completed'`)
+  E('completion is audited without naming a winner', done.length === 1 && !/winner|champion(?!ship)/i.test(JSON.stringify(done)), JSON.stringify(done))
+}
+
+// ================================================================== step 9
+ev.section('Step 9: /admin/operations after the scheduler invocations')
+{
+  for (const kind of ['schedule', 'results', 'assignment', 'grading', 'advance']) await worker(kind)
+  const res = await A('GET', '/admin/operations')
+  const text = plain(res.text)
+  E('/admin/operations renders for the administrator', res.status === 200 && /Operations/.test(text) && /Scheduled job health/.test(res.text), `status ${res.status}`)
+  const overall = text.match(/Overall:\s*(OK|Overdue|Failing|Off)/)?.[1]
+  const jobs = ['Schedule sync', 'Results sync', 'Auto-assignment', 'Grading', 'Slate advancement'].map((label) => [label, text.match(new RegExp(`${label}\\s+(OK|Overdue|Failing|Off)`))?.[1] ?? '?'])
+  E('every scheduled job shows OK (none overdue or failing)', jobs.every(([, st]) => st === 'OK'), jobs.map(([l, st]) => `${l}: ${st}`).join(', '))
+  ev.note(`overall status shown: ${overall}; page excerpt: ${text.slice(text.indexOf('Overall'), text.indexOf('Overall') + 330)}`)
+  const anon = await http('GET', '/admin/operations', { ip: nextIp(), raw: true })
+  E('/admin/operations redirects an unauthenticated visitor to the admin login', anon.status >= 300 && anon.status < 400, `status ${anon.status}`)
 }
 ev.line(`TOTAL so far pass=${ev.pass} fail=${ev.fail} ${ev.failures.join(' | ')}`)
 await closeSql()

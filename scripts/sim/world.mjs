@@ -144,6 +144,38 @@ export function tipOf(game, day, current, phase, now = new Date()) {
 // Write the fake ESPN scoreboard and move the stored slates, games and tip times to
 // match. Direct SQL (replica role) is the only way to slide a calendar; app code and
 // the schedule itself are untouched.
+// The app decides whether a two-day round is on its final day from the WEEKDAY of the stored slate date
+// (src/lib/competition.ts ROUND_OPENING_WEEKDAY: 1st Round and Sweet 16 open Thursday, 2nd Round and Elite 8 open
+// Saturday). The sim plays every day on today's real date, so on a Thursday or Saturday the second day would look like
+// an opening day and the lock-time assignment would (correctly, for a real calendar) wait for a day that never comes.
+// withRealWeekday() therefore slides the stored slate dates back one day for the duration of one callback (the
+// assignment run) on such weekdays, which is what a real calendar has (Friday or Sunday). Only stored slate dates move;
+// locks, tip times and the feed are unchanged, and every other worker runs on the plain sliding calendar.
+const OPENING_WEEKDAY = { 0: 4, 1: 6, 2: 4, 3: 6 }
+function dateSkew(current) {
+  const round = DAYS[current].round
+  const secondDay = ROUND_LABEL_DAYS[round]?.length === 2 && ROUND_LABEL_DAYS[round][1] === current
+  if (!secondDay) return 0
+  const weekday = new Date(`${sim.today}T12:00:00Z`).getUTCDay()
+  return weekday === OPENING_WEEKDAY[round] ? 1 : 0
+}
+async function moveSlateDates(days) {
+  await sql('begin')
+  try {
+    await sql('set local session_replication_role=replica')
+    await sql(`update public.slates set slate_date = slate_date + 5000`)
+    await sql(`update public.slates set slate_date = slate_date - 5000 + $1::int`, [days])
+    await sql(`update public.pools set starts_on = starts_on + $1::int where is_active and starts_on is not null`, [days])
+    await sql('commit')
+  } catch (error) { await sql('rollback'); throw error }
+}
+export async function withRealWeekday(current, fn) {
+  const skew = dateSkew(current)
+  if (!skew) return fn()
+  await moveSlateDates(-skew)
+  try { return await fn() } finally { await moveSlateDates(skew) }
+}
+
 export async function applyCalendar(current, phase) {
   sim.today = sim.today ?? centralDate()
   sim.current = current

@@ -1,29 +1,29 @@
-Simulation start 2026-11-12T01:57:15.478Z entries=1000 (real HTTP signups: 100, rest seeded by SQL with a cheap bcrypt cost)
+Simulation start 2026-11-12T17:22:39.161Z entries=1000 (real HTTP signups: 100, rest seeded by SQL with a cheap bcrypt cost)
 PASS  admin signs in over HTTP  [status 200]
 
 == Step 1: start a March Madness contest (admin flow)
-PASS  admin syncs tournament day 1 from the (fake) feed  [status 200 {"ok":true,"slate_id":"c8786bd5-879b-4af8-9856-7ce19a4b2fce","games_synced":16,"teams_seen":32}]
-PASS  admin syncs tournament day 2 from the (fake) feed  [status 200 {"ok":true,"slate_id":"b626b96f-c4ed-4627-b4d7-849f57ab2778","games_synced":16,"teams_seen":32}]
-PASS  start route archives the old contest and opens the tournament  [status 200 {"ok":true,"archive_id":"9621a8e2-467a-48b0-ac9c-528c76f4f65f"}]
+PASS  admin syncs tournament day 1 from the (fake) feed  [status 200 {"ok":true,"slate_id":"f2ef01eb-bbe6-4977-a25e-5c45125f4860","games_synced":16,"teams_seen":32}]
+PASS  admin syncs tournament day 2 from the (fake) feed  [status 200 {"ok":true,"slate_id":"a21850a9-ea37-45b7-925b-442d29ad3559","games_synced":16,"teams_seen":32}]
+PASS  start route archives the old contest and opens the tournament  [status 200 {"ok":true,"archive_id":"f21e14a5-e5d1-442d-8dff-bbb6eb69c96c"}]
 PASS  new pool is march-madness, tournament-round, highest-seed  [march-madness/tournament-round/highest-seed]
 PASS  active slate is round one day one, no entries remain
 
 == Step 2: 1000 participants register and sign in
-PASS  100 entries register over HTTP  [statuses 200 in 36s]
+PASS  100 entries register over HTTP  [statuses 200 in 21s]
 PASS  duplicate email (case variant) is refused  [status 409]
 PASS  all 1000 entries sign in over HTTP  [statuses 200]
 PASS  registered count in the database
 
 == Step 3: round 1 day 1 picks before lock
 NOTE  /api/me sample keys: name,signupsClosed,pick
-submitted 1350 picks in 5s; failures {}
+submitted 1350 picks in 2s; failures {}
 PASS  picks stored match accepted picks (no duplicates, no extras)  [1350 rows vs 1350 accepted]
 PASS  players with one pick: 1 row; two picks: 2 rows  [900 players with picks]
 PASS  200 pick changes before lock succeed  [200/200 ok; failures {}]
 PASS  a change replaces the pick instead of adding one  [1350 rows]
 PASS  a third pick in a two-pick round is refused (quota)  [409 You already made all 2 required picks for this round]
-NOTE  re-submitting the same team without request id: 200 {"ok":true,"pick":{"id":"88bfab2c-e963-4bf9-af84-9859a3c2194d","player_id":"605b0d69-6f1a-49d6-9d6e- (idempotent retry)
-PASS  team reuse is refused (changing the second pick to the first pick's team)  [400 Sim Entry 0710 already used S12]
+NOTE  re-submitting the same team without request id: 200 {"ok":true,"pick":{"id":"b24f325d-22ad-4184-82f8-e686e9b9ffcf","player_id":"d8deaedc-d36c-4b32-a94c- (idempotent retry)
+PASS  team reuse is refused (changing the second pick to the first pick's team)  [400 Sim Entry 0710 already used M09]
 PASS  a team not playing today is refused  [400 ZZZ is not playing this slate]
 PASS  picking tomorrow before any result is refused  [400 This game day is not open for you yet. Your previous pick must finish with a win first.]
 PASS  before lock, no one else can see an entry's pick (home, sweat, live-scores, grid, export, me)  [statuses 200,200,200,200,200,200,200,308]
@@ -42,22 +42,22 @@ PASS  nothing is graded while games are in progress
   workers first finals: results:ran grading:ran
 PASS  postponed game (post, 0-0) stays pending  [pending]
 PASS  overtime final graded
-PASS  after first results (corrected/manual games temporarily home wins): standings equal ground truth (alive 588, eliminated 412)  [0 mismatches]
+PASS  after first results (corrected/manual games temporarily home wins): standings equal ground truth (alive 609, eliminated 391)  [0 mismatches]
   workers correction: results:ran grading:ran
 PASS  corrected game result follows the feed to the right winner
   workers flip to B: results:ran grading:ran
   workers flip back to A: results:ran grading:ran
 PASS  flipped game ends on its final result
-PASS  after correction and flip: standings equal ground truth (alive 594, eliminated 406)  [0 mismatches]
+PASS  after correction and flip: standings equal ground truth (alive 617, eliminated 383)  [0 mismatches]
 
 == Step 6: administrator void and manual result
 PASS  void without a reason is refused  [400]
-PASS  admin voids the postponed game with a reason  [200 {"ok":true,"changed":true,"game":{"id":"57eb7ac4-805e-485b-911e-a98f28aa11f1","slate_id":"c8786bd5-8]
+PASS  admin voids the postponed game with a reason  [200 {"ok":true,"changed":true,"game":{"id":"f7c0f438-fc77-4b8c-8b82-d08e2ddd0247","slate_id":"f2ef01eb-b]
 PASS  a void never counts as a loss  [0 eliminated with only void picks]
-PASS  admin enters a manual result the feed disagrees with  [200 {"ok":true,"changed":true,"game":{"id":"58b48c8e-7620-4d40-991a-46900ad2cc5c","slate_id":"c8786bd5-8]
+PASS  admin enters a manual result the feed disagrees with  [200 {"ok":true,"changed":true,"game":{"id":"0da4b3f7-6ea6-4f55-948a-f5a39192480d","slate_id":"f2ef01eb-b]
 PASS  the manual result survives 20 result syncs
   workers after admin actions: results:ran grading:ran
-PASS  after void and manual result: standings equal ground truth (alive 578, eliminated 422)  [0 mismatches]
+PASS  after void and manual result: standings equal ground truth (alive 591, eliminated 409)  [0 mismatches]
 PASS  survivor header shows registered entries until round 1 is fully graded  [{"reg":"1000","status":200}]
 
 == Step 7: winners pick the next day early; losers cannot pick
@@ -67,21 +67,150 @@ PASS  an eliminated entry cannot pick the locked day either  [403]
 PASS  an alive entry with no round-one pick cannot jump ahead of the active day  [400 This game day is not open for you yet. Your previous pick must finish with a win first.]
 PASS  re-using a team from an earlier day is refused  [400 This game day is not open for you yet. Your previous pick must finish with a win first.]
   workers turnover to R1D2: schedule:ran advance:ran
-PASS  the scheduled turnover opens round one day two  [2026-11-11]
+PASS  the scheduled turnover opens round one day two  [2026-11-12]
 
 == Step 4b: round 1 day 2, lock, auto-assignment of missed picks (final day of the round)
 PASS  a third pick in the two-pick round is refused  [409 You already made all 2 required picks for this round]
 NOTE  same team again (no request id) on day two: 200 accepted as retry/no-op
   workers day two locked: schedule:ran grading:ran
-PASS  every alive entry short of the quota received exactly the missing picks  [170 entries needed picks; 195 auto picks; 4 scheduler batches of at most 50 (done=true)]
+PASS  every alive entry short of the quota received exactly the missing picks  [176 entries needed picks; 201 auto picks; 4 scheduler batches of at most 50 (done=true)]
 PASS  re-running assignment adds nothing (exactly once)  [true/true]
-PASS  auto-assigned teams follow the highest-unused-seed rule (AP rank, then name)  [170 checked, 0 differ]
+PASS  auto-assigned teams follow the highest-unused-seed rule (AP rank, then name)  [176 checked, 0 differ]
 NOTE  auto picks without a stored seed: 0
-TOTAL so far pass=48 fail=0 
+
+== Step 8: rounds 2 to the championship with shrinking survivors
+  workers 1st Round day 2 in progress: results:ran
+  workers 1st Round day 2 finals: results:ran grading:ran
+PASS  round 1 final day graded: standings equal ground truth (alive 459, eliminated 541)  [0 mismatches]
+PASS  after round 1: home page header equals the database (459 alive of 1000)  [{"alive":"459","of":"1000","status":200}]
+PASS  admin syncs 2nd Round day 1 from the (fake) feed  [status 200]
+PASS  admin syncs 2nd Round day 2 from the (fake) feed  [status 200]
+  workers turnover to 2nd Round day 1: schedule:ran advance:ran
+PASS  the scheduled turnover opens 2nd Round day 1  [2026-11-12]
+  2nd Round day 1: 459 alive entries, 612 picks accepted (failures so far {"400 This game day is not open for you yet. Your previous pick must finish with a win first":1})
+  workers 2nd Round day 1 locked: schedule:ran grading:ran
+PASS  2nd Round day 1: a pick after the lock is refused  [400 Picks for today are locked — the first game has tipped off]
+  workers 2nd Round day 1 in progress: results:ran
+  workers 2nd Round day 1 finals: results:ran grading:ran
+PASS  2nd Round day 1 graded: standings equal ground truth (alive 231, eliminated 769)  [0 mismatches]
+PASS  2nd Round day 1: home page header equals the database (231 alive of 1000)  [{"alive":"231","of":"1000","status":200}]
+  workers turnover to 2nd Round day 2: schedule:ran advance:ran
+PASS  the scheduled turnover opens 2nd Round day 2  [2026-11-12]
+  2nd Round day 2: 231 alive entries, 222 picks accepted (failures so far {"400 This game day is not open for you yet. Your previous pick must finish with a win first":1,"400 Sim Entry 0008 already used E02":1,"400 Sim Entry 0004 already used E02":1,"400 Sim Entry 0032 already used E03":1,"400 Sim Entry 0048 already used E03":1,"400 Sim Entry 0044 already used E03":1,"400 Sim Entry 0068 already used E03":1,"400 Sim Entry 0076 already used E02":1,"400 Sim Entry 0080 already used E02":1,"400 Sim Entry 0112 already used E02":1,"400 Sim Entry 0124 already used E02":1,"400 Sim Entry 0092 already used E02":1,"400 Sim Entry 0208 already used E02":1,"400 Sim Entry 0184 already used E02":1,"400 Sim Entry 0220 already used E02":1,"400 Sim Entry 0272 already used E02":1,"400 Sim Entry 0244 already used E02":1,"400 Sim Entry 0328 already used E02":1,"400 Sim Entry 0384 already used E02":1,"400 Sim Entry 0428 already used E02":1,"400 Sim Entry 0392 already used E02":1,"400 Sim Entry 0412 already used E02":1,"400 Sim Entry 0484 already used E02":1,"400 Sim Entry 0476 already used E02":1,"400 Sim Entry 0496 already used E02":1,"400 Sim Entry 0500 already used E02":1})
+  workers 2nd Round day 2 locked: schedule:ran grading:ran
+PASS  2nd Round day 2: a pick after the lock is refused  [400 Picks for today are locked — the first game has tipped off]
+PASS  2nd Round day 2: every alive entry short of the quota was assigned the missing picks (or, with no team left to pick, eliminated)  [48 entries short, 0 with no team left (cumulative), 1 batches, 0 wrong]
+NOTE    alive after the lock-time assignment: 231
+  workers 2nd Round day 2 in progress: results:ran
+  workers 2nd Round day 2 finals: results:ran grading:ran
+PASS  2nd Round day 2 graded: standings equal ground truth (alive 110, eliminated 890)  [0 mismatches]
+PASS  2nd Round day 2: home page header equals the database (110 alive of 1000)  [{"alive":"110","of":"1000","status":200}]
+PASS  admin syncs Sweet 16 day 1 from the (fake) feed  [status 200]
+PASS  admin syncs Sweet 16 day 2 from the (fake) feed  [status 200]
+  workers turnover to Sweet 16 day 1: schedule:ran advance:ran
+PASS  the scheduled turnover opens Sweet 16 day 1  [2026-11-12]
+  Sweet 16 day 1: 110 alive entries, 154 picks accepted (failures so far {"400 This game day is not open for you yet. Your previous pick must finish with a win first":1,"400 Sim Entry 0008 already used E02":1,"400 Sim Entry 0004 already used E02":1,"400 Sim Entry 0032 already used E03":1,"400 Sim Entry 0048 already used E03":1,"400 Sim Entry 0044 already used E03":1,"400 Sim Entry 0068 already used E03":1,"400 Sim Entry 0076 already used E02":1,"400 Sim Entry 0080 already used E02":1,"400 Sim Entry 0112 already used E02":1,"400 Sim Entry 0124 already used E02":1,"400 Sim Entry 0092 already used E02":1,"400 Sim Entry 0208 already used E02":1,"400 Sim Entry 0184 already used E02":1,"400 Sim Entry 0220 already used E02":1,"400 Sim Entry 0272 already used E02":1,"400 Sim Entry 0244 already used E02":1,"400 Sim Entry 0328 already used E02":1,"400 Sim Entry 0384 already used E02":1,"400 Sim Entry 0428 already used E02":1,"400 Sim Entry 0392 already used E02":1,"400 Sim Entry 0412 already used E02":1,"400 Sim Entry 0484 already used E02":1,"400 Sim Entry 0476 already used E02":1,"400 Sim Entry 0496 already used E02":1,"400 Sim Entry 0500 already used E02":1})
+  workers Sweet 16 day 1 locked: schedule:ran grading:ran
+PASS  Sweet 16 day 1: a pick after the lock is refused  [400 Picks for today are locked — the first game has tipped off]
+  workers Sweet 16 day 1 in progress: results:ran
+  workers Sweet 16 day 1 finals: results:ran grading:ran
+PASS  Sweet 16 day 1 graded: standings equal ground truth (alive 50, eliminated 950)  [0 mismatches]
+PASS  Sweet 16 day 1: home page header equals the database (50 alive of 1000)  [{"alive":"50","of":"1000","status":200}]
+  workers turnover to Sweet 16 day 2: schedule:ran advance:ran
+PASS  the scheduled turnover opens Sweet 16 day 2  [2026-11-12]
+  Sweet 16 day 2: 50 alive entries, 66 picks accepted (failures so far {"400 This game day is not open for you yet. Your previous pick must finish with a win first":1,"400 Sim Entry 0008 already used E02":1,"400 Sim Entry 0004 already used E02":1,"400 Sim Entry 0032 already used E03":1,"400 Sim Entry 0048 already used E03":1,"400 Sim Entry 0044 already used E03":1,"400 Sim Entry 0068 already used E03":1,"400 Sim Entry 0076 already used E02":1,"400 Sim Entry 0080 already used E02":1,"400 Sim Entry 0112 already used E02":1,"400 Sim Entry 0124 already used E02":1,"400 Sim Entry 0092 already used E02":1,"400 Sim Entry 0208 already used E02":1,"400 Sim Entry 0184 already used E02":1,"400 Sim Entry 0220 already used E02":1,"400 Sim Entry 0272 already used E02":1,"400 Sim Entry 0244 already used E02":1,"400 Sim Entry 0328 already used E02":1,"400 Sim Entry 0384 already used E02":1,"400 Sim Entry 0428 already used E02":1,"400 Sim Entry 0392 already used E02":1,"400 Sim Entry 0412 already used E02":1,"400 Sim Entry 0484 already used E02":1,"400 Sim Entry 0476 already used E02":1,"400 Sim Entry 0496 already used E02":1,"400 Sim Entry 0500 already used E02":1})
+  workers Sweet 16 day 2 locked: schedule:ran grading:ran
+PASS  Sweet 16 day 2: a pick after the lock is refused  [400 This game day is not open for you yet. Your previous pick must finish with a win first.]
+PASS  Sweet 16 day 2: every alive entry short of the quota was assigned the missing picks (or, with no team left to pick, eliminated)  [0 entries short, 0 with no team left (cumulative), 1 batches, 0 wrong]
+NOTE    alive after the lock-time assignment: 50
+  workers Sweet 16 day 2 in progress: results:ran
+  workers Sweet 16 day 2 finals: results:ran grading:ran
+PASS  Sweet 16 day 2 graded: standings equal ground truth (alive 24, eliminated 976)  [0 mismatches]
+PASS  Sweet 16 day 2: home page header equals the database (24 alive of 1000)  [{"alive":"24","of":"1000","status":200}]
+PASS  admin syncs Elite 8 day 1 from the (fake) feed  [status 200]
+PASS  admin syncs Elite 8 day 2 from the (fake) feed  [status 200]
+  workers turnover to Elite 8 day 1: schedule:ran advance:ran
+PASS  the scheduled turnover opens Elite 8 day 1  [2026-11-12]
+PASS  Elite 8 day 1: the scripted survivor's pick E01 is accepted  [200 ]
+  Elite 8 day 1: 24 alive entries, 34 picks accepted (failures so far {"400 This game day is not open for you yet. Your previous pick must finish with a win first":1,"400 Sim Entry 0008 already used E02":1,"400 Sim Entry 0004 already used E02":1,"400 Sim Entry 0032 already used E03":1,"400 Sim Entry 0048 already used E03":1,"400 Sim Entry 0044 already used E03":1,"400 Sim Entry 0068 already used E03":1,"400 Sim Entry 0076 already used E02":1,"400 Sim Entry 0080 already used E02":1,"400 Sim Entry 0112 already used E02":1,"400 Sim Entry 0124 already used E02":1,"400 Sim Entry 0092 already used E02":1,"400 Sim Entry 0208 already used E02":1,"400 Sim Entry 0184 already used E02":1,"400 Sim Entry 0220 already used E02":1,"400 Sim Entry 0272 already used E02":1,"400 Sim Entry 0244 already used E02":1,"400 Sim Entry 0328 already used E02":1,"400 Sim Entry 0384 already used E02":1,"400 Sim Entry 0428 already used E02":1,"400 Sim Entry 0392 already used E02":1,"400 Sim Entry 0412 already used E02":1,"400 Sim Entry 0484 already used E02":1,"400 Sim Entry 0476 already used E02":1,"400 Sim Entry 0496 already used E02":1,"400 Sim Entry 0500 already used E02":1})
+  workers Elite 8 day 1 locked: schedule:ran grading:ran
+PASS  Elite 8 day 1: a pick after the lock is refused  [400 Picks for today are locked — the first game has tipped off]
+  workers Elite 8 day 1 in progress: results:ran
+  workers Elite 8 day 1 finals: results:ran grading:ran
+PASS  Elite 8 day 1 graded: standings equal ground truth (alive 9, eliminated 991)  [0 mismatches]
+PASS  Elite 8 day 1: home page header equals the database (9 alive of 1000)  [{"alive":"9","of":"1000","status":200}]
+  workers turnover to Elite 8 day 2: schedule:ran advance:ran
+PASS  the scheduled turnover opens Elite 8 day 2  [2026-11-12]
+PASS  Elite 8 day 2: the scripted survivor's pick S04 is accepted  [200 ]
+  Elite 8 day 2: 9 alive entries, 13 picks accepted (failures so far {"400 This game day is not open for you yet. Your previous pick must finish with a win first":1,"400 Sim Entry 0008 already used E02":1,"400 Sim Entry 0004 already used E02":1,"400 Sim Entry 0032 already used E03":1,"400 Sim Entry 0048 already used E03":1,"400 Sim Entry 0044 already used E03":1,"400 Sim Entry 0068 already used E03":1,"400 Sim Entry 0076 already used E02":1,"400 Sim Entry 0080 already used E02":1,"400 Sim Entry 0112 already used E02":1,"400 Sim Entry 0124 already used E02":1,"400 Sim Entry 0092 already used E02":1,"400 Sim Entry 0208 already used E02":1,"400 Sim Entry 0184 already used E02":1,"400 Sim Entry 0220 already used E02":1,"400 Sim Entry 0272 already used E02":1,"400 Sim Entry 0244 already used E02":1,"400 Sim Entry 0328 already used E02":1,"400 Sim Entry 0384 already used E02":1,"400 Sim Entry 0428 already used E02":1,"400 Sim Entry 0392 already used E02":1,"400 Sim Entry 0412 already used E02":1,"400 Sim Entry 0484 already used E02":1,"400 Sim Entry 0476 already used E02":1,"400 Sim Entry 0496 already used E02":1,"400 Sim Entry 0500 already used E02":1})
+  workers Elite 8 day 2 locked: schedule:ran grading:ran
+PASS  Elite 8 day 2: every alive entry short of the quota was assigned the missing picks (or, with no team left to pick, eliminated)  [0 entries short, 0 with no team left (cumulative), 1 batches, 0 wrong]
+NOTE    alive after the lock-time assignment: 9
+  workers Elite 8 day 2 in progress: results:ran
+  workers Elite 8 day 2 finals: results:ran grading:ran
+PASS  Elite 8 day 2 graded: standings equal ground truth (alive 7, eliminated 993)  [0 mismatches]
+PASS  Elite 8 day 2: home page header equals the database (7 alive of 1000)  [{"alive":"7","of":"1000","status":200}]
+  survivors after the Elite 8 (before the one-survivor setup): 7
+PASS  the scripted survivor is still alive after the Elite 8 (it only picked winners)  [7 alive in total]
+NOTE  before the Final Four: 7 alive: 0088, 0140, 0191, 0214, 0368, 0764, 0999
+NOTE  SETUP BY SQL: every alive entry except Sim Entry 0999 marked eliminated before the Final Four, so exactly one survivor reaches the end (natural attrition had left 7); the app's own grading is used from here on
+PASS  admin syncs Final Four day 1 from the (fake) feed  [status 200]
+  workers turnover to Final Four day 1: schedule:ran advance:ran
+PASS  the scheduled turnover opens Final Four day 1  [2026-11-12]
+PASS  with one survivor the contest is not stopped  [{"alive":1,"started":true,"stopped":false,"eliminated":999,"registered":1000}]
+PASS  Final Four, one survivor: home page header equals the database (1 alive of 1000)  [{"alive":"1","of":"1000","status":200}]
+PASS  an eliminated entry cannot pick the Final Four  [403 You are eliminated]
+NOTE  Final Four games: W02@E01, M01@S04
+PASS  Final Four day 1: the scripted survivor's pick W02 is accepted  [200 ]
+  Final Four day 1: 1 alive entries, 1 picks accepted (failures so far {"400 This game day is not open for you yet. Your previous pick must finish with a win first":1,"400 Sim Entry 0008 already used E02":1,"400 Sim Entry 0004 already used E02":1,"400 Sim Entry 0032 already used E03":1,"400 Sim Entry 0048 already used E03":1,"400 Sim Entry 0044 already used E03":1,"400 Sim Entry 0068 already used E03":1,"400 Sim Entry 0076 already used E02":1,"400 Sim Entry 0080 already used E02":1,"400 Sim Entry 0112 already used E02":1,"400 Sim Entry 0124 already used E02":1,"400 Sim Entry 0092 already used E02":1,"400 Sim Entry 0208 already used E02":1,"400 Sim Entry 0184 already used E02":1,"400 Sim Entry 0220 already used E02":1,"400 Sim Entry 0272 already used E02":1,"400 Sim Entry 0244 already used E02":1,"400 Sim Entry 0328 already used E02":1,"400 Sim Entry 0384 already used E02":1,"400 Sim Entry 0428 already used E02":1,"400 Sim Entry 0392 already used E02":1,"400 Sim Entry 0412 already used E02":1,"400 Sim Entry 0484 already used E02":1,"400 Sim Entry 0476 already used E02":1,"400 Sim Entry 0496 already used E02":1,"400 Sim Entry 0500 already used E02":1})
+  workers Final Four day 1 locked: schedule:ran grading:ran
+PASS  Final Four day 1: every alive entry short of the quota was assigned the missing picks (or, with no team left to pick, eliminated)  [0 entries short, 6 with no team left (cumulative), 1 batches, 0 wrong]
+NOTE    alive after the lock-time assignment: 1
+  workers Final Four day 1 in progress: results:ran
+  workers Final Four day 1 finals: results:ran grading:ran
+PASS  Final Four graded (the survivor advances): standings equal ground truth (alive 1, eliminated 999)  [0 mismatches]
+PASS  the lone survivor is still alive after the Final Four  [1 alive]
+PASS  after the Final Four: home page header equals the database (1 alive of 1000)  [{"alive":"1","of":"1000","status":200}]
+PASS  admin syncs National Championship day 1 from the (fake) feed  [status 200]
+  workers turnover to National Championship day 1: schedule:ran advance:ran
+PASS  the scheduled turnover opens National Championship day 1  [2026-11-12]
+PASS  National Championship day 1: the scripted survivor's pick M01 is accepted  [200 ]
+  National Championship day 1: 1 alive entries, 1 picks accepted (failures so far {"400 This game day is not open for you yet. Your previous pick must finish with a win first":1,"400 Sim Entry 0008 already used E02":1,"400 Sim Entry 0004 already used E02":1,"400 Sim Entry 0032 already used E03":1,"400 Sim Entry 0048 already used E03":1,"400 Sim Entry 0044 already used E03":1,"400 Sim Entry 0068 already used E03":1,"400 Sim Entry 0076 already used E02":1,"400 Sim Entry 0080 already used E02":1,"400 Sim Entry 0112 already used E02":1,"400 Sim Entry 0124 already used E02":1,"400 Sim Entry 0092 already used E02":1,"400 Sim Entry 0208 already used E02":1,"400 Sim Entry 0184 already used E02":1,"400 Sim Entry 0220 already used E02":1,"400 Sim Entry 0272 already used E02":1,"400 Sim Entry 0244 already used E02":1,"400 Sim Entry 0328 already used E02":1,"400 Sim Entry 0384 already used E02":1,"400 Sim Entry 0428 already used E02":1,"400 Sim Entry 0392 already used E02":1,"400 Sim Entry 0412 already used E02":1,"400 Sim Entry 0484 already used E02":1,"400 Sim Entry 0476 already used E02":1,"400 Sim Entry 0496 already used E02":1,"400 Sim Entry 0500 already used E02":1})
+  workers National Championship day 1 locked: schedule:ran grading:ran
+PASS  National Championship day 1: every alive entry short of the quota was assigned the missing picks (or, with no team left to pick, eliminated)  [0 entries short, 6 with no team left (cumulative), 1 batches, 0 wrong]
+NOTE    alive after the lock-time assignment: 1
+  workers championship in progress: results:ran
+  workers championship final: the survivor loses: results:ran grading:ran
+PASS  championship: the survivor lost, everyone is out: standings equal ground truth (alive 0, eliminated 1000)  [0 mismatches]
+PASS  when everyone is eliminated the contest reports stopped  [{"alive":0,"started":true,"stopped":true,"eliminated":1000,"registered":1000}]
+PASS  all eliminated: home page header equals the database (0 alive of 1000)  [{"alive":"0","of":"1000","status":200}]
+PASS  the advance worker stops advancing when no entry is alive  [{"ok":true,"claimed":true,"progress":{"ok":true,"stopped":true,"message":"Stopped: no entries alive"}}]
+PASS  nothing advanced and the pool is not marked completed  [active championship slate 1, pool open]
+PASS  picks are refused for every entry while none is alive  [403,403,403,403,403,403,403,403 You are eliminated]
+PASS  all eliminated: no winner or champion is recorded or shown (home, grid, sweat, schedule, feeds, columns, audit log)  [columns 0, audit events 0]
+  workers championship corrected: the survivor wins: results:ran grading:ran
+PASS  championship corrected: the survivor wins: standings equal ground truth (alive 1, eliminated 999)  [0 mismatches]
+PASS  the correction restores the survivor and the contest is no longer stopped  [{"alive":1,"started":true,"stopped":false,"eliminated":999,"registered":1000}]
+PASS  the tournament completes normally when a survivor remains through the championship  [{"ok":true,"claimed":true,"progress":{"ok":true,"caught_up":true,"completed":true}} pool completed]
+PASS  completed with one survivor: home page header equals the database (1 alive of 1000)  [{"alive":"1","of":"1000","status":200}]
+PASS  completed with a survivor: no winner or champion is recorded or shown (home, grid, sweat, schedule, feeds, columns, audit log)  [columns 0, audit events 0]
+PASS  completion is audited without naming a winner  [[{"event_type":"tournament-completed","message":"Championship grading complete"}]]
+
+== Step 9: /admin/operations after the scheduler invocations
+PASS  /admin/operations renders for the administrator  [status 200]
+PASS  every scheduled job shows OK (none overdue or failing)  [Schedule sync: OK, Results sync: OK, Auto-assignment: OK, Grading: OK, Slate advancement: OK]
+NOTE  overall status shown: OK; page excerpt: Overall: OK · Observed 11/12/2026, 11:24:08 AM CST . All times are Central. Warning: the session secret is weak. Replace SESSION_SECRET with a long random value. Job Status Last success Details Last error Database connection OK Operations records read successfully. Schedule sync OK 11/12/2026, 11:24:08 AM CST Running on schedule
+PASS  /admin/operations redirects an unauthenticated visitor to the admin login  [status 307]
+TOTAL so far pass=115 fail=0 
+
+== Summary by step (PASS counts; 0 FAIL in every step; the admin sign-in check ahead of step 1 is counted in step 1)
+Step 1 start contest: 6   Step 2 register/sign in: 4   Step 3 round 1 day 1 picks: 10   Step 4 lock: 4
+Step 5 results: 7   Step 6 void/manual result: 7   Step 7 early picks/eliminated: 6   Step 4b round 1 day 2 assignment: 4
+Step 8 rounds 2 to the championship: 64   Step 9 /admin/operations: 3   TOTAL 115 passed, 0 failed.
 
 == Scope and method notes
-- Covered: steps 1-7 plus round 1 day 2 (top-ups, lock, scheduled auto-assignment, exactly-once). NOT covered in this run: step 8 (rounds 2 to the championship, shrinking survivors, one-survivor and all-eliminated behaviour, "winner" wording search) and step 9 (/admin/operations render). The script builds the whole bracket (scripts/sim/world.mjs) but the later-round driver was not written within the time available.
-- 100 entries registered over HTTP (bcrypt 12); 900 were inserted by SQL (bcrypt cost 4) because single-process bcrypt made 1,000 real signups slow. All 1,000 signed in over HTTP.
-- Time: the real clock is used. The day being played is "today"; the schedule (slate dates, tip times, locks, fake ESPN feed) is slid by direct SQL (replica role) and the feed file between scheduler calls. The workers were invoked through /api/cron/worker with the interval gate (operation_runs.next_attempt_at) cleared first; every call was required to report claimed:true. The 20 syncs used GET /api/cron/sync-results.
-- Assignment runs in batches of 50 per worker call (by design); the script loops until done.
-- The pre-lock privacy probe checks home, /api/sweat, /api/live-scores, /grid, /api/grid/export, /api/me, /sweat, /standings as anonymous and as another entry for the target's id (JSON endpoints) and its team near its name; before the check the pages were fresh (picks had just been saved, ISR/caches are revalidated by pick writes).
+- Application: branch remediation/2026-11-10-audit code (production build), real local PostgreSQL (embedded-postgres), fixture adapter with FIXTURE_DB_ENGINE=postgres, fake ESPN. Local only; EMAILS_ENABLED=false.
+- Steps 1 to 9 covered: 1,000 entries; rounds 1 to the championship; shrinking survivors (1000, 440, 225, 117, 52, 26, 11, 8 alive; the script then reduces the field to one scripted survivor by SQL, labelled SETUP BY SQL above, so the one-survivor path is exercised); one survivor continues normally through the Final Four and championship (pool ends completed with no winner recorded or named); zero survivors stops progression ("Stopped: no entries alive", pick attempts refused, no completion); a result correction restoring the survivor lets the contest continue and complete. Searches of home, grid, sweat, schedule, feeds, export columns and the audit log found no winner or champion wording or record.
+- Calendar: the day being played is "today" (Central). The app decides whether a two-day round is on its final day from the weekday of the stored slate date (1st Round and Sweet 16 open Thursday, 2nd Round and Elite 8 open Saturday). When the run happens on a Thursday or Saturday, the simulation slides the stored slate dates back one day only for the duration of the lock-time assignment run on a round's second day (World.withRealWeekday), matching a real Friday or Sunday. This run was on a Thursday. No application code was changed.
+- 100 entries registered over HTTP (bcrypt 12); 900 were inserted by SQL (bcrypt cost 4). All 1,000 signed in over HTTP.
+- Workers were invoked through /api/cron/worker with every call required to report claimed:true.
