@@ -92,14 +92,19 @@ createServer(async(req,res)=>{
    return send(200,result.rows[0]?.value??null)
   }
   const values=[],where=[]
+  const term=(key,value)=>{
+   const dot=value.indexOf('.'),op=value.slice(0,dot),val=value.slice(dot+1)
+   if(op==='in'){const items=val.slice(1,-1).split(',').filter(Boolean).map(v=>v.replace(/^"|"$/g,''));const list=items.map(v=>{values.push(v);return '$'+values.length});return list.length?`${ident(key)} in (${list.join(',')})`:'false'}
+   if(op==='is')return `${ident(key)} is ${val==='null'?'null':val==='true'?'true':'false'}`
+   if(op==='not'&&val.startsWith('like.')){values.push(val.slice(5));return `${ident(key)} not like $${values.length}`}
+   if(op==='not'&&val.startsWith('is.'))return `${ident(key)} is not ${val==='is.null'?'null':val==='is.true'?'true':'false'}`
+   const sqlop={eq:'=',neq:'<>',gt:'>',gte:'>=',lt:'<',lte:'<=',ilike:'ilike'}[op];if(!sqlop)throw new Error('Unsupported fixture filter '+op);values.push(val);return `${ident(key)} ${sqlop} $${values.length}`
+  }
   for(const[key,value]of url.searchParams){
    if(['select','order','limit','offset','on_conflict','columns'].includes(key))continue
-   const dot=value.indexOf('.'),op=value.slice(0,dot),val=value.slice(dot+1)
-   if(op==='in'){const items=val.slice(1,-1).split(',').filter(Boolean).map(v=>v.replace(/^"|"$/g,''));const list=items.map(v=>{values.push(v);return '$'+values.length});where.push(list.length?`${ident(key)} in (${list.join(',')})`:'false')}
-   else if(op==='is')where.push(`${ident(key)} is ${val==='null'?'null':val==='true'?'true':'false'}`)
-   else if(op==='not'&&val.startsWith('like.')){values.push(val.slice(5));where.push(`${ident(key)} not like $${values.length}`)}
-   else if(op==='not'&&val.startsWith('is.'))where.push(`${ident(key)} is not ${val==='is.null'?'null':val==='is.true'?'true':'false'}`)
-   else{const sqlop={eq:'=',neq:'<>',gt:'>',gte:'>=',lt:'<',lte:'<=',ilike:'ilike'}[op];if(!sqlop)throw new Error('Unsupported fixture filter '+op);values.push(val);where.push(`${ident(key)} ${sqlop} $${values.length}`)}
+   // or=(col.op.value,col.op.value): a flat list of conditions, like PostgREST.
+   if(key==='or'){const parts=value.replace(/^\(|\)$/g,'').split(',').map(part=>{const dot=part.indexOf('.');return term(part.slice(0,dot),part.slice(dot+1))});where.push('('+parts.join(' or ')+')');continue}
+   where.push(term(key,value))
   }
   const clause=where.length?' where '+where.join(' and '):''
   let query,offset=0
