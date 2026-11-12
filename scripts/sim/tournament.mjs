@@ -150,6 +150,9 @@ const groups = { none: players.slice(0, 100), one: players.slice(100, 550), two:
   E('a third pick in a two-pick round is refused (quota)', third.status === 409 || third.status === 400, `${third.status} ${third.json?.error}`)
   const reuse = await P(groups.one[200], 'POST', '/api/picks', { slate_id: slateOfDay[0], team: groups.one[200].picks[0].team })
   ev.note(`re-submitting the same team without request id: ${reuse.status} ${JSON.stringify(reuse.json).slice(0, 100)} (idempotent retry)`)
+  const dupe = groups.two[160]
+  const dres = await P(dupe, 'POST', '/api/picks', { slate_id: slateOfDay[0], team: dupe.picks[0].team, pick_id: dupe.picks[1].id, expected_version: dupe.picks[1].updated_at })
+  E('team reuse is refused (changing the second pick to the first pick\'s team)', dres.status >= 400 && dres.status < 500, `${dres.status} ${dres.json?.error}`)
   const wrongTeam = await P(groups.one[201], 'POST', '/api/picks', { slate_id: slateOfDay[0], team: 'ZZZ' })
   E('a team not playing today is refused', wrongTeam.status === 400, `${wrongTeam.status} ${wrongTeam.json?.error}`)
   const nextDay = await P(groups.one[202], 'POST', '/api/picks', { slate_id: slateOfDay[1], team: choose(groups.one[202], 1).abbr })
@@ -331,5 +334,53 @@ await W.applyCalendar(1, 'pre')
 await runWorkers(['schedule', 'advance'], 'turnover to R1D2')
 await mapSlates()
 E('the scheduled turnover opens round one day two', (await rows(`select slate_date::text d from public.slates where is_active`))[0]?.d === W.sim.today, (await rows(`select slate_date::text d from public.slates where is_active`))[0]?.d)
+
+// ---- round one day two: top-ups, lock, scheduled auto-assignment on the round's final day
+ev.section('Step 4b: round 1 day 2, lock, auto-assignment of missed picks (final day of the round)')
+{
+  await P(players[0], 'GET', '/api/me')
+  const topUp = players.filter((p) => p.alive && p.picks.length < 2 && p.i % 4 !== 0)
+  await pmap(topUp, 8, async (p) => { const t = choose(p, 1); if (t) await submit(p, 1, t.abbr) })
+  const dupTeam = players.find((p) => p.alive && p.picks.length === 2 && p.picks.every((k) => k.day === 0))
+  const third = await P(dupTeam, 'POST', '/api/picks', { slate_id: slateOfDay[1], team: choose(dupTeam, 1).abbr })
+  E('a third pick in the two-pick round is refused', third.status === 409, `${third.status} ${third.json?.error}`)
+  const usedAgain = players.find((p) => p.alive && p.picks.length === 1)
+  const again = await P(usedAgain, 'POST', '/api/picks', { slate_id: slateOfDay[1], team: usedAgain.picks[0].team })
+  ev.note(`same team again (no request id) on day two: ${again.status} ${again.json?.error ?? 'accepted as retry/no-op'}`)
+  await W.applyCalendar(1, 'locked')
+  await runWorkers(['schedule', 'grading'], 'day two locked')
+  const before = new Map((await rows(`select player_id, count(*)::int n from public.picks group by 1`)).map((r) => [r.player_id, r.n]))
+  const needing = players.filter((p) => p.alive && (before.get(p.id) ?? 0) < 2)
+  let a1 = await worker('assignment'), batches = 1
+  while (!a1.progress?.done && batches < 15) { a1 = await worker('assignment'); batches++ }
+  const afterPicks = await rows(`select p.player_id, p.team, p.seed, p.slate_id, p.auto_assigned from public.picks p`)
+  const auto = afterPicks.filter((r) => r.auto_assigned)
+  E('every alive entry short of the quota received exactly the missing picks', needing.every((p) => afterPicks.filter((r) => r.player_id === p.id).length === 2), `${needing.length} entries needed picks; ${auto.length} auto picks; ${batches} scheduler batches of at most 50 (done=${a1.progress?.done})`)
+  const countAfter = afterPicks.length
+  const a2 = await worker('assignment'); const a3 = await worker('assignment')
+  E('re-running assignment adds nothing (exactly once)', (await scalar('select count(*)::int from public.picks')) === countAfter, `${a2.claimed}/${a3.claimed}`)
+  // independent expectation: highest unused seed line, AP rank then name
+  let wrong = 0, checked = 0
+  const d2 = W.gamesOfDay(1)
+  for (const p of needing.slice(0, 300)) {
+    const mine = afterPicks.filter((r) => r.player_id === p.id)
+    const prior = mine.filter((r) => !r.auto_assigned)
+    const used = new Set(prior.map((r) => r.team)), seeds = new Set(prior.map((r) => r.seed).filter((x) => x))
+    const expected = []
+    for (let k = prior.length; k < 2; k++) {
+      const cands = []
+      for (const g of d2) for (const t of [g.home, g.away]) if (!used.has(t.abbr)) cands.push(t)
+      const fresh = cands.filter((t) => !seeds.has(t.seed)); const poolC = fresh.length ? fresh : cands
+      const best = Math.min(...poolC.map((t) => t.seed))
+      const line = poolC.filter((t) => t.seed === best).sort((a, b) => (W.sim.rankings[a.abbr] ?? 1e9) - (W.sim.rankings[b.abbr] ?? 1e9) || a.abbr.localeCompare(b.abbr))
+      expected.push(line[0].abbr); used.add(line[0].abbr); seeds.add(line[0].seed)
+    }
+    const got = mine.filter((r) => r.auto_assigned).map((r) => r.team).sort().join(',')
+    checked++; if (got !== expected.sort().join(',')) wrong++
+  }
+  E('auto-assigned teams follow the highest-unused-seed rule (AP rank, then name)', wrong === 0 && checked > 0, `${checked} checked, ${wrong} differ`)
+  const flagged = (await rows(`select count(*)::int n from public.picks where auto_assigned and seed is null`))[0].n
+  ev.note(`auto picks without a stored seed: ${flagged}`)
+}
 ev.line(`TOTAL so far pass=${ev.pass} fail=${ev.fail} ${ev.failures.join(' | ')}`)
 await closeSql()
