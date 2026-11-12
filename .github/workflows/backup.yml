@@ -28,7 +28,7 @@ jobs:
             SUPABASE_BACKUP_SCHEMA="$schema" node scripts/backup.mjs "work/backup-$schema.json.enc"
             node scripts/restore-check.mjs "work/backup-$schema.json.enc"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         id: upload
         with:
           name: encrypted-madness-backup-${{ github.run_id }}
