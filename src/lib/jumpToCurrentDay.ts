@@ -62,7 +62,7 @@ export async function jumpToCurrentDay(
     }
     if (!found) continue
     const deadline = slateDeadline(found.slate, found.games)
-    if (!deadline || deadline.getTime() > now.getTime()) target = { id: found.slate.id, date }
+    if (deadline && deadline.getTime() > now.getTime()) target = { id: found.slate.id, date }
   }
   if (!target) return fail(409, 'no-open-day', `No upcoming day with games and an open pick deadline was found in the next ${MAX_LOOKAHEAD_DAYS} days. Check the Schedule page.`)
 

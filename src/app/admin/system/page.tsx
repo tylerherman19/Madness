@@ -7,7 +7,7 @@ import { getContestState } from '@/lib/contestState'
 import { sessionSecretStatus } from '@/lib/sessionSecret'
 import { evaluateHealth, evaluateJob, type HealthStatus, type IncidentRow, type JobRun } from '@/lib/opsHealth'
 import { WORKLOADS, incidentSentence, summarize, type IncidentCard } from '@/lib/incidentText'
-import { staleDay, longDate, shortDate, centralStamp, relativeTime } from '@/lib/staleDay'
+import { staleDay, longDate, shortDate, centralDate, centralStamp, relativeTime } from '@/lib/staleDay'
 import StaleDayBanner from '../StaleDayBanner'
 import { ResolveIncident, ClearRecovered } from './StatusActions'
 
@@ -64,7 +64,8 @@ export default async function SystemStatus() {
         return { id, label: workload.label, status: line.status, lastSuccessAt: line.lastSuccessAt }
       })
     : (() => { const line = health.lines.find((l) => l.id === 'heartbeat')!; return [{ id: 'heartbeat', label: 'Background work', status: line.status, lastSuccessAt: line.lastSuccessAt }] })()
-  const jobStatus = rows.map((r) => ({ id: r.id, lastSuccessAt: r.lastSuccessAt }))
+  // Every job counts for recovery, including the two email jobs that have no row on this page.
+  const jobStatus = WORKLOADS.map((w) => ({ id: w.id, lastSuccessAt: (byKey.get(`recurring:${w.id}`)?.last_success_at ?? null) as string | null }))
 
   const day = staleDay(slate?.slate_date as string | undefined, now)
   const extra: IncidentCard[] = []
@@ -95,7 +96,7 @@ export default async function SystemStatus() {
           <summary>Recovered by itself ({summary.recovered.length})</summary>
           <p>These problems happened earlier but the job has run normally since. They are not counted above.</p>
           <ul>
-            {summary.recovered.map((card) => <li key={card.key}>{incidentSentence(card, shortDate(card.latestAt.slice(0, 10)))}</li>)}
+            {summary.recovered.map((card) => <li key={card.key}>{incidentSentence(card, shortDate(centralDate(new Date(card.latestAt))))}</li>)}
           </ul>
           <ClearRecovered count={summary.recovered.length} />
         </details>

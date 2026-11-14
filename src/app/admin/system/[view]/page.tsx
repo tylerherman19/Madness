@@ -4,6 +4,7 @@ import { getAdminSession } from '@/lib/session'
 import { getDb, isTestMode } from '@/lib/testMode'
 import Actions from '../Actions'
 import Controls from '../../operations/Controls'
+import { describeIncident } from '@/lib/incidentText'
 const views: Record<string, string> = {
   advanced: 'Advanced details',
   email: 'Email operations',
@@ -518,7 +519,7 @@ export default async function SystemView({
         ) : (
           data.map((i) => (
             <article key={i.key}>
-              <h2>{i.impact}</h2>
+              <h2>{describeIncident(i).title}</h2>
               <p>
                 {i.status} · {i.occurrences} occurrences · first{' '}
                 {stamp(i.first_at)} · latest {stamp(i.latest_at)}
@@ -526,6 +527,7 @@ export default async function SystemView({
               <details>
                 <summary>Technical details</summary>
                 <p>{i.key}</p>
+                <p>Recorded message: {i.impact}</p>
                 <p>Correlation {i.correlation_id}</p>
                 <pre>{i.details}</pre>
               </details>

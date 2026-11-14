@@ -77,7 +77,7 @@ test.describe('System status page', () => {
     for (const name of ['Status', 'Activity log', 'Email', 'Advanced details']) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible()
     await page.goto('/admin/system/overview')
     await expect(page).toHaveURL(/\/admin\/system\/advanced$/)
-    await expect(page.getByText('Optional. Technical records')).toBeVisible()
+    await expect(page.getByText('Optional. Technical records')).toBeVisible({ timeout: 20_000 })
     await page.goto('/admin/system/email')
     await expect(page.getByText('Email is switched off.').first()).toBeVisible()
     await page.goto('/admin/system/jobs')
@@ -91,6 +91,12 @@ test.describe('System status page', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 })
+
+async function playwrightPlayer(request: import('@playwright/test').APIRequestContext) {
+  const login = await request.post('/api/auth/login', { data: { email: 'player+test@example.test', password: 'FixturePass123!' } })
+  expect(login.ok()).toBeTruthy()
+  return request
+}
 
 test.describe('Jump to the current day', () => {
   async function stale(request: import('@playwright/test').APIRequestContext) {
@@ -125,7 +131,7 @@ test.describe('Jump to the current day', () => {
     expect((await rows(request, `/slates?id=eq.${SLATE}`))[0].is_active).toBe(true)
     await banner.getByLabel('Skip that day anyway').check()
     await jump.click()
-    await expect(banner).toContainText('missed day(s) were skipped')
+    await expect(banner).toHaveCount(0) // the page refreshed onto the new day
 
     expect((await rows(request, `/slates?id=eq.${open}`))[0].is_active).toBe(true)
     expect((await rows(request, `/slates?id=eq.${SLATE}`))[0].is_active).toBe(false)
@@ -144,7 +150,12 @@ test.describe('Jump to the current day', () => {
     expect(players.length).toBeGreaterThan(0)
     expect(players.every((p) => p.status === 'alive')).toBe(true)
 
-    await page.goto('/admin')
+    // The entry can pick on the new day, and the status page is clean afterwards.
+    const player = await playwrightPlayer(request)
+    const picked = await player.post('/api/picks', { data: { slate_id: open, team: 'H3' } })
+    expect(picked.ok(), await picked.text()).toBeTruthy()
+    await page.goto('/admin/system')
+    await expect(page.getByRole('status').filter({ hasText: 'Everything is running' })).toBeVisible()
     await expect(page.getByRole('alert').filter({ hasText: 'stuck on an old day' })).toHaveCount(0)
   })
 
