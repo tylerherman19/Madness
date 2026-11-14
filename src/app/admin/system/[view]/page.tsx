@@ -65,6 +65,7 @@ export default async function SystemView({
   if (!(await getAdminSession())) redirect('/admin/login')
   const { view } = await params
   if (view === 'advanced') redirect('/admin/system/advanced')
+  if (view === 'overview') redirect('/admin/system/advanced')
   if (!views[view]) notFound()
   const query = await searchParams,
     page = Math.max(0, Number(query.page) || 0),
@@ -100,7 +101,7 @@ export default async function SystemView({
       <h1>{views[view]}</h1>
       <p><em>{blurbs[view]}</em></p>
       {view === 'email' && (
-        <p role="status"><strong>{ready ? 'Email sending is switched on in this environment.' : 'Email is switched off.'}</strong> {ready ? '' : 'Nothing is being sent, and the controls below cannot turn sending on.'}</p>
+        <p><strong>{ready ? 'Email sending is switched on in this environment.' : 'Email is switched off.'}</strong> {ready ? '' : 'Nothing is being sent, and the controls below cannot turn sending on.'}</p>
       )}
       {process.env.TOURNAMENT_RELIABILITY_ENABLED!=='true'&&<p>New tournament operations are awaiting schema verification and activation. Player picks continue through the existing acceptance path. Email sending remains controlled by the master switch.</p>}
       <p>Observed {stamp(new Date().toISOString())}. All times are Central.</p>
@@ -213,15 +214,15 @@ export default async function SystemView({
           A recent heartbeat does not prove all assignments, grading or
           deliveries finished. Open the workload and integrity records below.
         </p>
-        <div className="system-links">
+        <ul>
           {Object.entries(views)
-            .filter(([key]) => key !== 'overview')
+            .filter(([key]) => key !== 'advanced')
             .map(([key, title]) => (
-              <Link key={key} href={`/admin/system/${key}`}>
-                {title}
-              </Link>
+              <li key={key}>
+                <Link href={`/admin/system/${key}`}>{title}</Link>: {blurbs[key]}
+              </li>
             ))}
-        </div>
+        </ul>
       </>
     )
   } else if (view === 'jobs')
