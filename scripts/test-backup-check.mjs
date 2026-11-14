@@ -106,7 +106,7 @@ async function recoveryMarkup(record, { error = null, sandbox = false } = {}) {
   'next/navigation': { redirect: () => { throw new Error('Unexpected redirect') }, notFound: () => { throw new Error('Unexpected missing view') } },
   '@/lib/session': { getAdminSession: async () => true },
   '@/lib/testMode': { getDb: async () => db, isTestMode: async () => sandbox },
-  '../Actions': { default: () => null }, '../../operations/Controls': { default: () => null },
+  '../Actions': { default: () => null }, '../../operations/Controls': { default: () => null }, '@/lib/incidentText': { describeIncident: () => ({ title: 'Incident' }) },
  }
  new Function('require', 'module', 'exports', code)(name => imports[name] ? { __esModule: true, ...imports[name] } : require(name), compiledModule, compiledModule.exports)
  const tree = await compiledModule.exports.default({ params: Promise.resolve({ view: 'recovery' }), searchParams: Promise.resolve({ page: '99' }) })
