@@ -4,7 +4,6 @@ import { getAdminSession } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import PlayersManager from './PlayersManager'
 import type { Player } from '@/types'
-import { getTeamAbbrs } from '@/lib/teams'
 import { loadAll } from '@/lib/seasonData'
 
 export const metadata = { title: 'Manage Players', description: 'Pick and Pray administration: manage players.' }
@@ -22,7 +21,7 @@ export default async function PlayersPage() {
 
   const { data: activeSlate } = await supabase
     .from('slates')
-    .select('id, slate_number')
+    .select('id, slate_number, slate_date')
     .eq('is_active', true)
     .single()
 
@@ -30,12 +29,16 @@ export default async function PlayersPage() {
     ? await allRows(supabase.from('picks').select('id,player_id,team,updated_at').eq('slate_id', activeSlate.id))
     : { data: [] }
 
-  const teams = await getTeamAbbrs(supabase)
+  const { data: dayGames } = activeSlate
+    ? await supabase.from('games').select('home_team, away_team').eq('slate_id', activeSlate.id).order('tip_time')
+    : { data: [] }
 
-  const allPicks = await loadAll<{ player_id: string }>(supabase, 'picks', 'player_id')
+  const allPicks = await loadAll<{ player_id: string; team: string }>(supabase, 'picks', 'player_id, team')
   const weeksSurvived: Record<string, number> = {}
+  const usedTeams: Record<string, string[]> = {}
   for (const p of allPicks || []) {
     weeksSurvived[p.player_id] = (weeksSurvived[p.player_id] || 0) + 1
+    ;(usedTeams[p.player_id] ??= []).push(p.team)
   }
   const currentPicks: Record<string, string> = Object.fromEntries(
     (picksData || []).map((p: { player_id: string; team: string }) => [p.player_id, p.team])
@@ -48,7 +51,9 @@ export default async function PlayersPage() {
         players={(players || []) as Player[]}
         activeWeekId={activeSlate?.id || null}
         activeWeekNumber={activeSlate?.slate_number || null}
-        teams={teams}
+        activeDate={activeSlate?.slate_date ?? null}
+        dayGames={(dayGames ?? []) as { home_team: string; away_team: string }[]}
+        usedTeams={usedTeams}
         pickReceipts={Object.fromEntries((picksData??[]).map(p=>[p.player_id,{id:p.id,updatedAt:p.updated_at}]))}
         currentPicks={currentPicks}
         weeksSurvived={weeksSurvived}

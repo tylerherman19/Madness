@@ -6,6 +6,7 @@ import { logAudit } from '@/lib/audit'
 import { serverError } from '@/lib/alerts'
 import { getActiveDayStatus, assignmentGuard } from '@/lib/slateStatus'
 import { validReason } from '@/lib/slateGuard'
+import { jumpToCurrentDay } from '@/lib/jumpToCurrentDay'
 
 export async function POST(req: NextRequest) {
   const unauthorized = await requireAdmin()
@@ -15,6 +16,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null)
     const slate_id = body?.slate_id
     const override = body?.override === true
+    // "Jump to the current day": no day is chosen; the first day with an open deadline is.
+    if (body?.jump_to_current === true) {
+      const jumpReason = validReason(body?.reason)
+      if (!jumpReason) return NextResponse.json({ error: 'Enter a reason (3 to 500 characters)' }, { status: 400 })
+      const result = await jumpToCurrentDay(await getDb(), await getEffectiveNow(), jumpReason, override)
+      if (!result.ok) return NextResponse.json({ error: result.error, code: result.code }, { status: result.status })
+      return NextResponse.json({ ok: true, to_date: result.toDate, skipped_dates: result.skippedDates, resolved_incidents: result.resolvedIncidents })
+    }
     if (!isUuid(slate_id)) {
       return NextResponse.json({ error: 'Invalid slate_id' }, { status: 400 })
     }

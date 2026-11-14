@@ -12,6 +12,8 @@ import Link from 'next/link'
 import AdvanceWeekButton from './AdvanceWeekButton'
 import SetActiveWeek from './SetActiveWeek'
 import ResetPoolButton from './ResetPoolButton'
+import StaleDayBanner from './StaleDayBanner'
+import { staleDay } from '@/lib/staleDay'
 
 export const metadata = { title: 'Dashboard', description: 'Pick and Pray administration: dashboard.' }
 
@@ -104,11 +106,13 @@ export default async function AdminDashboard() {
       .sort()
   }
 
+  const stale = staleDay(slate?.slate_date, now)
   const gradedCount = games.filter((g) => g.result !== 'pending').length
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-8">
       {completionError?<p role="alert">Quota completion monitoring unavailable.</p>:completion&&<section className="rounded-xl border border-line p-4"><h2>Required selections</h2><p>{completion.complete} complete · {completion.partial} partial · {completion.missing} missing · {completion.unpaid} unpaid</p><p>Required picks: {completion.requirement?.quota??'No active period'}. Deadline: {completion.requirement?.deadline?formatCentralTime(new Date(completion.requirement.deadline)):'Unknown'}</p><Link href="/admin/picks">Review accepted receipts</Link> · <Link href="/admin/system/integrity">Assignment and grading integrity</Link></section>}
+      {stale.stale && stale.activeDate && <StaleDayBanner activeDate={stale.activeDate} expectedDate={stale.expectedDate} daysBehind={stale.daysBehind} />}
       <div>
         <h1 className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>Game overview</h1>
         {slate && (

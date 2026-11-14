@@ -4,13 +4,23 @@ import { getAdminSession } from '@/lib/session'
 import { getDb, isTestMode } from '@/lib/testMode'
 import Actions from '../Actions'
 import Controls from '../../operations/Controls'
+import { describeIncident } from '@/lib/incidentText'
 const views: Record<string, string> = {
-  overview: 'System overview',
+  advanced: 'Advanced details',
   email: 'Email operations',
   jobs: 'Background jobs',
   incidents: 'Errors and incidents',
   integrity: 'Data integrity',
   recovery: 'Recovery',
+}
+// One plain sentence at the top of every technical view.
+const blurbs: Record<string, string> = {
+  advanced: 'Optional. Technical records for troubleshooting. You do not need any of this to run the pool; the System status page tells you when something needs attention.',
+  email: 'Email is switched off, so nothing is being sent. This page shows the messages the site has recorded and the settings that keep sending off.',
+  jobs: 'The raw record of each automatic job: when it last worked, how many times it has retried, and its last error.',
+  incidents: 'Every problem the site has recorded, including old and resolved ones, with the technical details behind each.',
+  integrity: 'A self-check that compares picks, eliminations and results to catch anything inconsistent. Run it if something looks off.',
+  recovery: 'Backup and restore evidence, and the clean-up preview. Only needed if data ever has to be recovered.',
 }
 const stamp = (s: string | null | undefined) =>
   s
@@ -55,6 +65,7 @@ export default async function SystemView({
 }) {
   if (!(await getAdminSession())) redirect('/admin/login')
   const { view } = await params
+  if (view === 'overview') redirect('/admin/system/advanced')
   if (!views[view]) notFound()
   const query = await searchParams,
     page = Math.max(0, Number(query.page) || 0),
@@ -86,7 +97,12 @@ export default async function SystemView({
   const unavailable = settings.error || jobs.error || check.error
   const heading = (
     <>
+      <p><Link href="/admin/system">&larr; System status</Link>{view !== 'advanced' && <> · <Link href="/admin/system/advanced">Advanced details</Link></>}</p>
       <h1>{views[view]}</h1>
+      <p><em>{blurbs[view]}</em></p>
+      {view === 'email' && (
+        <p><strong>{ready ? 'Email sending is switched on in this environment.' : 'Email is switched off.'}</strong> {ready ? '' : 'Nothing is being sent, and the controls below cannot turn sending on.'}</p>
+      )}
       {process.env.TOURNAMENT_RELIABILITY_ENABLED!=='true'&&<p>New tournament operations are awaiting schema verification and activation. Player picks continue through the existing acceptance path. Email sending remains controlled by the master switch.</p>}
       <p>Observed {stamp(new Date().toISOString())}. All times are Central.</p>
     </>
@@ -101,7 +117,7 @@ export default async function SystemView({
         </p>
       </section>
     )
-  const backupResult = view === 'overview' || view === 'recovery'
+  const backupResult = view === 'advanced' || view === 'recovery'
     ? await db.from('operation_runs')
         .select('key,status,last_success_at,progress')
         .eq('key', 'recovery:backup-restore')
@@ -129,7 +145,7 @@ export default async function SystemView({
     </nav>
   )
   let content
-  if (view === 'overview') {
+  if (view === 'advanced') {
     const worker = jobs.data?.find(
       (j) => j.key.startsWith('worker:') || j.key === 'recurring:results',
     )
@@ -198,15 +214,15 @@ export default async function SystemView({
           A recent heartbeat does not prove all assignments, grading or
           deliveries finished. Open the workload and integrity records below.
         </p>
-        <div className="system-links">
+        <ul>
           {Object.entries(views)
-            .filter(([key]) => key !== 'overview')
+            .filter(([key]) => key !== 'advanced')
             .map(([key, title]) => (
-              <Link key={key} href={`/admin/system/${key}`}>
-                {title}
-              </Link>
+              <li key={key}>
+                <Link href={`/admin/system/${key}`}>{title}</Link>: {blurbs[key]}
+              </li>
             ))}
-        </div>
+        </ul>
       </>
     )
   } else if (view === 'jobs')
@@ -502,7 +518,7 @@ export default async function SystemView({
         ) : (
           data.map((i) => (
             <article key={i.key}>
-              <h2>{i.impact}</h2>
+              <h2>{describeIncident(i).title}</h2>
               <p>
                 {i.status} · {i.occurrences} occurrences · first{' '}
                 {stamp(i.first_at)} · latest {stamp(i.latest_at)}
@@ -510,6 +526,7 @@ export default async function SystemView({
               <details>
                 <summary>Technical details</summary>
                 <p>{i.key}</p>
+                <p>Recorded message: {i.impact}</p>
                 <p>Correlation {i.correlation_id}</p>
                 <pre>{i.details}</pre>
               </details>

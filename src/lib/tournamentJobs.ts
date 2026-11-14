@@ -12,6 +12,7 @@ import { gradeSlatePicks } from './grading'
 import { loadAll, loadGamesForSlates } from './seasonData'
 import type { Slate } from '@/types'
 import { revalidateContest } from './revalidateContest'
+import { resolveRecoveredForWorkload } from './incidents'
 
 export const WORKLOADS = [
   'schedule',
@@ -176,6 +177,8 @@ export async function runTournamentJob(
     })
     if (result.error || !result.data)
       throw result.error ?? new Error('Stale job completion rejected')
+    // Delayed / server-error incidents for this job have recovered. Human-decision incidents stay open.
+    await resolveRecoveredForWorkload(db, kind)
     return { claimed: true, progress }
   } catch (error) {
     await db.rpc('finish_operation', {

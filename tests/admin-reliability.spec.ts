@@ -63,7 +63,7 @@ test('workspace switching, truthful disabled mode, campaign receipt and message 
   await admin(page)
   await page.goto('/admin/system')
   await expect(
-    page.getByRole('heading', { name: 'System overview', exact: true }),
+    page.getByRole('heading', { name: 'System status', exact: true }),
   ).toBeVisible()
   await page
     .locator('.workspace-switch')
@@ -118,10 +118,9 @@ test('mobile System Admin keeps navigation and real empty states usable', async 
     ),
   ).toBe(true)
   await page.getByRole('button', { name: 'Open admin menu' }).click()
-  await page
-    .getByRole('link', { name: 'Data integrity', exact: true })
-    .last()
-    .click()
+  for (const name of ['Status', 'Activity log', 'Email', 'Advanced details'])
+    await expect(page.getByRole('link', { name, exact: true }).last()).toBeVisible()
+  await page.goto('/admin/system/integrity')
   await expect(
     page.getByText('No integrity checks recorded.', { exact: true }),
   ).toBeVisible()

@@ -10,6 +10,7 @@ import { serverError } from '@/lib/alerts'
 import { randomUUID } from 'node:crypto'
 import { isAdvanceWindow } from '@/lib/advanceSchedule'
 import { centralClock } from '@/lib/operationPolicy'
+import { getPoolConfig } from '@/lib/pool'
 
 const MAX_LOOKAHEAD_DAYS = 10
 export async function advanceSlate(supabase: import('@supabase/supabase-js').SupabaseClient, now: Date, actor: 'system' | 'admin') {
@@ -41,12 +42,19 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
     // Grade clean games even if another game is waiting for organizer review.
     const finals = currentGames.filter(game => !held.has(game.id) && game.result !== 'pending')
     await gradeSlatePicks(supabase, slate.id, slate.slate_number, finals)
-    // With every entry out after the contest started there is nothing to advance for. This is a
-    // normal resting state, not an error; restoring an entry lets the next run continue.
+    // With every entry out after the contest started: a March Madness bracket stops here (a normal
+    // resting state, not an error; restoring an entry lets the next run continue). A regular-season
+    // pool has nothing to grade or assign, but its calendar keeps moving so the site is never stranded
+    // on an old day. Only a positively identified regular-season pool keeps going.
+    let nobodyAlive = false
     if (actor === 'system') {
       const { data: contest } = await supabase.rpc('contest_state')
       if ((contest as { stopped?: boolean } | null)?.stopped === true) {
-        return NextResponse.json({ ok: true, stopped: true, message: 'Stopped: no entries alive' })
+        const pool = await getPoolConfig(supabase, true)
+        if (pool.competition_mode !== 'regular-season') {
+          return NextResponse.json({ ok: true, stopped: true, message: 'Stopped: no entries alive' })
+        }
+        nobodyAlive = true
       }
     }
     const complete = currentGames.length > 0 && finals.length === currentGames.length
@@ -97,7 +105,7 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
     }
 
     if (result.reviewGames?.length) return NextResponse.json({ ok: true, waiting: true, message: 'The next pick day needs schedule review' })
-    if (actor === 'system' && process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true') {
+    if (actor === 'system' && !nobodyAlive && process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true') {
       const {data: next, error} = await supabase.from('slates').select('locks_at').eq('id', result.slateId).single()
       if (error) throw error
       if (!next.locks_at || new Date(next.locks_at) <= now) {
@@ -112,7 +120,7 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
 
     const { error: activateErr } = process.env.AUTOMATION_V2_ENABLED === 'true'
       ? (process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true'
-        ? await supabase.rpc('activate_ready_slate', { p_expected: slate.id, p_next: result.slateId, p_held: [...held], p_require_open: actor === 'system' })
+        ? await supabase.rpc('activate_ready_slate', { p_expected: slate.id, p_next: result.slateId, p_held: [...held], p_require_open: actor === 'system' && !nobodyAlive })
         : await supabase.rpc('activate_slate_checked', { p_expected: slate.id, p_next: result.slateId }))
       : await supabase.rpc('activate_slate', { p_slate_id: result.slateId })
     if (activateErr) return serverError('api/cron/auto-advance', activateErr, 'Transactional activation unavailable; apply migration 022')

@@ -7,7 +7,9 @@ import AdminLogoutButton from './AdminLogoutButton'
 import BrandMark from '@/app/components/BrandMark'
 
 const GAME_LINKS: [string,string][]=[['/admin','Overview'],['/admin/players','Players'],['/admin/picks','Picks'],['/admin/results','Results'],['/admin/email','Communications'],['/admin/config','Rules'],['/admin/schedule','Schedule'],['/admin/history','History']]
-const SYSTEM_LINKS: [string,string][]=[['/admin/system','Overview'],['/admin/operations','Job health'],['/admin/system/email','Email operations'],['/admin/system/jobs','Background jobs'],['/admin/system/incidents','Errors and incidents'],['/admin/system/integrity','Data integrity'],['/admin/system/recovery','Recovery'],['/admin/audit','Audit history']]
+const SYSTEM_LINKS: [string,string][]=[['/admin/system','Status'],['/admin/audit','Activity log'],['/admin/system/email','Email'],['/admin/system/advanced','Advanced details']]
+// Every technical sub-view lives under Advanced details; Email has its own entry.
+const isCurrent=(path:string,href:string)=>href==='/admin/system/advanced'?path.startsWith('/admin/system/')&&!path.startsWith('/admin/system/email'):path===href
 
 export default function AdminNav({ testMode }: { testMode: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -27,7 +29,7 @@ export default function AdminNav({ testMode }: { testMode: boolean }) {
 
         <div className="admin-desktop-links">
           {LINKS.map(([href, label]) => (
-            <Link key={href} href={href} aria-current={path === href ? 'page' : undefined}>
+            <Link key={href} href={href} aria-current={isCurrent(path, href) ? 'page' : undefined}>
               {label}
             </Link>
           ))}
@@ -58,7 +60,7 @@ export default function AdminNav({ testMode }: { testMode: boolean }) {
               <Link
                 key={href}
                 href={href}
-                aria-current={path === href ? 'page' : undefined}
+                aria-current={isCurrent(path, href) ? 'page' : undefined}
                 onClick={() => setMenuOpen(false)}
               >
                 {label}

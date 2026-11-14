@@ -326,6 +326,7 @@ async function loadTs(file, dependencies = {}) {
     'node:crypto': { randomUUID },
     '@/lib/advanceSchedule': { isAdvanceWindow: () => true },
     '@/lib/operationPolicy': { centralClock: () => ({ date: '2100-01-01' }) },
+    '@/lib/pool': { getPoolConfig: async () => ({ competition_mode: await scalar('select competition_mode from pools where is_active') }) },
   })
   const stopped = await advanceSlate(supabase, new Date(), 'system')
   assert.equal(stopped.status, 200); assert.equal(stopped.body.stopped, true)
@@ -388,5 +389,149 @@ async function loadTs(file, dependencies = {}) {
   await syncSlateFromEspn(normal, '20261101', 2026)
   assert.equal(normal.state.games[0].result, 'away_win', 'an ESPN result is still updated by ESPN')
   console.log('PASS espnSync: manual results are kept, ESPN-sourced results still follow the feed')
+}
+
+// ---- Regular season keeps the calendar moving with nobody alive; March Madness still stops -----------------
+{
+  await sql('set search_path to public,pg_catalog')
+  const saved = [process.env.AUTOMATION_V2_ENABLED, process.env.TOURNAMENT_RELIABILITY_ENABLED]
+  process.env.AUTOMATION_V2_ENABLED = 'true'; process.env.TOURNAMENT_RELIABILITY_ENABLED = 'true'
+  const slateRow = { id: SL(1), slate_number: 1, slate_date: '2000-01-01', season_year: 2027 }
+  async function advanceWith(mode, restore) {
+    await reset('public', { mode })
+    for (const n of [1, 2]) await player(n)
+    await slate(1, { date: 'current_date-1', active: true })
+    await game(1, 1, 'A', 'B', { round: mode === 'march-madness' ? '1st Round' : null })
+    await pick(1, 1, 'B'); await pick(2, 1, 'B')
+    await setResult(1, 'home_win'); await regrade(1)
+    if (restore) await sql(`select restore_player('${P(1)}','Admin restored','test-admin')`)
+    const rpcs = []
+    const supabase = {
+      // The next day's deadline has already passed, as in the stuck production case.
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: slateRow, error: null }), single: async () => ({ data: { auto_assign_completed_at: 'done', locks_at: '2000-01-02T00:00:00Z' }, error: null }) }) }) }),
+      rpc: async (name, args) => { rpcs.push([name, args]); return name === 'contest_state' ? { data: await scalar('select contest_state()'), error: null } : { data: null, error: null } },
+    }
+    const { advanceSlate } = await loadTs('src/lib/advanceSlate.ts', {
+      'next/server': { NextResponse: { json: (body, init) => ({ body, status: init?.status ?? 200 }) } },
+      '@/lib/revalidateContest': { revalidateContest: () => {} },
+      '@/lib/espnSync': { syncSlateFromEspn: async () => ({ ok: true, slateId: 'next-day', gamesSynced: 3, reviewGames: [] }) },
+      '@/lib/audit': { logAudit: async () => {} },
+      '@/lib/grading': { gradeSlatePicks: async () => ({ eliminated: [], advanced: [] }) },
+      '@/lib/autoAssign': { runAutoAssignNow: async () => ({ ok: true, done: true }) },
+      '@/lib/seasonData': { loadGamesForSlates: async () => [{ id: G(1), result: 'home_win', home_team: 'A', away_team: 'B' }], loadPicksForSlates: async () => [] },
+      '@/lib/alerts': { serverError: async (_s, err) => ({ body: { error: String(err) }, status: 500 }) },
+      'node:crypto': { randomUUID },
+      '@/lib/advanceSchedule': { isAdvanceWindow: () => true },
+      '@/lib/operationPolicy': { centralClock: () => ({ date: '2100-01-01' }) },
+      '@/lib/pool': { getPoolConfig: async () => ({ competition_mode: await scalar('select competition_mode from pools where is_active') }) },
+    })
+    const response = await advanceSlate(supabase, new Date(), 'system')
+    return { response, rpcs, names: rpcs.map(([name]) => name) }
+  }
+  const idle = await advanceWith('regular-season', false)
+  assert.equal(JSON.parse(await scalar('select contest_state()::text')).stopped, true, 'precondition: nobody alive after the start')
+  assert.equal(idle.response.body.advanced_to, '2000-01-02', 'regular season: the calendar moves with nobody alive')
+  assert.equal(idle.response.body.stopped, undefined)
+  assert.ok(!idle.names.includes('record_incident'), 'no incident when nobody is alive to miss a deadline')
+  assert.equal(idle.rpcs.find(([name]) => name === 'activate_ready_slate')[1].p_require_open, false, 'the already-passed deadline does not block the move')
+  const live = await advanceWith('regular-season', true)
+  assert.equal(live.response.body.waiting, true, 'with an entry alive a missed deadline still needs organizer review')
+  assert.ok(live.names.includes('record_incident') && !live.names.includes('activate_ready_slate'))
+  const bracket = await advanceWith('march-madness', false)
+  assert.equal(bracket.response.body.stopped, true, 'march madness: zero survivors still stops progression')
+  assert.ok(!bracket.names.includes('activate_ready_slate') && !bracket.names.includes('record_incident'))
+  process.env.AUTOMATION_V2_ENABLED = saved[0] ?? ''; process.env.TOURNAMENT_RELIABILITY_ENABLED = saved[1] ?? ''
+  console.log('PASS advanceSlate: regular season advances with nobody alive (no incident); entry alive keeps the review rule; March Madness zero survivors still stops')
+}
+
+// ---- A day skipped by "Jump to the current day" never assigns or eliminates anyone -------------------------
+for (const schema of ['public', 'sandbox']) {
+  await reset(schema)
+  for (const n of [1, 2, 3]) await player(n)
+  await slate(1, { date: 'current_date-3', locks: "now()-interval '3 days'" })       // earlier day with results
+  await slate(2, { date: 'current_date-2', locks: "now()-interval '2 days'" })       // a missed day: never active again
+  await slate(3, { date: 'current_date+1', active: true, locks: "now()+interval '20 hours'" })
+  await game(1, 1, 'A', 'B', { tip: "now()-interval '3 days'" }); await game(2, 2, 'C', 'D', { tip: "now()-interval '2 days'" })
+  await game(3, 3, 'E', 'F', { tip: "now()+interval '20 hours'" })
+  await pick(2, 1, 'A')
+  await setResult(1, 'home_win'); await setResult(2, 'home_win')
+  const incidentsBefore = await scalar('select count(*)::int from incidents')
+  // Entries 1 and 3 have no pick on the skipped days 1 and 2. Everything that grades, re-checks or reminds runs.
+  await regrade(1); await regrade(2)
+  await sql('select reconcile_contest()')
+  const reminded = await scalar(`select queue_pick_reminders('${SL(3)}',array['${P(1)}','${P(2)}','${P(3)}']::uuid[],array['${SL(3)}']::uuid[],1,now()+interval '20 hours','tomorrow')`)
+  assert.ok(reminded >= 0)
+  assert.equal(await scalar(`select count(*)::int from players where status='alive'`), 3, `${schema}: nobody is eliminated for having no pick on a skipped day`)
+  assert.equal(await scalar(`select count(*)::int from picks where slate_id in ('${SL(1)}','${SL(2)}') and player_id in ('${P(1)}','${P(3)}')`), 0, `${schema}: entries with no pick on a skipped day are given none`)
+  assert.equal(await scalar(`select count(*)::int from audit_log where event_type='player-eliminated'`), 0)
+  assert.equal(await scalar('select count(*)::int from incidents'), incidentsBefore, `${schema}: no incident is raised`)
+  // With nobody alive, reminders write nothing at all.
+  await sql(`update players set status='eliminated',elimination_reason='x',elimination_slate=1`)
+  const none = await scalar(`select queue_pick_reminders('${SL(3)}',array['${P(1)}','${P(2)}','${P(3)}']::uuid[],array['${SL(3)}']::uuid[],1,now()+interval '20 hours','tomorrow')`)
+  assert.equal(none, 0)
+  console.log(`PASS ${schema}: skipped days are never assigned or eliminated for; reminders with nobody alive write nothing`)
+}
+
+// ---- Incident recovery: job problems close when the job succeeds; human decisions never auto-close ------------
+{
+  await sql('set search_path to public,pg_catalog')
+  await reset('public')
+  await sql('truncate incidents,operation_runs cascade')
+  const incidentText = await loadTs('src/lib/incidentText.ts')
+  const builder = (table) => {
+    const state = { op: 'select', cols: '*', set: null, filters: [], list: null, ret: '*' }
+    const self = {
+      select(cols) { if (state.op === 'update') state.ret = cols; else state.cols = cols; return self },
+      update(values) { state.op = 'update'; state.set = values; return self },
+      eq(column, value) { state.filters.push([column, value]); return self },
+      in(column, values) { state.list = [column, values]; return self },
+      then(resolve, reject) { return run().then(resolve, reject) },
+    }
+    async function run() {
+      const params = [], where = []
+      for (const [column, value] of state.filters) { params.push(value); where.push(`${column}=$${params.length}`) }
+      if (state.list) { params.push(state.list[1]); where.push(`${state.list[0]}=any($${params.length})`) }
+      const clause = where.length ? ` where ${where.join(' and ')}` : ''
+      try {
+        if (state.op === 'update') { const [column, value] = Object.entries(state.set)[0]; params.push(value); return { data: (await db.query(`update ${table} set ${column}=$${params.length}${clause} returning ${state.ret}`, params)).rows, error: null } }
+        return { data: (await db.query(`select ${state.cols} from ${table}${clause}`, params)).rows, error: null }
+      } catch (error) { return { data: null, error } }
+    }
+    return self
+  }
+  const fake = { from: builder }
+  const incidents = await loadTs('src/lib/incidents.ts', {
+    'server-only': {}, './incidentText': incidentText,
+    './audit': { logAudit: async (_db, entry) => { await db.query(`insert into audit_log(event_type,actor,message,details) values($1,$2,$3,$4)`, [entry.event_type, entry.actor, entry.message, JSON.stringify(entry.details ?? {})]) } },
+  })
+  const record = (key) => sql(`select record_incident('${key}','raw impact',gen_random_uuid(),'detail')`)
+  const open = async () => (await q(`select key from incidents where status='open' order by key`)).map((row) => row.key)
+  const HUMAN = ['turnover-missed:2026-11-13', 'wrongly-eliminated:abc:3', 'result-review:g1', 'schedule-sync:2026-11-12', 'schedule-change:g2']
+  for (const key of ['api/cron/worker/results', 'api/cron/sync-results', 'api/cron/worker/grading', ...HUMAN]) await record(key)
+  await record('api/cron/worker/results'); await record('api/cron/worker/results')
+  assert.equal(await scalar(`select occurrences from incidents where key='api/cron/worker/results'`), 3)
+
+  await incidents.resolveRecoveredForWorkload(fake, 'results')
+  assert.deepEqual(await open(), ['api/cron/worker/grading', ...HUMAN].sort(), 'only the results job incidents recover')
+  assert.equal(await auditCount('incident-resolved'), 1)
+  assert.match(await scalar(`select message from audit_log where event_type='incident-resolved'`), /Recovered: the job has run successfully since/)
+
+  await record('api/cron/worker/results')
+  assert.ok((await open()).includes('api/cron/worker/results'), 'the same problem happening again reopens it')
+
+  for (const workload of ['results', 'grading', 'assignment', 'advance', 'schedule', 'reminders', 'integrity', 'retention', 'campaigns', 'delivery']) await incidents.resolveRecoveredForWorkload(fake, workload)
+  assert.deepEqual(await open(), [...HUMAN].sort(), 'incidents that need a human decision stay open whatever the jobs do')
+
+  // The one-click clean-up of old rows: only job incidents whose job succeeded after they last happened.
+  await record('api/cron/worker/advance'); await record('api/cron/worker/schedule')
+  await sql(`update incidents set latest_at=now()-interval '3 days' where key like 'api/cron/%' or key like 'turnover-missed:%'`)
+  await sql(`insert into operation_runs(key,status,last_success_at) values('recurring:advance','pending',now()),('recurring:schedule','pending',now()-interval '10 days')`)
+  assert.deepEqual(await incidents.recoveredIncidentKeys(fake), ['api/cron/worker/advance'])
+  assert.equal(await incidents.resolveMany(fake, await incidents.recoveredIncidentKeys(fake), 'Old problems'), 1)
+  assert.ok((await open()).includes('api/cron/worker/schedule') && (await open()).includes('turnover-missed:2026-11-13'))
+  assert.equal(await incidents.resolveIncident(fake, 'result-review:g1', 'Checked'), true)
+  assert.equal(await incidents.resolveIncident(fake, 'result-review:g1', 'Checked'), false, 'already resolved')
+  assert.equal(await incidents.resolveByPrefix(fake, 'turnover-missed:', 'Jump'), 1)
+  console.log('PASS incidents: recovered job problems auto-resolve, human-decision ones stay open, clear and resolve are audited')
 }
 await db.close()

@@ -39,6 +39,7 @@ export const AUDIT_EVENT_TYPES: Record<string, string> = {
   'daily-summary': 'Daily summary',
   'operation-retried': 'Operation retried',
   'retention-applied': 'Retention applied',
+  'incident-resolved': 'Problem marked resolved',
 }
 
 // Failure events: reported through lib/alerts.ts, highlighted on the audit

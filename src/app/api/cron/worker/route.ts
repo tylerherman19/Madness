@@ -10,6 +10,7 @@ import { withOperation } from '@/lib/operations'
 import { centralClock, reminderWindow, turnoverCaughtUp } from '@/lib/operationPolicy'
 import { runTournamentJob,WORKLOADS,type Workload } from '@/lib/tournamentJobs'
 import { serverError } from '@/lib/alerts'
+import { resolveRecoveredKey } from '@/lib/incidents'
 export const maxDuration = 300
 export async function GET(req: NextRequest) {
  const unauthorized = requireCron(req)
@@ -56,6 +57,7 @@ export async function GET(req: NextRequest) {
    const delivery = await deliverNotifications(supabase)
    return { done: true, value: { assignmentComplete: assignment.done, delivery } }
   })
+  await resolveRecoveredKey(supabase, 'api/cron/worker')
   return NextResponse.json({ ok: true, ...result })
  } catch (error) { return serverError('api/cron/worker', error, 'Background work failed; it will retry') }
 }

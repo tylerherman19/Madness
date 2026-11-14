@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation'
 import type { Player } from '@/types'
 import { teamColor } from '@/lib/teamColors'
 import Modal from '@/app/components/Modal'
+import { pickChoices } from '@/lib/adminPickChoices'
+import { longDate } from '@/lib/staleDay'
 
 interface Props {
   players: Player[]
   activeWeekId: string | null
   activeWeekNumber: number | null
-  teams: string[]
+  activeDate: string | null
+  dayGames: { home_team: string; away_team: string }[]
+  usedTeams: Record<string, string[]>
   pickReceipts:Record<string,{id:string;updatedAt:string}>
   currentPicks: Record<string, string>
   weeksSurvived: Record<string, number>
@@ -24,7 +28,7 @@ function actionBtn(color: 'neutral' | 'red' | 'green') {
   }
 }
 
-export default function PlayersManager({ players, activeWeekId, activeWeekNumber, teams, currentPicks, pickReceipts, weeksSurvived }: Props) {
+export default function PlayersManager({ players, activeWeekId, activeWeekNumber, activeDate, dayGames, usedTeams, currentPicks, pickReceipts, weeksSurvived }: Props) {
   const router = useRouter()
   const [message, setMessage] = useState('')
   const [csvText, setCsvText] = useState('')
@@ -33,6 +37,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   const [pickModal, setPickModal] = useState<{ player: Player; team: string } | null>(null)
   const [pickReason,setPickReason]=useState('')
   const [submittingPick, setSubmittingPick] = useState(false)
+  const [pickError, setPickError] = useState('')
   const [editModal, setEditModal] = useState<{ id: string; full_name: string; email: string } | null>(null)
   const [editError, setEditError] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
@@ -207,6 +212,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   async function submitAdminPick() {
     if (!pickModal || !activeWeekId || pickReason.trim().length<3) return
     setSubmittingPick(true)
+    setPickError('')
     try {
       const res = await fetch('/api/picks', {
         method: 'POST',
@@ -218,14 +224,17 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
           submitted_by_admin: true, reason:pickReason, pick_id:pickReceipts[pickModal.player.id]?.id, expected_version:pickReceipts[pickModal.player.id]?.updatedAt,
         }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => null)
       if (res.ok) {
         setMessage(`Pick submitted for ${pickModal.player.full_name}: ${pickModal.team}`)
         setPickModal(null)
         router.refresh()
       } else {
-        setMessage(`Error: ${data.error}`)
+        // Stay open and say why, right next to the button.
+        setPickError(data?.error || 'The pick was not saved. Nothing was changed.')
       }
+    } catch {
+      setPickError('Could not reach the server. Nothing was changed; try again.')
     } finally {
       setSubmittingPick(false)
     }
@@ -475,7 +484,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                 </button>
                 {activeWeekId && p.status === 'alive' && (
                   <button
-                    onClick={() => setPickModal({ player: p, team: pick || '' })}
+                    onClick={() => { setPickError(''); setPickReason(''); setPickModal({ player: p, team: pick || '' }) }}
                     className="rounded border px-2 py-1 text-xs"
                     style={actionBtn('neutral')}
                   >
@@ -588,7 +597,7 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
                       </button>
                       {activeWeekId && p.status === 'alive' && (
                         <button
-                          onClick={() => setPickModal({ player: p, team: currentPicks[p.id] || '' })}
+                          onClick={() => { setPickError(''); setPickReason(''); setPickModal({ player: p, team: currentPicks[p.id] || '' }) }}
                           className="rounded border px-2 py-0.5 text-xs"
                           style={actionBtn('neutral')}
                         >
@@ -692,32 +701,43 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
             <h3 id="pick-modal-title" className="font-display text-2xl" style={{ color: 'var(--ink)' }}>
               {currentPicks[pickModal.player.id] ? 'Change Pick' : 'Submit Pick'} — {pickModal.player.full_name}
             </h3>
-            <label>Reason for organizer entry or correction<input value={pickReason} onChange={e=>setPickReason(e.target.value)} maxLength={500}/></label>
+            <label>Reason for organizer entry or correction<input aria-label="Reason for organizer entry or correction" value={pickReason} onChange={e=>setPickReason(e.target.value)} maxLength={500}/></label>
             {currentPicks[pickModal.player.id] && (
               <p className="text-xs" style={{ color: 'var(--muted)' }}>
                 Current pick: <span className="font-mono font-bold" style={{ color: 'var(--ink)' }}>{currentPicks[pickModal.player.id]}</span>
               </p>
             )}
-            <div>
-              <label htmlFor="playersmanager-team" className="eyebrow block mb-1">Team</label>
-              <select id="playersmanager-team"
-                value={pickModal.team}
-                onChange={(e) => setPickModal({ ...pickModal, team: e.target.value })}
-                className="field w-full px-3 py-2"
-                style={{ color: 'var(--ink)' }}
-              >
-                <option value="">Select team…</option>
-                {teams.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {activeDate && (
+              <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>Pick for {longDate(activeDate)}</p>
+            )}
+            {(() => {
+              const choices = pickChoices(dayGames, usedTeams[pickModal.player.id] ?? [], currentPicks[pickModal.player.id])
+              if (dayGames.length === 0) {
+                return <p role="status" className="text-sm" style={{ color: 'var(--warning)' }}>There are no games on this day, so there is nothing to pick. Check the schedule.</p>
+              }
+              return (
+                <div>
+                  <label htmlFor="playersmanager-team" className="eyebrow block mb-1">Team</label>
+                  <select id="playersmanager-team"
+                    value={pickModal.team}
+                    onChange={(e) => setPickModal({ ...pickModal, team: e.target.value })}
+                    className="field w-full px-3 py-2"
+                    style={{ color: 'var(--ink)' }}
+                  >
+                    <option value="">Select team…</option>
+                    {choices.map((c) => (
+                      <option key={c.team} value={c.team}>{c.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>Only teams playing this day, and not already used by this entry.</p>
+                </div>
+              )
+            })()}
+            {pickError && <p role="alert" className="text-sm" style={{ color: 'var(--danger)' }}>{pickError}</p>}
             <div className="flex gap-3">
               <button
                 onClick={submitAdminPick}
-                disabled={!pickModal.team || submittingPick || pickReason.trim().length<3}
+                disabled={!pickModal.team || dayGames.length === 0 || submittingPick || pickReason.trim().length<3}
                 className="btn-primary flex-1 py-2 font-semibold disabled:opacity-50"
               >
                 {submittingPick ? 'Submitting…' : currentPicks[pickModal.player.id] ? 'Change Pick' : 'Submit Pick'}
