@@ -4,6 +4,7 @@ import { adminSessionId } from '@/lib/session'
 import { getDb } from '@/lib/testMode'
 import { serverError } from '@/lib/alerts'
 import { revalidateContest } from '@/lib/revalidateContest'
+import { resolveIncident, resolveMany, recoveredIncidentKeys } from '@/lib/incidents'
 export async function POST(req: NextRequest) {
   const unauthorized = await requireAdmin()
   if (unauthorized) return unauthorized
@@ -20,6 +21,18 @@ export async function POST(req: NextRequest) {
         { error: 'An explanation is required' },
         { status: 400 },
       )
+    if (body.action === 'resolve-incident') {
+      if (typeof body.id !== 'string' || !body.id || body.id.length > 250)
+        return NextResponse.json({ error: 'Choose a problem to resolve' }, { status: 400 })
+      const closed = await resolveIncident(db, body.id, body.reason.trim())
+      return closed
+        ? NextResponse.json({ ok: true })
+        : NextResponse.json({ error: 'That problem was already resolved.' }, { status: 409 })
+    }
+    if (body.action === 'clear-recovered') {
+      const cleared = await resolveMany(db, await recoveredIncidentKeys(db), body.reason.trim())
+      return NextResponse.json({ ok: true, cleared })
+    }
     let result
     if (body.action === 'mode') {
       if (!['record-only', 'test-recipients', 'live'].includes(body.mode))

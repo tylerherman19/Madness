@@ -617,18 +617,18 @@ const otherSide = survivorSide === 'home' ? 'away' : 'home'
 }
 
 // ================================================================== step 9
-ev.section('Step 9: /admin/operations after the scheduler invocations')
+ev.section('Step 9: /admin/system (System status) after the scheduler invocations')
 {
   for (const kind of ['schedule', 'results', 'assignment', 'grading', 'advance']) await worker(kind)
-  const res = await A('GET', '/admin/operations')
+  const res = await A('GET', '/admin/system')
   const text = plain(res.text)
-  E('/admin/operations renders for the administrator', res.status === 200 && /Operations/.test(text) && /Scheduled job health/.test(res.text), `status ${res.status}`)
-  const overall = text.match(/Overall:\s*(OK|Overdue|Failing|Off)/)?.[1]
-  const jobs = ['Schedule sync', 'Results sync', 'Auto-assignment', 'Grading', 'Slate advancement'].map((label) => [label, text.match(new RegExp(`${label}\\s+(OK|Overdue|Failing|Off)`))?.[1] ?? '?'])
-  E('every scheduled job shows OK (none overdue or failing)', jobs.every(([, st]) => st === 'OK'), jobs.map(([l, st]) => `${l}: ${st}`).join(', '))
-  ev.note(`overall status shown: ${overall}; page excerpt: ${text.slice(text.indexOf('Overall'), text.indexOf('Overall') + 330)}`)
-  const anon = await http('GET', '/admin/operations', { ip: nextIp(), raw: true })
-  E('/admin/operations redirects an unauthenticated visitor to the admin login', anon.status >= 300 && anon.status < 400, `status ${anon.status}`)
+  E('/admin/system renders the System status page for the administrator', res.status === 200 && /System status/.test(text) && /Automatic jobs/.test(text), `status ${res.status}`)
+  const jobs = ['Update scores', 'Grade picks', 'Assign missed picks', 'Move to the next day', 'Refresh the schedule'].map((label) => [label, text.match(new RegExp(`${label}\\s+.*?\\s(OK|Late|Failing|Off)`))?.[1] ?? '?'])
+  E('every automatic job shows OK (none late or failing)', jobs.every(([, st]) => st === 'OK'), jobs.map(([l, st]) => `${l}: ${st}`).join(', '))
+  const old = await A('GET', '/admin/operations')
+  E('/admin/operations still works (it shows the status page)', old.status === 200 && /System status/.test(plain(old.text)), `status ${old.status}`)
+  const anon = await http('GET', '/admin/system', { ip: nextIp(), raw: true })
+  E('/admin/system redirects an unauthenticated visitor to the admin login', anon.status >= 300 && anon.status < 400, `status ${anon.status}`)
 }
 ev.line(`TOTAL so far pass=${ev.pass} fail=${ev.fail} ${ev.failures.join(' | ')}`)
 await closeSql()

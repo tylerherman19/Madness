@@ -109,14 +109,15 @@ test('advance shows a preview and needs a reason before it can run', async ({ pa
   expect(noReason.status()).toBe(400)
 })
 
-test('operations page shows job health, assignment state and open incidents', async ({ page, request }) => {
+test('the old operations address shows the System status page with job rows and open incidents', async ({ page, request }) => {
   await request.post(`${FIXTURE_DB}/incidents`, { data: { key: 'api/cron/worker/results', impact: 'Results delayed', occurrences: 7 } })
   await admin(page)
   await page.goto('/admin/operations')
-  const jobs = page.getByRole('table', { name: 'Scheduled job health' })
-  await expect(jobs).toContainText('Schedule sync')
-  await expect(jobs).toContainText('Database connection')
-  await expect(page.getByRole('table', { name: 'Open incidents' })).toContainText('Results delayed')
-  await expect(page.getByRole('table', { name: 'Open incidents' })).toContainText('7')
-  await expect(page.getByRole('alert').filter({ hasText: 'session secret is weak' })).toBeVisible()
+  await expect(page).toHaveURL(/\/admin\/system$/)
+  const jobs = page.getByRole('table', { name: 'Automatic jobs' })
+  await expect(jobs).toContainText('Update scores')
+  await expect(jobs).toContainText('Refresh the schedule')
+  const card = page.getByRole('article', { name: 'Updating scores was delayed' })
+  await expect(card).toContainText('7 times')
+  await expect(page.getByRole('alert').filter({ hasText: 'protects logins is weak' })).toBeVisible()
 })

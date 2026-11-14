@@ -133,7 +133,7 @@ export interface StatusSummary { open: IncidentCard[]; recovered: IncidentCard[]
 // What N counts, once: incidents still needing attention, jobs that are failing or late, and a stale
 // day. Recovered job incidents are never counted, and a job incident is not counted a second time
 // when its job row is already failing or late.
-export function summarize(incidents: IncidentInput[], jobs: JobStatus[], jobStates: { id: string; state: 'ok' | 'overdue' | 'failing' | 'off' }[], isStale: boolean): StatusSummary {
+export function summarize(incidents: IncidentInput[], jobs: JobStatus[], jobStates: { id: string; state: 'ok' | 'overdue' | 'failing' | 'off' }[], isStale: boolean, extraNeeds = 0): StatusSummary {
   const cards = incidents.map((i) => describeIncident(i, jobs))
   const open = cards.filter((c) => !c.recovered)
   const recovered = cards.filter((c) => c.recovered)
@@ -143,6 +143,6 @@ export function summarize(incidents: IncidentInput[], jobs: JobStatus[], jobStat
   const counted = open.filter((c) => { const w = workloadOfKey(c.key); return !(w && bad.has(w)) })
   // A stale day is already explained by its own incident when present; do not count it twice.
   const staleIncident = open.some((c) => c.key.startsWith('turnover-missed:'))
-  const needs = counted.length + failingJobs + lateJobs + (isStale && !staleIncident ? 1 : 0)
+  const needs = counted.length + failingJobs + lateJobs + extraNeeds + (isStale && !staleIncident ? 1 : 0)
   return { open, recovered, failingJobs, lateJobs, staleDay: isStale, needs, headline: needs === 0 ? 'Everything is running' : needs === 1 ? '1 thing needs your attention' : `${needs} things need your attention` }
 }
