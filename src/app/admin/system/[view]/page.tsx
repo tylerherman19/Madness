@@ -65,7 +65,6 @@ export default async function SystemView({
 }) {
   if (!(await getAdminSession())) redirect('/admin/login')
   const { view } = await params
-  if (view === 'advanced') redirect('/admin/system/advanced')
   if (view === 'overview') redirect('/admin/system/advanced')
   if (!views[view]) notFound()
   const query = await searchParams,
