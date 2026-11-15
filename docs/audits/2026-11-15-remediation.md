@@ -45,7 +45,7 @@ Residual: the private copy lives in the same Supabase project. It covers bad wri
 ## Decisions left to the owner
 
 - **SEC-04:** session-secret enforcement is an environment setting. Default behaviour is unchanged so a weak value can never lock every entrant out on deploy; see the PR for the verified production state and the owner step.
-- **INT-04 / entries:** whether one person may hold several entries, and whether unpaid entries count, are rules questions. Independent safeguard shipped: signup limited to 30 per network address per hour (was 1,000) plus the existing 5 per email. The published rules are unchanged.
+- **INT-04 / entries:** whether one person may hold several entries, and whether unpaid entries count, are rules questions. Independent safeguard shipped: signup limited to 150 per network address per hour (owner's choice, 2026-11-15) (was 1,000) plus the existing 5 per email. The published rules are unchanged.
 - **INT-05:** the public "has picked" flag before lock is kept (website and app show the same thing); hiding it is a product choice.
 - **REL-07:** make-good rule for entries restored after a later day locked remains a rules decision.
 - **Operations monitor:** left disabled; pg_cron is the active scheduler and is healthy. Re-enabling the GitHub workflow would duplicate the worker.
@@ -66,7 +66,7 @@ Residual: the private copy lives in the same Supabase project. It covers bad wri
 | INT-01 | Fixed (035); production leak reproduced and regression-tested for current day and early next day |
 | INT-02 | Out of scope by instruction |
 | INT-03 | Fixed: reserved domain refused at public signup, admin create, import and admin email edit; sandbox fixtures unaffected |
-| INT-04 | Safeguard: 30 signups/h per network (was 1,000); entry/payment rules left to the owner |
+| INT-04 | Safeguard: 150 signups/h per network (was 1,000); entry/payment rules left to the owner |
 | INT-05 | Kept by decision (public "has picked" for the active day); early next-day flag no longer exposed |
 | INT-06 | Fixed (036) for new writes; historical rows unchanged |
 | INT-07 | Deferred: requires app-clock ahead of DB clock plus a mobile submit; both clocks NTP-synced |
