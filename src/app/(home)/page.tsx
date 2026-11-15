@@ -149,7 +149,7 @@ export default async function Today() {
         </div>
         <div className={s.scoreCell}>
           <div className={s.cellLabel}>{entryDeadline ? 'Time to lock' : lockIso ? <>Locks<span className={s.liveExtra}> at first tip,</span> <LocalTime iso={lockIso} /></> : 'Lock time'}</div>
-          <div className={s.cellValue}>{lockIso ? <LockCountdown deadline={lockIso} soonClassName={s.clockSoon} /> : 'TBD'}</div>
+          <div className={s.cellValue}>{lockIso ? <LockCountdown deadline={lockIso} serverNow={now.toISOString()} soonClassName={s.clockSoon} /> : 'TBD'}</div>
         </div>
       </section>
 

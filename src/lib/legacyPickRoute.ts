@@ -16,7 +16,9 @@ export async function legacyPickPost(req: NextRequest) {
   try {
     const body = await readJsonObject(req)
     if (!body) return NextResponse.json(INVALID_REQUEST, { status: 400 })
-    if (body.expected_version !== undefined && body.expected_version !== null && typeof body.expected_version !== 'string') {
+    // Same field types as the reliability path, so both paths refuse the same requests.
+    const optionalString = (value: unknown, max = 500) => value === undefined || value === null || (typeof value === 'string' && value.length <= max)
+    if (!optionalString(body.expected_version) || !optionalString(body.request_id) || !optionalString(body.reason)) {
       return NextResponse.json(INVALID_REQUEST, { status: 400 })
     }
     const { slate_id: requestedSlate, team, pick_id, expected_version, player_id_override, submitted_by_admin } = body

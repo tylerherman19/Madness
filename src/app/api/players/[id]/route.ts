@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidateContest } from '@/lib/revalidateContest'
-import { getDb } from '@/lib/testMode'
-import { requireAdmin, isUuid, escapeIlike, adminDbMessage } from '@/lib/api'
+import { getDb, isTestMode } from '@/lib/testMode'
+import { isReservedTestEmail } from '@/lib/signupValidation'
+import { requireAdmin, isUuid, escapeIlike, adminDbMessage, readJsonObject } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { adminSessionId } from '@/lib/session'
 import { serverError } from '@/lib/alerts'
@@ -17,7 +18,19 @@ export async function PATCH(
   if (!isUuid(id)) {
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
   }
-  const body = await req.json()
+  const body = await readJsonObject(req)
+  if (!body) return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  // SEC-09: admin edits are typed before they reach the database.
+  if ('paid' in body && typeof body.paid !== 'boolean') return NextResponse.json({ error: 'paid must be true or false' }, { status: 400 })
+  if ('elimination_slate' in body && body.elimination_slate !== null && !(Number.isInteger(body.elimination_slate) && (body.elimination_slate as number) >= 1 && (body.elimination_slate as number) <= 10000)) {
+    return NextResponse.json({ error: 'Invalid elimination day' }, { status: 400 })
+  }
+  if ('elimination_reason' in body && body.elimination_reason !== null && (typeof body.elimination_reason !== 'string' || body.elimination_reason.length > 300)) {
+    return NextResponse.json({ error: 'Invalid elimination reason' }, { status: 400 })
+  }
+  if ('reason' in body && body.reason !== null && body.reason !== undefined && (typeof body.reason !== 'string' || body.reason.length > 500)) {
+    return NextResponse.json({ error: 'Invalid reason' }, { status: 400 })
+  }
   const supabase = await getDb()
 
   const allowed = ['paid', 'status', 'elimination_reason', 'elimination_slate', 'full_name', 'email']
@@ -45,6 +58,9 @@ export async function PATCH(
     const email = typeof updates.email === 'string' ? updates.email.trim().toLowerCase() : ''
     if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
+    }
+    if (isReservedTestEmail(email) && !(await isTestMode())) {
+      return NextResponse.json({ error: 'That email domain is reserved for test accounts and would hide the entry from every public page.' }, { status: 400 })
     }
     const { data: byEmail } = await supabase
       .from('players')

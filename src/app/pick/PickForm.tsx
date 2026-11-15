@@ -381,14 +381,14 @@ export default function PickForm({
         {deadline && (
           <div className={s.lockBox}>
             <span>Locks at {lockText}</span>
-            <LockCountdown deadline={deadline} className={s.lockClock} soonClassName={s.clockSoon} />
+            <LockCountdown deadline={deadline} serverNow={serverNow} className={s.lockClock} soonClassName={s.clockSoon} />
           </div>
         )}
       </div>
       <p className={s.availLine}><b>{available.length}</b> of {teams.length} teams available{sharedRound ? ` · ${requiredPicks} picks this round` : ''}</p>
       <div className={s.mobileLock}>
         <span>{available.length} of {teams.length} teams available</span>
-        {deadline && <span>Locks {lockText} · <b><LockCountdown deadline={deadline} /></b></span>}
+        {deadline && <span>Locks {lockText} · <b><LockCountdown deadline={deadline} serverNow={serverNow} /></b></span>}
       </div>
       {deadlineMoved && !locked && <p role="alert" className={s.alert}>{deadlineMoved}</p>}
       {resultPending && !locked && <p className={s.notice}>Your win is final on the live scoreboard and is being confirmed. You can choose now; saving opens within a minute or two.</p>}

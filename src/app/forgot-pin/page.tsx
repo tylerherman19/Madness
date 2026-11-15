@@ -13,6 +13,7 @@ export default function ForgotPinPage() {
     >
       <div className="space-y-4">
         <p>Email the organizer from the address you joined with. They’ll give you a one-time link to choose a new password. It works once and expires after 60 minutes.</p>
+        <p>Picks lock soon? Include the team you want in your email — the organizer can enter your pick for you before the lock.</p>
         <a className="btn-primary w-full py-3" href={`mailto:${supportEmail}?subject=${encodeURIComponent('Pick and Pray password reset')}`}>Email the organizer</a>
         <p>{supportEmail}</p>
       </div>
