@@ -96,7 +96,12 @@ console.log('PASS the owner still sees their own unrevealed pick in their own ro
 await reveal(S.d1)
 const dayOneRevealed = await standings(U.a)
 assert.deepEqual(row(dayOneRevealed, P.b), { days: 2, seed: 8 }, 'revealed day counts')
+const flagBefore = (await as(U.a, `select player_id, has_pick from public.get_slate_picks('${S.d2}')`)).find(r => r.player_id === P.b)?.has_pick
 await pick(P.b, S.d2, 'India', 9)
+const flagAfter = (await as(U.a, `select player_id, has_pick from public.get_slate_picks('${S.d2}')`)).find(r => r.player_id === P.b)?.has_pick
+assert.equal(flagBefore, false); assert.equal(flagAfter, false, 'a rival\'s early next-day pick must not flip has_pick')
+assert.equal((await as(U.b, `select player_id, has_pick from public.get_slate_picks('${S.d2}')`)).find(r => r.player_id === P.b)?.has_pick, true, 'the owner sees their own')
+console.log('PASS early next-day: get_slate_picks.has_pick does not reveal who already picked tomorrow')
 const afterEarly = await standings(U.a)
 assert.deepEqual(row(afterEarly, P.b), row(dayOneRevealed, P.b), 'early next-day pick must not move totals')
 assert.equal(order(afterEarly), order(dayOneRevealed))

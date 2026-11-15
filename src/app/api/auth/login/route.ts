@@ -28,18 +28,21 @@ export async function POST(req: NextRequest) {
     const identity = email.trim().toLowerCase()
     const ip = await getIP()
     const accountKey = createHash('sha256').update(identity).digest('hex')
-    const limits = await Promise.all([
-      checkRateLimit(`login-account-network:${accountKey}:${ip}`, 10, 15 * 60),
-      checkRateLimit(`login-network:${ip}`, 1000, 15 * 60),
-      // SEC-06: one account across every network. Rotating IP addresses no
-      // longer buys unlimited guesses. Generous enough that an owner is not
-      // locked out by their own retries; a signed-in session is unaffected.
-      checkRateLimit(`login-account:${accountKey}`, 30, 60 * 60),
-    ])
-    if (limits.some(limit => !limit.allowed)) return NextResponse.json(
+    const tooMany = () => NextResponse.json(
       { error: 'Too many login attempts. Try again in 15 minutes.' },
       { status: 429, headers: { 'Retry-After': '900' } }
     )
+    const limits = await Promise.all([
+      checkRateLimit(`login-account-network:${accountKey}:${ip}`, 10, 15 * 60),
+      checkRateLimit(`login-network:${ip}`, 1000, 15 * 60),
+    ])
+    if (limits.some(limit => !limit.allowed)) return tooMany()
+    // SEC-06: one account across every network, counted only for attempts the
+    // per-network limits already let through (they increment on every call, so
+    // running this one in parallel would let refused requests lock the account).
+    // One address gets at most 40 an hour, so it alone can never reach 100;
+    // rotating addresses no longer buys unlimited guesses.
+    if (!(await checkRateLimit(`login-account:${accountKey}`, 100, 60 * 60)).allowed) return tooMany()
     const supabase = await getDb()
     const { data: players, error } = await supabase.from('players')
       .select('id, full_name, pin_hash, status')

@@ -108,7 +108,7 @@ export async function refreshLockTime(db: SupabaseClient, slateId: string): Prom
     .limit(1)
 
   if (gameError) throw gameError
-  const { data: slate, error: slateError } = await db.from('slates').select('locks_at').eq('id', slateId).single()
+  const { data: slate, error: slateError } = await db.from('slates').select('locks_at, is_active').eq('id', slateId).single()
   if (slateError) throw slateError
   const tip = data?.[0]?.tip_time ?? null
   const previous = slate?.locks_at
@@ -121,6 +121,11 @@ export async function refreshLockTime(db: SupabaseClient, slateId: string): Prom
   if (previous && locksAt && new Date(locksAt).getTime() < new Date(previous).getTime()) {
     const detail = { slate_id: slateId, from: previous, to: locksAt }
     await logAudit(db, { event_type: 'lock-moved-earlier', actor: 'system', message: `Lock moved earlier: ${previous} -> ${locksAt}`, details: detail })
-    await db.rpc('record_incident', { p_key: `lock-moved-earlier:${slateId}`, p_impact: 'A game was scheduled earlier, so this day now locks earlier than first published. Tell players.', p_correlation: randomUUID(), p_detail: JSON.stringify(detail) }).then(() => {}, () => {})
+    // Only a change players can act on is an incident: the active day, a lock
+    // within two days, or a day someone has already picked. Far-off days firm
+    // up their tip times routinely; the audit row is enough for those.
+    const soon = new Date(locksAt).getTime() - Date.now() < 48 * 3600 * 1000
+    const picked = slate?.is_active || soon ? true : ((await db.from('picks').select('id', { count: 'exact', head: true }).eq('slate_id', slateId)).count ?? 0) > 0
+    if (slate?.is_active || soon || picked) await db.rpc('record_incident', { p_key: `lock-moved-earlier:${slateId}`, p_impact: 'A game was scheduled earlier, so this day now locks earlier than first published. Tell players.', p_correlation: randomUUID(), p_detail: JSON.stringify(detail) }).then(() => {}, () => {})
   }
 }

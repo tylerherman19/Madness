@@ -55,6 +55,13 @@ const verify = async snap => ({ tables: Object.keys(snap.tables).length, rows: 1
   assert.ok(s.state.calls.filter(c => c.authorized).every(c => !c.bearer), 'sb_secret keys are not sent as a bearer token')
   console.log('PASS private bucket created, both archives stored, read back and restored in isolation')
 }
+// 1b. A re-run attempt of the same workflow run does not collide.
+{
+  const s = storage()
+  for (const attempt of ['1', '2']) await storeAndVerify({ url: URL_, key: KEY, keys: [NEW], runId: '46', attempt, files }, { request: s.request, read: read(archives(NEW)), verify })
+  assert.equal(s.state.objects.size, 4)
+  console.log('PASS a re-run attempt stores alongside the first instead of failing with 409')
+}
 // 2. Refuses a public bucket or an object readable without credentials.
 await assert.rejects(storeAndVerify({ url: URL_, key: KEY, keys: [NEW], runId: '43', files }, { request: storage({ publicBucket: true }).request, read: read(archives(NEW)), verify }), /missing or public/)
 await assert.rejects(storeAndVerify({ url: URL_, key: KEY, keys: [NEW], runId: '44', files }, { request: storage({ exposeObjects: true }).request, read: read(archives(NEW)), verify }), /readable without credentials/)

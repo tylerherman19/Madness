@@ -15,6 +15,8 @@
 -- caller's own. Mirrors src/lib/dashboard.ts, which totals revealed days only.
 -- has_current_pick (active day only) is unchanged: the website shows the
 -- same "has picked" flag (see INT-05 in the 2026-11-14 audit).
+-- get_slate_picks.has_pick for a later, unrevealed day no longer shows
+-- who has made an early next-day pick.
 --
 -- SEC-07: each read function now also requires that the caller owns at least
 -- one entry. A signed-in user with no linked entry gets the same 28000 error
@@ -131,9 +133,13 @@ begin
       if v_slate.id is null then return; end if;
       v_revealed := app_private.slate_is_revealed(p_slate_id);
 
+      -- "Has picked" is public only for the active day (as on the website) or
+      -- once the day is revealed. For a later day it would show who has
+      -- already made an early next-day pick.
       return query
       select p.id, p.full_name, p.status, p.elimination_slate,
-             exists (select 1 from public.picks pk where pk.player_id = p.id and pk.slate_id = p_slate_id),
+             (v_slate.is_active or v_revealed or p.id = any (v_mine))
+               and exists (select 1 from public.picks pk where pk.player_id = p.id and pk.slate_id = p_slate_id),
              t.team
       from public.players p
       cross join lateral (

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { countdownOffsetMs } from '@/lib/clockOffset'
 
 // Time left until the slate locks: "2:14:36". Turns amber in the last hour
 // (when given a class for it) and reads "Locked" once the deadline passes.
@@ -10,7 +11,7 @@ import { useEffect, useState } from 'react'
 export default function LockCountdown({ deadline, serverNow, className, soonClassName }: { deadline: string; serverNow?: string; className?: string; soonClassName?: string }) {
   const [left, setLeft] = useState<number | null>(null)
   useEffect(() => {
-    const offset = serverNow ? new Date(serverNow).getTime() - Date.now() : 0
+    const offset = countdownOffsetMs(serverNow, Date.now())
     const tick = () => setLeft(Math.max(0, new Date(deadline).getTime() - (Date.now() + offset)))
     const first = setTimeout(tick, 0)
     const id = setInterval(tick, 1000)

@@ -109,15 +109,16 @@ export async function pruneArchives({ url, key }, now = new Date(), request = fe
 
 // Upload both archives, prove they are private, read them back, decrypt and
 // restore them in isolation, and compare digests with the local files.
-export async function storeAndVerify({ url, key, keys, runId, now = new Date(), files }, { request = fetch, read = readFile, verify = restoreCheck } = {}) {
+export async function storeAndVerify({ url, key, keys, runId, attempt = '1', now = new Date(), files }, { request = fetch, read = readFile, verify = restoreCheck } = {}) {
  if (!url?.startsWith('https://') || !key) throw new PrivateBackupError('Configure the intended Supabase project; credentials are never printed')
- if (!/^[1-9][0-9]{0,19}$/.test(String(runId))) throw new PrivateBackupError('A workflow run id is required')
+ if (!/^[1-9][0-9]{0,19}$/.test(String(runId)) || !/^[1-9][0-9]{0,3}$/.test(String(attempt))) throw new PrivateBackupError('A workflow run id and attempt are required')
  await ensurePrivateBucket({ url, key }, request)
  const day = now.toISOString().slice(0, 10)
  const results = []
  for (const schema of SCHEMAS) {
   const local = await read(files[schema], 'utf8')
-  const path = `daily/${day}/${runId}/backup-${schema}.json.enc`
+  // The attempt keeps a re-run of a failed job from colliding with its first upload.
+  const path = `daily/${day}/${runId}-${attempt}/backup-${schema}.json.enc`
   await uploadArchive({ url, key }, path, local, request)
   await assertNotPublic({ url }, path, request)
   const stored = await downloadArchive({ url, key }, path, request)
@@ -139,7 +140,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const result = await storeAndVerify({
    url: process.env.SUPABASE_URL, key: process.env.SUPABASE_SERVICE_ROLE_KEY,
    keys: [process.env.BACKUP_ENCRYPTION_KEY, process.env.BACKUP_ENCRYPTION_KEY_PREVIOUS].filter(Boolean),
-   runId: process.env.GITHUB_RUN_ID,
+   runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT ?? '1',
    files: Object.fromEntries(SCHEMAS.map(schema => [schema, `work/backup-${schema}.json.enc`])),
   })
   console.log(JSON.stringify(result))

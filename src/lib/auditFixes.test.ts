@@ -22,3 +22,11 @@ test('USE-02: a daily pool needs one pick on the current day only', () => {
 test('REL-03: the database refusal for a pending early pick maps to a clear 409, not a server error', () => {
   assert.deepEqual(pickWriteError({ code: 'P0001', message: 'Pick period is not open' }), { status: 409, message: EARLY_PICK_PENDING })
 })
+test('USE-04: the countdown never adds time for a stale server timestamp, but corrects a slow device', async () => {
+  const { countdownOffsetMs } = await import('./clockOffset.ts')
+  const device = Date.parse('2099-01-01T12:00:00Z')
+  assert.equal(countdownOffsetMs('2099-01-01T11:59:00Z', device), 0, 'stale serverNow: no extra time')
+  assert.equal(countdownOffsetMs('2099-01-01T12:02:00Z', device), 120000, 'slow device: moved forward')
+  assert.equal(countdownOffsetMs(undefined, device), 0)
+  assert.equal(countdownOffsetMs('garbage', device), 0)
+})
