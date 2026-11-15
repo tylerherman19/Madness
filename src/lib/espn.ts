@@ -159,10 +159,12 @@ export async function fetchDayScoreboard(
     ['Tournament', TOURNAMENT_GROUP],
   ]
 
+  // One retry for a group whose request failed: a single slow or dropped
+  // ESPN response otherwise marks the whole day's feed incomplete.
   const results = await Promise.all(
     groups.map(async ([name, group]) => ({
       name,
-      events: await fetchGroup(group, yyyymmdd, revalidateSeconds),
+      events: (await fetchGroup(group, yyyymmdd, revalidateSeconds)) ?? (await fetchGroup(group, yyyymmdd, revalidateSeconds)),
     }))
   )
 

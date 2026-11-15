@@ -40,22 +40,24 @@ export async function syncResults(supabase: import('@supabase/supabase-js').Supa
     // must not turn an unpublished future scoreboard into a worker failure.
     const candidates = [...(active.slate_date <= today ? [active] : []), ...pending.slice(0, 3)]
     const reviewGames = new Set<string>()
-    let failed = 0
+    // The reason each date failed, so the incident says what to look at
+    // instead of only how many dates failed.
+    const failures: string[] = []
     for (const slate of candidates) {
       try {
         const sync = await syncSlateFromEspn(supabase, slate.slate_date.replace(/-/g, ''), slate.season_year)
         for (const id of sync.reviewGames ?? []) reviewGames.add(id)
-        if (!sync.ok || sync.partial?.length) throw new Error(sync.error ?? 'Result feed is incomplete')
+        if (!sync.ok || sync.partial?.length) throw new Error(sync.error ?? `Result feed is incomplete (${(sync.partial ?? []).join(', ')})`)
         const games = await loadGamesForSlates(supabase, [slate.id])
         if(grade) grading.push({ slate_id: slate.id, ...await gradeSlatePicks(supabase, slate.id,
           slate.slate_number, games.filter(game => !reviewGames.has(game.id) && game.result !== 'pending')) })
-      } catch { failed++ }
+      } catch (error) { failures.push(`${slate.slate_date}: ${error instanceof Error ? error.message : 'sync failed'}`) }
       if (process.env.AUTOMATION_V2_ENABLED === 'true') {
         const { error } = await supabase.from('slates').update({ result_checked_at: new Date().toISOString() }).eq('id', slate.id)
         if (error) throw error
       }
     }
-    if (failed) throw new Error(`${failed} result dates could not be reconciled; other dates were processed`)
+    if (failures.length) throw new Error(`${failures.length} result date${failures.length === 1 ? '' : 's'} could not be reconciled (${failures.join('; ')}); other dates were processed`)
     revalidateContest()
     return NextResponse.json({ ok: true, periods_synced: candidates.length, review_games: [...reviewGames], grading })
 
