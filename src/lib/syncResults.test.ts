@@ -3,12 +3,15 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { centralClock, orderRecoveryDates } from './operationPolicy.ts'
+import { redactLog } from './logRedaction.ts'
 
 type SlateFixture = { id: string; slate_number: number; slate_date: string; season_year: number; is_active: boolean; locks_at: string }
 type GameFixture = { slate_id: string; result: string }
 
-function fixture(slates: SlateFixture[], games: GameFixture[] = [], pickedIds: string[] = [], failedDates: string[] = []) {
+type SyncOutcome = Record<string, unknown> | (() => never)
+function fixture(slates: SlateFixture[], games: GameFixture[] = [], pickedIds: string[] = [], failedDates: string[] = [], outcomes: Record<string, SyncOutcome> = {}) {
   const synced: string[] = []
+  const reported: unknown[] = []
   const graded: { id: string; games: GameFixture[] }[] = []
   const checked: string[] = []
   const dependencies: Record<string, unknown> = {
@@ -17,7 +20,9 @@ function fixture(slates: SlateFixture[], games: GameFixture[] = [], pickedIds: s
     'next/server': { NextResponse: { json: Response.json } },
     '@/lib/espnSync': { syncSlateFromEspn: async (_db: unknown, date: string) => {
       synced.push(date)
-      return { ok: !failedDates.includes(date) }
+      const outcome = outcomes[date]
+      if (typeof outcome === 'function') outcome()
+      return outcome ?? { ok: !failedDates.includes(date) }
     } },
     '@/lib/grading': { gradeSlatePicks: async (_db: unknown, id: string, _number: number, completed: GameFixture[]) => {
       graded.push({ id, games: completed })
@@ -28,7 +33,7 @@ function fixture(slates: SlateFixture[], games: GameFixture[] = [], pickedIds: s
       loadGamesForSlates: async (_db: unknown, ids: string[]) => games.filter(game => ids.includes(game.slate_id)),
       loadPicksForSlates: async (_db: unknown, ids: string[]) => pickedIds.filter(id => ids.includes(id)).map(slate_id => ({ slate_id })),
     },
-    '@/lib/alerts': { serverError: async () => Response.json({ error: 'Fixture sync failed' }, { status: 500 }) },
+    '@/lib/alerts': { describeError: redactLog, serverError: async (_source: string, err: unknown) => { reported.push(err); return Response.json({ error: 'Fixture sync failed' }, { status: 500 }) } },
     './operationPolicy': { centralClock, orderRecoveryDates },
   }
   const exports: { syncResults?: (db: unknown, now: Date) => Promise<Response> } = {}
@@ -47,7 +52,7 @@ function fixture(slates: SlateFixture[], games: GameFixture[] = [], pickedIds: s
       return { error: null }
     } }) }
   } }
-  return { run: (now: Date) => exports.syncResults!(db, now), synced, graded, checked }
+  return { run: (now: Date) => exports.syncResults!(db, now), synced, graded, checked, reported }
 }
 
 const now = new Date('2026-10-18T02:00:00Z') // Still October 17 in Central time.
@@ -86,4 +91,19 @@ test('the current Central playing day is polled and a feed failure still permits
   assert.equal(response.status, 500)
   assert.deepEqual(state.synced, ['20261017', '20261016'])
   assert.ok(state.graded.some(row => row.id === overdue.id))
+})
+
+test('a failed date is reported with its date and reason, including a partial feed and a non-Error throw', async () => {
+  const current = { ...future, slate_date: '2026-10-17' }
+  const partial = fixture([current, overdue], [{ slate_id: overdue.id, result: 'pending' }], [overdue.id], [], {
+    '20261017': { ok: true, partial: ['SEC'] },
+    // Supabase returns errors as plain objects that espnSync rethrows as-is.
+    '20261016': () => { throw { code: '40P01', message: 'deadlock detected' } },
+  })
+  const response = await partial.run(now)
+  assert.equal(response.status, 500)
+  const message = (partial.reported[0] as Error).message
+  assert.match(message, /^2 result dates could not be reconciled/)
+  assert.match(message, /2026-10-17: Result feed is incomplete \(SEC\)/)
+  assert.match(message, /2026-10-16: .*deadlock detected/)
 })
