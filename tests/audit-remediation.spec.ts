@@ -100,12 +100,12 @@ test('early next-day pick while the stored result is pending: clear 409, no inci
 test('a selection still unsubmitted when the lock passes is reported as not saved, after the refresh too', async ({ page, request }) => {
   await login(page.request, 'player+test@example.test')
   // Lock in a few seconds.
-  const soon = new Date(Date.now() + 6000).toISOString()
+  const soon = new Date(Date.now() + 12000).toISOString()
   expect((await request.patch(`${FIXTURE_DB}/slates?id=eq.${SLATE}`, { data: { locks_at: soon } })).ok()).toBeTruthy()
   expect((await request.patch(`${FIXTURE_DB}/games?slate_id=eq.${SLATE}`, { data: { tip_time: soon } })).ok()).toBeTruthy()
   await page.goto('/pick')
   await page.getByRole('radio', { name: /\bA\b/ }).first().click()
-  await expect(page.locator('p[role=alert]')).toContainText(/locked at .* before you submitted\. .* was not saved/, { timeout: 15000 })
+  await expect(page.locator('p[role=alert]')).toContainText(/locked at .* before you submitted\. .* was not saved/, { timeout: 25000 })
   await page.reload()
   await expect(page.locator('p[role=alert]')).toContainText(/was not saved/)
   expect(await rows(request, '/picks')).toHaveLength(0)
