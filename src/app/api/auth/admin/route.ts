@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { password } = await req.json()
+    // A malformed body is a client error, never an incident (SEC-05).
+    const body: unknown = await req.json().catch(() => null)
+    const password = body && typeof body === 'object' && !Array.isArray(body) ? (body as { password?: unknown }).password : undefined
     if (!password || typeof password !== 'string' || password.length > 200) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
     }

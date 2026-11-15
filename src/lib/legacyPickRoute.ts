@@ -3,18 +3,22 @@ import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { getPoolConfig } from '@/lib/pool'
 import { getSession, getAdminSession } from '@/lib/session'
-import { isUuid } from '@/lib/api'
+import { isUuid, readJsonObject, INVALID_REQUEST } from '@/lib/api'
 import { isSlateLocked, seedForTeam } from '@/lib/deadline'
 import { loadPickWindow, UNSTORED_DAY } from '@/lib/pickWindow'
 import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
-import { pickWriteError } from '@/lib/pickErrors'
+import { pickWriteError, EARLY_PICK_PENDING } from '@/lib/pickErrors'
 import type { Game } from '@/types'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { serverError } from '@/lib/alerts'
 
 export async function legacyPickPost(req: NextRequest) {
   try {
-    const body = await req.json()
+    const body = await readJsonObject(req)
+    if (!body) return NextResponse.json(INVALID_REQUEST, { status: 400 })
+    if (body.expected_version !== undefined && body.expected_version !== null && typeof body.expected_version !== 'string') {
+      return NextResponse.json(INVALID_REQUEST, { status: 400 })
+    }
     const { slate_id: requestedSlate, team, pick_id, expected_version, player_id_override, submitted_by_admin } = body
 
     // Allow admin to submit on behalf of a player
@@ -35,7 +39,7 @@ export async function legacyPickPost(req: NextRequest) {
     const { allowed } = await checkRateLimit(`pick:${playerId}`, 30, 60)
     if (!allowed) return NextResponse.json({ error: 'Too many pick changes. Try again in a minute.' }, { status: 429, headers: { 'Retry-After': '60' } })
 
-    if (!requestedSlate || typeof team !== 'string' || !team || team.length > 80) {
+    if (typeof requestedSlate !== 'string' || !requestedSlate || typeof team !== 'string' || !team || team.length > 80) {
       return NextResponse.json({ error: 'Missing slate_id or team' }, { status: 400 })
     }
 
@@ -76,6 +80,9 @@ export async function legacyPickPost(req: NextRequest) {
     const retry = window.picks.find(pick => pick.slate_id === slate_id && pick.team === team && (!pick_id || pick.id === pick_id))
     if (retry) return NextResponse.json({ ok: true, pick: retry })
     const slate = window.seasonSlates.find((row) => row.id === slate_id)
+    if (!isAdmin && window.resultPending && slate_id === window.pickSlate?.id && slate_id !== window.activeSlate?.id) {
+      return NextResponse.json({ error: EARLY_PICK_PENDING, resultPending: true }, { status: 409 })
+    }
     if (!slate || (isAdmin ? !slate.is_active : window.pickSlate?.id !== slate_id)) {
       return NextResponse.json(
         { error: 'This game day is not open for you yet. Your previous pick must finish with a win first.' },

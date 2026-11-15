@@ -82,16 +82,18 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
     setBulkWorking(true)
     setMessage('')
     const ids = [...selected]
-    await Promise.all(
+    const results = await Promise.all(
       ids.map((id) =>
         fetch(`/api/players/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ paid }),
-        })
+        }).then((r) => r.ok, () => false)
       )
     )
-    setMessage(`Marked ${ids.length} player${ids.length !== 1 ? 's' : ''} as ${paid ? 'paid' : 'unpaid'}`)
+    // USE-10: report what actually changed, not what was asked for.
+    const done = results.filter(Boolean).length
+    setMessage(`Marked ${done} player${done !== 1 ? 's' : ''} as ${paid ? 'paid' : 'unpaid'}${done < ids.length ? ` — ${ids.length - done} failed; refresh and retry those` : ''}`)
     setSelected(new Set())
     setBulkWorking(false)
     router.refresh()
@@ -130,11 +132,13 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   async function bulkDelete() {
     if (!someSelected) return
     const ids = [...selected]
-    if (!confirm(`Permanently delete ${ids.length} player${ids.length !== 1 ? 's' : ''}? This cannot be undone and removes all their picks.`)) return
+    // SEC-08 / USE-10: a permanent deletion needs a recorded reason.
+    const reason = prompt(`Permanently delete ${ids.length} player${ids.length !== 1 ? 's' : ''}? This cannot be undone and removes all their picks.\n\nType the reason (kept in the audit log):`)?.trim()
+    if (!reason) return
     setBulkWorking(true)
     setMessage('')
     const results = await Promise.all(
-      ids.map((id) => fetch(`/api/players/${id}`, { method: 'DELETE' }))
+      ids.map((id) => fetch(`/api/players/${id}?reason=${encodeURIComponent(reason)}`, { method: 'DELETE' }))
     )
     const failed = results.filter((r) => !r.ok).length
     setMessage(
@@ -148,14 +152,15 @@ export default function PlayersManager({ players, activeWeekId, activeWeekNumber
   }
 
   async function deletePlayer(player: Player) {
-    if (!confirm(`Permanently delete ${player.full_name}? This cannot be undone and removes all their picks.`)) return
-    const res = await fetch(`/api/players/${player.id}`, { method: 'DELETE' })
+    const reason = prompt(`Permanently delete ${player.full_name}? This cannot be undone and removes all their picks.\n\nType the reason (kept in the audit log):`)?.trim()
+    if (!reason) return
+    const res = await fetch(`/api/players/${player.id}?reason=${encodeURIComponent(reason)}`, { method: 'DELETE' })
     if (res.ok) {
       setMessage(`${player.full_name} deleted`)
       setSelected((prev) => { const next = new Set(prev); next.delete(player.id); return next })
       router.refresh()
     } else {
-      setMessage('Failed to delete player')
+      setMessage((await res.json().catch(() => null))?.error || 'Failed to delete player')
     }
   }
 

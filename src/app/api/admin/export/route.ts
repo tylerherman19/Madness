@@ -1,4 +1,5 @@
 import { allRows } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { requireAdmin } from '@/lib/api'
@@ -38,6 +39,8 @@ export async function GET(req: NextRequest) {
         .select('full_name, email, phone, venmo_handle, paid, status, elimination_slate')
         .order('full_name'))
       if (error) throw error
+      // SEC-08: exporting contact details is recorded.
+      await logAudit(supabase, { event_type: 'players-exported', actor: 'admin', message: `Admin exported contact details for ${(players || []).length} entries`, details: { type, rows: (players || []).length } })
 
       const csv = toCsv(
         ['full_name', 'email', 'phone', 'venmo_handle', 'paid', 'status', 'elimination_slate'],

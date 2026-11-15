@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/testMode'
+import { getDb, isTestMode } from '@/lib/testMode'
+import { isReservedTestEmail } from '@/lib/signupValidation'
 import { requireAdmin, escapeIlike } from '@/lib/api'
 import { hashPassword, passwordValidationError } from '@/lib/password'
 import { logAudit } from '@/lib/audit'
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await getDb()
+    const testMode = await isTestMode()
 
     let count = 0
     let skipped = 0
@@ -68,6 +70,15 @@ export async function POST(req: NextRequest) {
         const passwordError = passwordValidationError(row.password)
         if (passwordError) {
           errors.push(`${row.full_name}: ${passwordError}`)
+          continue
+        }
+        // SEC-09 / INT-03: a malformed or reserved test address never becomes an entry.
+        if (!row.email || row.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+          errors.push(`${row.full_name}: invalid email address`)
+          continue
+        }
+        if (isReservedTestEmail(row.email) && !testMode) {
+          errors.push(`${row.full_name}: that email domain is reserved for test accounts`)
           continue
         }
 

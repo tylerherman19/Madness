@@ -44,3 +44,14 @@ jobs:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           BACKUP_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
         run: node scripts/record-backup-check.mjs
+      # SEC-01 / REL-06: the same encrypted archives in a private Supabase
+      # Storage bucket, proven unreadable without credentials, read back and
+      # restored in isolation. The public artifact above is retired only after
+      # this step has a verified run (docs/audits/2026-11-15-remediation.md).
+      - name: Store and verify a private copy
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_ENCRYPTION_KEY_PREVIOUS: ${{ secrets.BACKUP_ENCRYPTION_KEY_PREVIOUS }}
+        run: node scripts/private-backup.mjs

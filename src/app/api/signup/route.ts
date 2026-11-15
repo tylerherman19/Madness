@@ -27,7 +27,9 @@ export async function POST(req: NextRequest) {
     const identityKey = createHash('sha256').update(email.trim().toLowerCase()).digest('hex')
     const limits = await Promise.all([
       checkRateLimit(`signup-account:${identityKey}`, 5, 60 * 60),
-      checkRateLimit(`signup-network:${ip}`, 1000, 60 * 60),
+      // INT-04: 1,000/hour let one script fill the field. 30/hour still lets a
+      // household or office on one shared Wi-Fi address sign up together.
+      checkRateLimit(`signup-network:${ip}`, 30, 60 * 60),
     ])
     const allowed = limits.every(limit => limit.allowed)
     if (!allowed) {

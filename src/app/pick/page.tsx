@@ -47,6 +47,7 @@ type PickPageData =
       serverNow: string
       locked: boolean
       teamBrands: TeamBrandDirectory
+      resultPending: boolean
     }
 
 async function loadPickData(
@@ -168,6 +169,7 @@ async function loadPickData(
       sharedRound: sharedQuota != null,
       locked,
       serverNow: now.toISOString(),
+      resultPending: !!window.resultPending,
       // Only the teams this board shows: the day's games and your used teams.
       teamBrands: brandsFor([
         ...gameRows.flatMap((row) => [row.away.team, row.home.team]),
@@ -231,6 +233,7 @@ export default async function PickPage() {
       dateLabel={data.dateLabel}
       titleLabel={data.titleLabel}
       tagName={teamTagName(mode)}
+      resultPending={data.resultPending}
     />
   )
 }

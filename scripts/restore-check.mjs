@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
-import { decryptBackup, snapshotDigest } from './backup.mjs'
+import { decryptBackupWithKeys, snapshotDigest } from './backup.mjs'
 export async function restoreCheck(snapshot) {
  const db = new PGlite()
  try {
@@ -62,7 +62,7 @@ export async function restoreCheck(snapshot) {
 if (process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
  try {
   const envelope=JSON.parse(await readFile(process.argv[2],'utf8'))
-  const snapshot=decryptBackup(envelope,process.env.BACKUP_ENCRYPTION_KEY)
+  const snapshot=decryptBackupWithKeys(envelope,[process.env.BACKUP_ENCRYPTION_KEY,process.env.BACKUP_ENCRYPTION_KEY_PREVIOUS])
   const result=await restoreCheck(snapshot)
   console.log(`PASS isolated restore: ${result.tables} tables, ${result.rows} rows reconciled. No live database was modified.`)
  } catch (error) {

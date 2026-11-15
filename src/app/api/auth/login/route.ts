@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { MAX_PASSWORD_LENGTH, verifyPassword } from '@/lib/password'
+import { MAX_PASSWORD_LENGTH, verifyPassword, unknownAccountHash } from '@/lib/password'
 import { createSession } from '@/lib/session'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
@@ -31,6 +31,10 @@ export async function POST(req: NextRequest) {
     const limits = await Promise.all([
       checkRateLimit(`login-account-network:${accountKey}:${ip}`, 10, 15 * 60),
       checkRateLimit(`login-network:${ip}`, 1000, 15 * 60),
+      // SEC-06: one account across every network. Rotating IP addresses no
+      // longer buys unlimited guesses. Generous enough that an owner is not
+      // locked out by their own retries; a signed-in session is unaffected.
+      checkRateLimit(`login-account:${accountKey}`, 30, 60 * 60),
     ])
     if (limits.some(limit => !limit.allowed)) return NextResponse.json(
       { error: 'Too many login attempts. Try again in 15 minutes.' },
@@ -42,7 +46,10 @@ export async function POST(req: NextRequest) {
       .ilike('email', escapeIlike(identity)).limit(2)
     if (error) throw error
     const player = players?.length === 1 ? players[0] : null
-    if (!player || !(await verifyPassword(password, player.pin_hash))) {
+    // SEC-06: always do one bcrypt comparison so response time does not say
+    // whether an email is registered.
+    const valid = await verifyPassword(password, player?.pin_hash ?? await unknownAccountHash())
+    if (!player || !valid) {
       return NextResponse.json({ error: 'Invalid email or password. Check both and try again.' }, { status: 401 })
     }
 

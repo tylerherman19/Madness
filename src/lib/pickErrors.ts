@@ -1,8 +1,13 @@
+// The next day opens from ESPN's live final, but the database accepts the pick
+// only once that result is stored by the results job (REL-03).
+export const EARLY_PICK_PENDING = 'Your win is still being confirmed. Your pick for the next game day can be saved in a minute or two — nothing was saved yet.'
+
 export function pickWriteError(error: { code?: string; message: string }): { status: number; message: string } | null {
   if (error.code === 'PGRST116' || error.code === '23505' || error.code === '40001' || error.code === '40P01') {
     return { status: 409, message: 'Your pick was saved or changed in another request. Refresh to see the saved pick before trying again.' }
   }
   if (error.code !== 'P0001') return null
+  if (/Pick period is not open/i.test(error.message)) return { status: 409, message: EARLY_PICK_PENDING }
   if (/Picks are locked|deadline is unavailable/i.test(error.message)) return { status: 409, message: 'The pick deadline has passed or is unavailable. Refresh to see your final pick.' }
   if (/outside the active contest/i.test(error.message)) return { status: 409, message: 'The active contest changed. Refresh before making a pick.' }
   if (/Pick quota reached/i.test(error.message)) return { status: 409, message: 'Your required picks are already saved. Refresh to see them.' }

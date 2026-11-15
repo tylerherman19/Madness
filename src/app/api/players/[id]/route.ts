@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb } from '@/lib/testMode'
-import { requireAdmin, isUuid, escapeIlike } from '@/lib/api'
+import { requireAdmin, isUuid, escapeIlike, adminDbMessage } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { adminSessionId } from '@/lib/session'
 import { serverError } from '@/lib/alerts'
@@ -77,7 +77,7 @@ export async function PATCH(
     .eq('id', id)
     .select('full_name')
     .single()
-  if (error) return serverError('api/players/[id]', error, error.message)
+  if (error) return serverError('api/players/[id]', error, adminDbMessage(error, 'Could not update the entry'))
 
   const changes = Object.entries(updates).map(([k, v]) => `${k}=${String(v)}`).join(', ')
   await logAudit(supabase, {
@@ -94,7 +94,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const unauthorized = await requireAdmin()
@@ -103,6 +103,11 @@ export async function DELETE(
   const { id } = await params
   if (!isUuid(id)) {
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
+  }
+  // SEC-08: a permanent deletion must say why; the reason is kept in the audit row.
+  const reason = new URL(req.url).searchParams.get('reason')?.trim() ?? ''
+  if (reason.length < 3 || reason.length > 500) {
+    return NextResponse.json({ error: 'Give a reason (3–500 characters) for deleting this entry.' }, { status: 400 })
   }
   const supabase = await getDb()
 
@@ -115,15 +120,15 @@ export async function DELETE(
     .single()
 
   const { error } = await supabase.from('players').delete().eq('id', id)
-  if (error) return serverError('api/players/[id]', error, error.message)
+  if (error) return serverError('api/players/[id]', error, adminDbMessage(error, 'Could not update the entry'))
 
   await logAudit(supabase, {
     event_type: 'player-deleted',
     actor: 'admin',
     player_id: id,
     player_name: player?.full_name ?? null,
-    message: `Admin deleted player ${player?.full_name ?? id}`,
-    details: player ? { email: player.email, status: player.status } : null,
+    message: `Admin deleted player ${player?.full_name ?? id}: ${reason}`,
+    details: { reason, ...(player ? { email: player.email, status: player.status } : {}) },
   })
 
   revalidateContest()

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidateContest } from '@/lib/revalidateContest'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
-import { requireAdmin, isUuid } from '@/lib/api'
+import { requireAdmin, isUuid, adminDbMessage } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { serverError } from '@/lib/alerts'
 import { getActiveDayStatus, assignmentGuard } from '@/lib/slateStatus'
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const overridden = guard.blocked && override
 
     const { error } = await supabase.rpc('activate_slate', { p_slate_id: slate_id })
-    if (error) return serverError('api/admin/set-active-week', error, error.message)
+    if (error) return serverError('api/admin/set-active-week', error, adminDbMessage(error, 'Could not change the active day'))
 
     await logAudit(supabase, {
       event_type: 'slate-activated',

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, escapeIlike } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { hashPassword, passwordValidationError } from '@/lib/password'
-import { getDb } from '@/lib/testMode'
+import { getDb, isTestMode } from '@/lib/testMode'
+import { isReservedTestEmail } from '@/lib/signupValidation'
 import { serverError } from '@/lib/alerts'
 import { revalidateContest } from '@/lib/revalidateContest'
 
@@ -22,6 +23,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
     }
     if (passwordError) return NextResponse.json({ error: passwordError }, { status: 400 })
+    if (isReservedTestEmail(email) && !(await isTestMode())) {
+      return NextResponse.json({ error: 'That email domain is reserved for test accounts and would hide the entry from every public page.' }, { status: 400 })
+    }
 
     const supabase = await getDb()
     const { data: existing, error: lookupError } = await supabase

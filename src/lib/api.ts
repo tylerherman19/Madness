@@ -1,4 +1,5 @@
 import 'server-only'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSession } from './session'
 
@@ -7,6 +8,25 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value)
 }
+
+// Request bodies that are not a JSON object are client errors. Parsing them
+// must never throw into a route's catch block, where serverError() would open
+// an incident, write an audit row and queue an organizer alert for a request
+// anyone can send without signing in (SEC-05). Returns null for invalid JSON,
+// arrays, primitives and null.
+export async function readJsonObject(req: Request): Promise<Record<string, unknown> | null> {
+  const body: unknown = await req.json().catch(() => null)
+  return body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : null
+}
+
+// SEC-09: admin responses carry a rule message the database raised on purpose
+// (RAISE EXCEPTION, code P0001) but never raw driver/constraint text, which
+// can name tables, columns and values.
+export function adminDbMessage(error: { code?: string; message?: string } | null | undefined, fallback: string): string {
+  return error?.code === 'P0001' && error.message ? error.message : fallback
+}
+
+export const INVALID_REQUEST = { error: 'Invalid request' } as const
 
 // Escape LIKE/ILIKE wildcards so user input used in .ilike() matches
 // literally — otherwise a name like "T%" would match any player starting
@@ -27,7 +47,12 @@ export async function requireAdmin(): Promise<NextResponse | null> {
 // actually be set — otherwise "Bearer undefined" would match.
 export function isCronRequest(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
-  return !!secret && req.headers.get('authorization') === `Bearer ${secret}`
+  if (!secret) return false
+  // SEC-09: constant-time comparison. Both sides are hashed first because
+  // timingSafeEqual throws on unequal lengths, which would turn any wrong
+  // header into an unauthenticated 500.
+  const digest = (value: string) => createHash('sha256').update(value).digest()
+  return timingSafeEqual(digest(req.headers.get('authorization') ?? ''), digest(`Bearer ${secret}`))
 }
 
 // Cron endpoints split by method. GET is what Vercel Cron sends and accepts

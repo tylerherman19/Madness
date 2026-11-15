@@ -60,7 +60,28 @@ interface Props {
   dateLabel: string
   titleLabel: string
   tagName: string
+  // The next day was opened from ESPN's final before the stored result (REL-03).
+  resultPending?: boolean
 }
+
+// Messages that must survive the page refresh after a save, a refusal or the
+// lock: the form remounts when its saved picks or lock state change, which
+// would otherwise wipe what the player was just told (USE-01, USE-03, USE-06).
+type Flash = { kind: 'error' | 'ok'; text: string; at: number }
+const FLASH_MS = 2 * 60 * 1000
+function writeFlash(slateId: string, kind: Flash['kind'], text: string) {
+  try { sessionStorage.setItem(`pick-flash:${slateId}`, JSON.stringify({ kind, text, at: Date.now() })) } catch { /* storage unavailable */ }
+}
+function takeFlash(slateId: string): Flash | null {
+  try {
+    const raw = sessionStorage.getItem(`pick-flash:${slateId}`)
+    sessionStorage.removeItem(`pick-flash:${slateId}`)
+    const flash = raw ? (JSON.parse(raw) as Flash) : null
+    return flash && Date.now() - flash.at < FLASH_MS ? flash : null
+  } catch { return null }
+}
+// A save that hears nothing back in this long is checked against its receipt.
+const SUBMIT_TIMEOUT_MS = 15_000
 
 // Pick states: Selected (chosen here, not saved), Saved (can still
 // change until lock), Locked (after first tip). The server enforces every rule
@@ -79,6 +100,7 @@ export default function PickForm({
   dateLabel,
   titleLabel,
   tagName,
+  resultPending = false,
 }: Props) {
   const router = useRouter()
   const [clockLocked, setClockLocked] = useState(false)
@@ -91,6 +113,8 @@ export default function PickForm({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [uncertain,setUncertain]=useState(false)
+  const [notice, setNotice] = useState('')
+  const [deadlineMoved, setDeadlineMoved] = useState('')
   const requestId=useRef<string | null>(null)
 
   const name = (team: string) => brandFor(team, teamBrands).shortName
@@ -110,17 +134,59 @@ export default function PickForm({
   const teams = games.flatMap((game) => [game.away, game.home])
   const available = teams.filter((side) => !side.used)
 
+  // Latest values for the lock timer, which outlives a render.
+  const live = useRef({ selected, lockText, name, submitting })
+  useEffect(() => { live.current = { selected, lockText, name, submitting } })
+
+  // Restore a message from before the last refresh.
+  // Browser storage is read after hydration (the server render has none).
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      const flash = takeFlash(slateId)
+      if (flash?.kind === 'error') setError(flash.text)
+      else if (flash) setNotice(flash.text)
+    }, 0)
+    return () => window.clearTimeout(id)
+  }, [slateId])
+
+  // REL-04: the lock only ever moves earlier. Tell the player when it did
+  // since they last looked, instead of letting the deadline shrink silently.
+  useEffect(() => {
+    if (!deadline) return
+    const id = window.setTimeout(() => {
+      try {
+        const key = `pick-deadline:${slateId}`
+        const seen = localStorage.getItem(key)
+        if (seen && new Date(deadline).getTime() <= new Date(seen).getTime() - 60_000) {
+          setDeadlineMoved(`The lock time moved earlier: it was ${formatClock(seen, viewerZone)}, it is now ${formatClock(deadline, viewerZone)}.`)
+        }
+        localStorage.setItem(key, deadline)
+      } catch { /* storage unavailable */ }
+    }, 0)
+    return () => window.clearTimeout(id)
+  }, [deadline, slateId, viewerZone])
+
   useEffect(() => {
     const receivedAt = Date.now()
     const check = () => {
       const deadline = gameRows[0]?.deadline
-      if (deadline && new Date(serverNow).getTime() + Date.now() - receivedAt >= new Date(deadline).getTime()) setClockLocked(true)
+      if (deadline && new Date(serverNow).getTime() + Date.now() - receivedAt >= new Date(deadline).getTime()) {
+        // USE-01: a selection that was never submitted is not a pick. Say so
+        // plainly before the board turns into the locked view.
+        const { selected: unsaved, lockText: at, name: label, submitting: saving } = live.current
+        if (unsaved && !saving) {
+          const text = `Picks locked at ${at} before you submitted. ${label(unsaved)} was not saved.`
+          setError(text)
+          writeFlash(slateId, 'error', text)
+        }
+        setClockLocked(true)
+      }
     }
     check()
     const clock = window.setInterval(check, 1000)
     const refresh = window.setInterval(() => { if(!document.hidden) router.refresh() }, 30_000 + Math.floor(Math.random()*5000))
     return () => { window.clearInterval(clock); window.clearInterval(refresh) }
-  }, [gameRows, router, serverNow])
+  }, [gameRows, router, serverNow, slateId])
 
   // The pick a new selection replaces: the one being changed, or the only
   // editable one when every slot is already filled.
@@ -188,11 +254,33 @@ export default function PickForm({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ request_id:requestId.current, slate_id: slateId, team: selected, pick_id: target?.id ?? null, expected_version: target?.updatedAt }),
+        // USE-05: a stalled connection must not leave "Saving…" on screen forever.
+        signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
       })
-      const result = await response.json()
+      const result = await response.json().catch(() => null) as { error?: string; resultPending?: boolean; pick?: unknown } | null
+      if (response.status === 401) {
+        requestId.current = null
+        setError(`Your session expired. ${name(selected)} was not saved — log in again, then submit your pick.`)
+        return
+      }
+      if (!response.ok && response.status >= 500 || !result) {
+        // The server may have saved before failing; the receipt decides.
+        setUncertain(true)
+        setError('The server did not confirm your pick. Checking whether it was saved…')
+        await checkReceipt()
+        return
+      }
       if (!response.ok) {
-        setError(result.error || 'Pick rejected. Refresh before editing.')
         requestId.current=null
+        if (result.resultPending) {
+          // Keep the selection: the same submission succeeds once the result is stored.
+          setError(result.error ?? 'Your result is still being confirmed. Try again in a minute.')
+          return
+        }
+        // USE-03: keep the refusal across the refresh and point at what is saved.
+        const text = `${result.error || 'Pick rejected.'} ${name(selected)} was not saved${picks.length ? ' — your saved pick is shown below.' : '.'}`
+        setError(text)
+        writeFlash(slateId, 'error', text)
         router.refresh()
         return
       }
@@ -212,6 +300,10 @@ export default function PickForm({
       requestId.current=null
       setSelected(null)
       setEditingId(null)
+      // USE-06: confirm what was saved, when, and until when it can change.
+      const savedText = `Saved: ${name(saved.team)} at ${formatClock(saved.updated_at ?? new Date().toISOString(), viewerZone)}${deadline ? ` · you can change it until ${lockText}` : ''}.`
+      setNotice(savedText)
+      writeFlash(slateId, 'ok', savedText)
       router.refresh()
     } catch {
       setUncertain(true)
@@ -298,7 +390,10 @@ export default function PickForm({
         <span>{available.length} of {teams.length} teams available</span>
         {deadline && <span>Locks {lockText} · <b><LockCountdown deadline={deadline} /></b></span>}
       </div>
+      {deadlineMoved && !locked && <p role="alert" className={s.alert}>{deadlineMoved}</p>}
+      {resultPending && !locked && <p className={s.notice}>Your win is final on the live scoreboard and is being confirmed. You can choose now; saving opens within a minute or two.</p>}
       {error && <p role="alert" className={s.alert}>{error}</p>}
+      {notice && !error && <p role="status" className={s.notice}>{notice}</p>}
       {uncertain && <div><button className={s.cta} onClick={()=>void checkReceipt()} disabled={submitting}>Check saved pick</button>{!locked&&<button className={s.cta} onClick={()=>void submit()} disabled={submitting}>Retry same selection</button>}</div>}
 
       <div className={s.split} style={{ marginTop: 24 }}>

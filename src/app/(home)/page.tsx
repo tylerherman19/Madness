@@ -11,7 +11,7 @@ import { slateDeadline } from '@/lib/deadline'
 import { loadMyPicks, type MyPick } from '@/lib/myEntry'
 import { buildTimeline } from '@/lib/timeline'
 import { brandFor } from '@/lib/teamBrand'
-import { capabilitiesFor } from '@/lib/competition'
+import { capabilitiesFor, sharedRoundPickQuota } from '@/lib/competition'
 import { dayDate, eventLabel, pickDayTitle } from '@/lib/poolTheme'
 import PoolShell from '../components/PoolShell'
 import ContestRefresh from '../components/ContestRefresh'
@@ -24,7 +24,7 @@ import RulesSection from '../components/RulesSection'
 import SurvivalTimeline from '../components/SurvivalTimeline'
 import ScrollToHash from '../components/ScrollToHash'
 import { buildStandingsRows } from '@/lib/standingsRows'
-import { pickStateOf } from '@/lib/viewerState'
+import { pickStateOf, pickProgress } from '@/lib/viewerState'
 import type { StandingRow } from '@/types'
 import s from '../components/pp.module.css'
 
@@ -70,6 +70,7 @@ export default async function Today() {
   // The signed-in player's own entry.
   const me = session ? data?.players.find((player) => player.id === session.player_id) ?? null : null
   const todayPicks: MyPick[] = session && slate ? allMyPicks.filter((p) => p.slateId === slate.id) : []
+  const progress = pickProgress(allMyPicks, slate?.id ?? null, periods, (round) => sharedRoundPickQuota(mode, pool.pick_frequency, round as Parameters<typeof sharedRoundPickQuota>[2]))
 
   const alive = data?.aliveCount ?? 0
   const total = data?.totalPlayers ?? 0
@@ -93,18 +94,20 @@ export default async function Today() {
           ? { text: 'Auto-assigned at lock', tone: s.amber }
           : locked
             ? { text: 'Pick locked', tone: s.gray }
-            : { text: todayPicks.length === 1 ? 'Pick saved' : 'Picks saved', tone: s.gray }
+            : progress.made < progress.required
+              ? { text: `${progress.made} of ${progress.required} picks saved — make pick ${progress.made + 1}`, tone: s.amber }
+              : { text: todayPicks.length === 1 ? 'Pick saved' : 'Picks saved', tone: s.gray }
   const myTeamText = todayPicks.map((p) => name(p.team)).join(', ')
   // The same names the header uses for the same actions.
   const pick = session
-    ? pickStateOf({ hasSlate: !!slate, eliminated: me?.status === 'eliminated', locked, hasPick: todayPicks.length > 0 })
+    ? pickStateOf({ hasSlate: !!slate, eliminated: me?.status === 'eliminated', locked, hasPick: todayPicks.length > 0, ...progress })
     : undefined
   const action = !pick || pick === 'none'
     ? null
     : pick === 'eliminated' || pick === 'locked'
       ? { href: '/sweat', label: 'View picks' }
-      : { href: '/pick', label: pick === 'submitted' ? 'Change pick' : 'Make your pick' }
-  const entryDeadline = lockIso && me && (pick === 'open' || pick === 'submitted')
+      : { href: '/pick', label: pick === 'submitted' ? 'Change pick' : pick === 'partial' ? `Make pick ${progress.made + 1}` : 'Make your pick' }
+  const entryDeadline = lockIso && me && (pick === 'open' || pick === 'submitted' || pick === 'partial')
     ? <>{pick === 'submitted' ? 'Change until' : 'Picks lock at'} <LocalTime iso={lockIso} /></>
     : null
 

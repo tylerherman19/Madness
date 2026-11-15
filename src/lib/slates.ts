@@ -1,5 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
+import { logAudit } from './audit'
 
 // Slate bookkeeping shared by the ESPN sync and the manual schedule form.
 // Both create days on demand and both have to leave the season's numbering
@@ -113,4 +115,12 @@ export async function refreshLockTime(db: SupabaseClient, slateId: string): Prom
   const locksAt = previous && (!tip || new Date(previous) <= new Date(tip)) ? previous : tip
   const { error } = await db.from('slates').update({ locks_at: locksAt }).eq('id', slateId)
   if (error) throw error
+  // REL-04: the lock stays at or before the first tip, so it can only move
+  // earlier. Record that loudly for the organizer; the pick form also tells
+  // players who saw the old time. Best-effort: never blocks the sync.
+  if (previous && locksAt && new Date(locksAt).getTime() < new Date(previous).getTime()) {
+    const detail = { slate_id: slateId, from: previous, to: locksAt }
+    await logAudit(db, { event_type: 'lock-moved-earlier', actor: 'system', message: `Lock moved earlier: ${previous} -> ${locksAt}`, details: detail })
+    await db.rpc('record_incident', { p_key: `lock-moved-earlier:${slateId}`, p_impact: 'A game was scheduled earlier, so this day now locks earlier than first published. Tell players.', p_correlation: randomUUID(), p_detail: JSON.stringify(detail) }).then(() => {}, () => {})
+  }
 }

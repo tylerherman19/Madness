@@ -114,6 +114,10 @@ export async function loadPickWindow(
   seasonSlates: Slate[]
   games: Game[]
   picks: PlayerPick[]
+  // True when the next day was opened from ESPN's live final while the stored
+  // result is still pending. The database accepts that pick only once the
+  // result is synced (can_pick_early), so saving must wait (REL-03).
+  resultPending?: boolean
 }> {
   const { data: activeSlate, error: activeError } = await db.from('slates').select('*').eq('is_active', true).maybeSingle()
   if (activeError) throw activeError
@@ -157,6 +161,7 @@ export async function loadPickWindow(
   // 3 PM opens the next day without waiting for the overnight cron. Sandbox
   // games use their stored results and never call the production scoreboard.
   const sandbox = await isTestMode()
+  const storedGames = games
   if (!sandbox && currentPicks.some((pick) => {
     const game = games.find((g) => g.slate_id === pick.slate_id && (g.home_team === pick.team || g.away_team === pick.team))
     return !game || game.result === 'pending'
@@ -183,6 +188,7 @@ export async function loadPickWindow(
   if (!currentPicks.every((pick) => didPickWin(pick, games))) {
     return { activeSlate, pickSlate: activeSlate, seasonSlates, games, picks: playerPicks }
   }
+  const resultPending = !currentPicks.every((pick) => didPickWin(pick, storedGames))
 
   // Find the first stored playing day, skipping dark days. A day with no
   // saved games yet is simply not offered early.
@@ -210,7 +216,7 @@ export async function loadPickWindow(
       break
     }
     if (isSlateLocked(next, nextGames, now)) break
-    return { activeSlate, pickSlate: next, seasonSlates, games, picks: playerPicks }
+    return { activeSlate, pickSlate: next, seasonSlates, games, picks: playerPicks, resultPending }
   }
 
   return { activeSlate, pickSlate: activeSlate, seasonSlates, games, picks: playerPicks }
