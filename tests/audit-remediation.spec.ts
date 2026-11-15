@@ -1,6 +1,7 @@
 // Regressions for the 2026-11-14 audit fixes (SEC-05, INT-03, REL-03, USE-01,
 // USE-03, USE-05, SEC-08). Runs against the local fixture database only.
 import { test, expect, type APIRequestContext } from '@playwright/test'
+import { createHash } from 'node:crypto'
 import { adminCookie } from './support/admin'
 import { clearEspn, espnEvent, setEspn } from './support/espn'
 
@@ -150,4 +151,41 @@ test('admin deletions need a reason and are audited', async ({ page, request }) 
   expect((await page.request.delete(`/api/schedule?id=${game.id}`)).status()).toBe(400)
   expect((await page.request.delete(`/api/schedule?id=${game.id}&reason=Cancelled%20by%20conference`)).ok()).toBeTruthy()
   expect((await rows(request, '/audit_log?event_type=eq.game-deleted'))[0].details).toMatchObject({ reason: 'Cancelled by conference' })
+})
+
+test('a phone whose clock runs ten minutes fast is not locked out early (server time drives the lock)', async ({ page, request }) => {
+  await login(page.request, 'player+test@example.test')
+  const lock = new Date(Date.now() + 5 * 60_000).toISOString()
+  expect((await request.patch(`${FIXTURE_DB}/slates?id=eq.${SLATE}`, { data: { locks_at: lock } })).ok()).toBeTruthy()
+  expect((await request.patch(`${FIXTURE_DB}/games?slate_id=eq.${SLATE}`, { data: { tip_time: lock } })).ok()).toBeTruthy()
+  await page.clock.install({ time: new Date(Date.now() + 10 * 60_000) })
+  await page.goto('/pick')
+  await page.getByRole('radio', { name: /\bA\b/ }).first().click()
+  await page.clock.runFor(3000)
+  await expect(page.getByRole('heading', { name: 'Choose a team' })).toBeVisible()
+  await expect(page.locator('p[role=alert]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Submit pick' }).first()).toBeEnabled()
+})
+
+test('SEC-06: refused attempts never count toward the account cap; the cap stops rotating addresses', async ({ playwright, baseURL, request }) => {
+  const client = await playwright.request.newContext({ baseURL })
+  const email = 'player+test@example.test'
+  const key = `login-account:${createHash('sha256').update(email).digest('hex')}`
+  const attempt = (ip: string, password = 'WrongPassword123') => client.post('/api/auth/login', { headers: { 'x-real-ip': ip }, data: { email, password } })
+  // One address: 40 bad attempts, only the first 10 pass its own limit.
+  const statuses: number[] = []
+  for (let i = 0; i < 40; i++) statuses.push((await attempt('198.51.100.1')).status())
+  expect(statuses.filter(s => s === 401)).toHaveLength(10)
+  expect(statuses.filter(s => s === 429)).toHaveLength(30)
+  expect((await rows(request, `/rate_limits?key=eq.${key}`))[0].count).toBe(10)
+  // The owner can still sign in from somewhere else.
+  expect((await attempt('198.51.100.2', 'FixturePass123!')).status()).toBe(200)
+  // Rotating addresses reaches the cross-network cap (100 an hour), then stops.
+  let used = 11, n = 3
+  while (used < 100) {
+    const ip = `198.51.100.${n++}`
+    for (let i = 0; i < 10 && used < 100; i++, used++) expect((await attempt(ip)).status()).toBe(401)
+  }
+  expect((await attempt(`198.51.100.${n}`)).status()).toBe(429)
+  await client.dispose()
 })

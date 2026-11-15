@@ -170,10 +170,9 @@ export default function PickForm({
     const receivedAt = Date.now()
     const check = () => {
       const deadline = gameRows[0]?.deadline
-      // Server time when it is ahead of this device; never behind it (a stale
-      // serverNow must not delay the lock view).
-      const nowGuess = Math.max(Date.now(), new Date(serverNow).getTime() + Date.now() - receivedAt)
-      if (deadline && nowGuess >= new Date(deadline).getTime()) {
+      // Server time plus elapsed time: immune to a wrong device clock (a fast
+      // phone must not lock early). The server enforces the real lock.
+      if (deadline && new Date(serverNow).getTime() + Date.now() - receivedAt >= new Date(deadline).getTime()) {
         // USE-01: a selection that was never submitted is not a pick. Say so
         // plainly before the board turns into the locked view.
         const { selected: unsaved, lockText: at, name: label, submitting: saving } = live.current
