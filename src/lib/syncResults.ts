@@ -5,7 +5,7 @@ import { syncSlateFromEspn } from '@/lib/espnSync'
 import { gradeSlatePicks } from '@/lib/grading'
 import { loadGamesForSlates, loadPicksForSlates, loadAll } from '@/lib/seasonData'
 import type { Slate } from '@/types'
-import { serverError } from '@/lib/alerts'
+import { serverError, describeError } from '@/lib/alerts'
 import { centralClock, orderRecoveryDates } from './operationPolicy'
 
 export async function syncResults(supabase: import('@supabase/supabase-js').SupabaseClient, now: Date, {grade=true}: {grade?:boolean} = {}) {
@@ -51,7 +51,7 @@ export async function syncResults(supabase: import('@supabase/supabase-js').Supa
         const games = await loadGamesForSlates(supabase, [slate.id])
         if(grade) grading.push({ slate_id: slate.id, ...await gradeSlatePicks(supabase, slate.id,
           slate.slate_number, games.filter(game => !reviewGames.has(game.id) && game.result !== 'pending')) })
-      } catch (error) { failures.push(`${slate.slate_date}: ${error instanceof Error ? error.message : 'sync failed'}`) }
+      } catch (error) { failures.push(`${slate.slate_date}: ${describeError(error).slice(0, 200)}`) }
       if (process.env.AUTOMATION_V2_ENABLED === 'true') {
         const { error } = await supabase.from('slates').update({ result_checked_at: new Date().toISOString() }).eq('id', slate.id)
         if (error) throw error
