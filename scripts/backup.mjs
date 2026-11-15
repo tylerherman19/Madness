@@ -16,6 +16,14 @@ export function decryptBackup(envelope, passphrase) {
  decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'))
  return JSON.parse(Buffer.concat([decipher.update(Buffer.from(envelope.ciphertext, 'base64')), decipher.final()]).toString())
 }
+// Key rotation must never orphan retained archives: decrypt with the current
+// key, then any previous key still kept for that purpose.
+export function decryptBackupWithKeys(envelope, keys) {
+ for (const key of (keys ?? []).filter(Boolean)) {
+  try { return decryptBackup(envelope, key) } catch { /* try the next key */ }
+ }
+ throw new Error('No configured backup key decrypts this archive')
+}
 export function snapshotDigest(snapshot) {
  return Object.fromEntries(Object.entries(snapshot.tables).map(([name, rows]) => [name, { count: rows.length,
   sha256: createHash('sha256').update(JSON.stringify(rows.map(row => Object.fromEntries(Object.entries(row).sort(([a],[b]) => a.localeCompare(b)))).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))).digest('hex') }]))

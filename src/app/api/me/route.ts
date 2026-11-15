@@ -3,7 +3,8 @@ import { getSession } from '@/lib/session'
 import { getContestCore } from '@/lib/dashboard'
 import { loadMyPicks } from '@/lib/myEntry'
 import { slateDeadline } from '@/lib/deadline'
-import { pickStateOf, type Viewer } from '@/lib/viewerState'
+import { pickStateOf, pickProgress, type Viewer } from '@/lib/viewerState'
+import { sharedRoundPickQuota } from '@/lib/competition'
 import { haveSignupsClosedCached } from '@/lib/season'
 
 // The signed-in visitor, for the header on pages that are built ahead and
@@ -29,6 +30,7 @@ export async function GET() {
           eliminated: me?.status === 'eliminated',
           locked: lock ? lock <= core.now : false,
           hasPick: !!slate && picks.some((pick) => pick.slateId === slate.id),
+          ...pickProgress(picks, slate?.id ?? null, core.periods, (round) => sharedRoundPickQuota(core.pool.competition_mode, core.pool.pick_frequency, round as Parameters<typeof sharedRoundPickQuota>[2])),
         })
       : undefined,
   }

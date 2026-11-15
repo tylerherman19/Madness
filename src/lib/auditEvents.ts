@@ -40,6 +40,9 @@ export const AUDIT_EVENT_TYPES: Record<string, string> = {
   'operation-retried': 'Operation retried',
   'retention-applied': 'Retention applied',
   'incident-resolved': 'Problem marked resolved',
+  'lock-moved-earlier': 'Lock time moved earlier',
+  'players-exported': 'Player data exported',
+  'game-deleted': 'Game deleted',
 }
 
 // Failure events: reported through lib/alerts.ts, highlighted on the audit

@@ -8,6 +8,9 @@ async function admin(page: Page) {
   await page.context().addCookies([await adminCookie()])
 }
 
+// Grading asks for confirmation (USE-10); these tests confirm it.
+test.beforeEach(({ page }) => { page.on('dialog', (dialog) => void dialog.accept()) })
+
 test.beforeEach(async ({ request }) => {
   expect((await request.post(`${FIXTURE_DB}/__test/reset`)).ok()).toBeTruthy()
 })

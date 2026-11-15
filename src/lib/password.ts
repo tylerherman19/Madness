@@ -19,6 +19,14 @@ export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12)
 }
 
+// A hash of a random value at the same cost as real passwords: comparing
+// against it takes as long as a real check and never matches (SEC-06).
+let unknownHash: Promise<string> | null = null
+export function unknownAccountHash(): Promise<string> {
+  unknownHash ??= hashPassword(randomBytes(32).toString('hex'))
+  return unknownHash
+}
+
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   return bcrypt.compare(password, hash)
 }

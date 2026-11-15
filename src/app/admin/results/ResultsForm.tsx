@@ -112,6 +112,8 @@ export default function ResultsForm({ slate, games, pendingEliminations, attenti
 
   async function gradeAllPending() {
     if (gradingInFlight.current) return
+    // USE-10: grading can eliminate entries; never on a single stray click.
+    if (!confirm('Grade every pick on this day against the results shown? Entries whose team lost will be eliminated.')) return
     gradingInFlight.current = true
     setSubmitting(true)
     setMessage(null)

@@ -35,6 +35,7 @@ function actionFor(viewer: Viewer | undefined): { href: string; label: string } 
   const byState: Record<PickState, { href: string; label: string } | null> = {
     open: { href: '/pick', label: 'Make your pick' },
     submitted: { href: '/pick', label: 'Change pick' },
+    partial: { href: '/pick', label: 'Finish your picks' },
     locked: { href: '/sweat', label: 'View picks' },
     eliminated: { href: '/sweat', label: 'View picks' },
     none: null,

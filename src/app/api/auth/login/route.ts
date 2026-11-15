@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { MAX_PASSWORD_LENGTH, verifyPassword } from '@/lib/password'
+import { MAX_PASSWORD_LENGTH, verifyPassword, unknownAccountHash } from '@/lib/password'
 import { createSession } from '@/lib/session'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
@@ -28,21 +28,31 @@ export async function POST(req: NextRequest) {
     const identity = email.trim().toLowerCase()
     const ip = await getIP()
     const accountKey = createHash('sha256').update(identity).digest('hex')
+    const tooMany = () => NextResponse.json(
+      { error: 'Too many login attempts. Try again in 15 minutes.' },
+      { status: 429, headers: { 'Retry-After': '900' } }
+    )
     const limits = await Promise.all([
       checkRateLimit(`login-account-network:${accountKey}:${ip}`, 10, 15 * 60),
       checkRateLimit(`login-network:${ip}`, 1000, 15 * 60),
     ])
-    if (limits.some(limit => !limit.allowed)) return NextResponse.json(
-      { error: 'Too many login attempts. Try again in 15 minutes.' },
-      { status: 429, headers: { 'Retry-After': '900' } }
-    )
+    if (limits.some(limit => !limit.allowed)) return tooMany()
+    // SEC-06: one account across every network, counted only for attempts the
+    // per-network limits already let through (they increment on every call, so
+    // running this one in parallel would let refused requests lock the account).
+    // One address gets at most 40 an hour, so it alone can never reach 100;
+    // rotating addresses no longer buys unlimited guesses.
+    if (!(await checkRateLimit(`login-account:${accountKey}`, 100, 60 * 60)).allowed) return tooMany()
     const supabase = await getDb()
     const { data: players, error } = await supabase.from('players')
       .select('id, full_name, pin_hash, status')
       .ilike('email', escapeIlike(identity)).limit(2)
     if (error) throw error
     const player = players?.length === 1 ? players[0] : null
-    if (!player || !(await verifyPassword(password, player.pin_hash))) {
+    // SEC-06: always do one bcrypt comparison so response time does not say
+    // whether an email is registered.
+    const valid = await verifyPassword(password, player?.pin_hash ?? await unknownAccountHash())
+    if (!player || !valid) {
       return NextResponse.json({ error: 'Invalid email or password. Check both and try again.' }, { status: 401 })
     }
 

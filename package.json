@@ -8,12 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --experimental-strip-types --test src/lib/*.test.ts",
-    "test:db": "node scripts/test-memo-integrity.mjs",
-    "test:tournament": "node scripts/test-tournament.mjs && node scripts/test-delivery.mjs && node scripts/test-schedule-sync.mjs && node scripts/test-mobile-reveal.mjs",
+    "test:db": "node scripts/test-memo-integrity.mjs && node scripts/test-seed-and-audit.mjs",
+    "test:tournament": "node scripts/test-tournament.mjs && node scripts/test-delivery.mjs && node scripts/test-schedule-sync.mjs && node scripts/test-mobile-reveal.mjs && node scripts/test-mobile-privacy.mjs",
     "test:resolution": "node scripts/test-result-resolution.mjs",
-    "test:operations": "node scripts/test-operations.mjs && node scripts/test-password-reset.mjs",
+    "test:operations": "node scripts/test-operations.mjs && node scripts/test-password-reset.mjs && node scripts/test-private-backup.mjs",
     "test:e2e": "playwright test",
-    "test:e2e:legacy": "FIXTURE_LEGACY_SCHEMA=true TOURNAMENT_RELIABILITY_TEST_MODE=false playwright test --grep 'signup|failed login|reset link|pick retry|signed unsubscribe|unauthenticated jobs|signed email callbacks|deadline crossing|lost pick response'"
+    "test:e2e:legacy": "FIXTURE_LEGACY_SCHEMA=true TOURNAMENT_RELIABILITY_TEST_MODE=false playwright test --grep 'malformed|reserved|signup|failed login|reset link|pick retry|signed unsubscribe|unauthenticated jobs|signed email callbacks|deadline crossing|lost pick response'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

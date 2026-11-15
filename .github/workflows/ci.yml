@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: madness-ci-${{ github.ref }}
   cancel-in-progress: true
@@ -38,6 +41,9 @@ jobs:
 
       - name: Tournament reliability and 2000-entry regression
         run: npm run test:tournament
+
+      - name: Result resolution regressions
+        run: npm run test:resolution
 
       - name: Runtime dependency security
         run: npm audit --omit=dev --audit-level=high

@@ -14,3 +14,11 @@ test('signup rejects bad contact details and oversized input', () => {
     assert.ok(signupValidationError({ ...valid, ...fields }))
   }
 })
+test('INT-03: the reserved test-account domain is refused in any case, with subdomains or a trailing dot', async () => {
+  const { isReservedTestEmail } = await import('./signupValidation.ts')
+  for (const email of ['a@nflsurvivor.internal', 'A@NFLSurvivor.Internal', 'a@x.nflsurvivor.internal', ' a@nflsurvivor.internal. ']) {
+    assert.ok(isReservedTestEmail(email), email)
+    assert.match(signupValidationError({ ...valid, email: email.trim() }) ?? '', /cannot be used/)
+  }
+  for (const email of ['a@nflsurvivor.internal.example.com', 'nflsurvivor.internal@example.com', 'a@example.com']) assert.equal(isReservedTestEmail(email), false, email)
+})

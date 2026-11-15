@@ -202,11 +202,14 @@ export default function ScheduleForm({ slates, activeSlate, games, teams }: Prop
   }
 
   async function deleteGame(gameId: string) {
+    // SEC-08 / USE-10: deleting a game can change the lock and remove picks' game; record why.
+    const reason = prompt('Delete this game? This can move the day\'s lock time.\n\nType the reason (kept in the audit log):')?.trim()
+    if (!reason) return
     setDeletingId(gameId)
     try {
-      const res = await fetch(`/api/schedule?id=${gameId}`, { method: 'DELETE' })
+      const res = await fetch(`/api/schedule?id=${gameId}&reason=${encodeURIComponent(reason)}`, { method: 'DELETE' })
       if (res.ok) router.refresh()
-      else setMessage({ tone: 'error', text: 'Failed to delete game' })
+      else setMessage({ tone: 'error', text: (await res.json().catch(() => null))?.error || 'Failed to delete game' })
     } finally {
       setDeletingId(null)
     }

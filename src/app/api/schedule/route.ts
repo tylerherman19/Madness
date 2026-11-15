@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
-import { requireAdmin } from '@/lib/api'
+import { requireAdmin, adminDbMessage } from '@/lib/api'
 import { getOrCreateSlate, renumberSlates, refreshLockTime } from '@/lib/slates'
 import { fromZonedTime } from 'date-fns-tz'
 import { serverError } from '@/lib/alerts'
+import { logAudit } from '@/lib/audit'
 import { revalidateContest } from '@/lib/revalidateContest'
 
 const CHICAGO_TZ = 'America/Chicago'
@@ -98,17 +99,23 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  const reason = searchParams.get('reason')?.trim() ?? ''
+  if (reason.length < 3 || reason.length > 500) {
+    return NextResponse.json({ error: 'Give a reason (3–500 characters) for deleting this game.' }, { status: 400 })
+  }
 
   const supabase = await getDb()
 
   // Deleting a game can change which tip is first, so the slate's cached
   // lock time has to be recomputed rather than left pointing at a game that
   // no longer exists.
-  const { data: game } = await supabase.from('games').select('slate_id').eq('id', id).maybeSingle()
+  const { data: game } = await supabase.from('games').select('slate_id, home_team, away_team, tip_time, result, espn_event_id').eq('id', id).maybeSingle()
 
   const { error } = await supabase.from('games').delete().eq('id', id)
-  if (error) return serverError('api/schedule', error, error.message)
+  if (error) return serverError('api/schedule', error, adminDbMessage(error, 'Could not delete the game'))
 
+  // SEC-08: record what was removed and why.
+  await logAudit(supabase, { event_type: 'game-deleted', actor: 'admin', message: `Admin deleted game ${game ? `${game.away_team} at ${game.home_team}` : id}: ${reason}`, details: { game_id: id, reason, ...(game ?? {}) } })
   if (game?.slate_id) await refreshLockTime(supabase, game.slate_id)
   revalidateContest()
 
