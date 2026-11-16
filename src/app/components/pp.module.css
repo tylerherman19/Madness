@@ -619,3 +619,9 @@
 
 .homeSection { margin-top: 40px; scroll-margin-top: 16px; }
 .homeSection .stSection:first-of-type { margin-top: 20px; }
+
+.eliteActions { display: grid; justify-items: start; gap: 10px; margin-top: 20px; }
+.eliteSubmit { position: relative; display: inline-flex; }
+.eliteSubmit button:disabled { opacity: .48; cursor: default; pointer-events: none; }
+.eliteTip { position: absolute; inset-block-end: calc(100% + 8px); inset-inline-start: 0; z-index: 2; width: min(260px, 75vw); padding: 9px 12px; border-radius: var(--pp-radius-sm); background: var(--pp-head); color: var(--pp-on-dark); font-size: var(--pp-text-sm); visibility: hidden; }
+.eliteSubmit:hover .eliteTip, .eliteSubmit:focus-visible .eliteTip { visibility: visible; }

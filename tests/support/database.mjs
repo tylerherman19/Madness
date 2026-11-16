@@ -55,16 +55,18 @@ async function jsonNames(kind,schema,name){
  return typeCache.get(key)
 }
 const asJson=(set,key,value)=>REAL&&set.has(key)&&value!==null&&value!==undefined?JSON.stringify(value):value
+const eliteFixturePool = '00000000-0000-4000-8000-000000000045'
 const hash=await bcrypt.hash('FixturePass123!',4)
 async function seed(){
  await db.exec(`set session_replication_role=replica;${process.env.FIXTURE_LEGACY_SCHEMA==='true'?'':`delete from public.notification_attempts;delete from public.provider_events;delete from public.campaign_recipients;delete from public.email_campaigns;delete from public.pick_revisions;delete from public.pick_requests;delete from public.rule_versions;delete from public.integrity_checks;delete from public.incidents;delete from public.operation_runs;`}delete from public.picks;delete from public.players;delete from public.games;delete from public.slates;delete from public.revoked_sessions;delete from public.rate_limits;delete from public.audit_log;delete from public.notification_outbox;set session_replication_role=origin;
- update public.pools set season_year=2099,competition_mode='regular-season',pick_frequency='every-game-day',starts_on=null,auto_pick_behavior='latest-game';
+ delete from public.pools where id='${eliteFixturePool}';
+ update public.pools set is_active=true,season_year=2099,competition_mode='regular-season',pick_frequency='every-game-day',starts_on=null,auto_pick_behavior='latest-game';
  insert into public.slates(id,slate_number,slate_date,season_year,is_active,locks_at)values('00000000-0000-4000-8000-000000000001',1,'2099-01-01',2099,true,'2099-01-01T18:00:00Z');
  insert into public.games(slate_id,espn_event_id,home_team,away_team,tip_time,result,status_state)values('00000000-0000-4000-8000-000000000001','fixture','A','B','2099-01-01T18:00:00Z','pending','pre');`)
  await db.query(`insert into public.players(id,full_name,email,pin_hash,pin_reset_token,pin_reset_expires)values($1,$2,$3,$4,$5,now()+interval '1 hour'),($6,'Other Player','other@example.test',$4,null,null)`,['00000000-0000-4000-8000-000000000002',"O'Brien 🏀",'player+test@example.test',hash,createHash('sha256').update('a'.repeat(64)).digest('hex'),'00000000-0000-4000-8000-000000000003'])
 }
 if(process.env.FIXTURE_NO_SEED!=='true')await seed()
-const ident=value=>{if(!/^[a-z_]+$/.test(value))throw new Error('Invalid fixture identifier');return '"'+value+'"'}
+const ident=value=>{if(!/^[a-z_][a-z_0-9]*$/.test(value))throw new Error('Invalid fixture identifier');return '"'+value+'"'}
 // Counting mode: every PostgREST-style request the app makes is one database round trip.
 let stats={total:0,byTable:{}}
 createServer(async(req,res)=>{
@@ -79,6 +81,23 @@ createServer(async(req,res)=>{
   if(url.pathname==='/__test/stats/reset'){stats={total:0,byTable:{}};if(REAL)Object.assign(poolStats,{maxWaiting:0,waitSamples:0,waitSum:0,maxBusy:0,queries:0,queryMs:0,acquireMs:0});return send(200,{ok:true})}
   if(url.pathname==='/__test/sql'&&REAL){const r=await db.query(body.sql,body.params??[]);return send(200,{rows:r.rows,rowCount:r.rowCount})}
   if(url.pathname==='/__test/reset'){await seed();return send(200,{ok:true})}
+  if(url.pathname==='/__test/elite-eight' && req.method==='POST'){
+   await db.exec(`begin;
+    update public.slates set is_active=false where is_active;
+    update public.pools set is_active=false where is_active;
+    insert into public.pools(id,name,competition_mode,status,season_year,starts_on,pick_frequency,pick_deadline_rule,team_reuse_rule,auto_pick_behavior,tiebreaker,is_active)
+     values('${eliteFixturePool}','Elite Eight fixture','march-madness','live',2027,'2027-03-18','every-game-day','first-tip','once-per-pool','highest-seed','seed-total',true);
+    insert into public.slates(id,slate_number,slate_date,season_year,is_active,locks_at) values
+     ('00000000-0000-4000-8000-000000000027',27,'2027-03-27',2027,true,'2099-03-28T16:00Z'),
+     ('00000000-0000-4000-8000-000000000028',28,'2027-03-28',2027,false,'2099-03-29T16:00Z');
+    insert into public.games(slate_id,espn_event_id,home_team,away_team,home_team_id,away_team_id,home_seed,away_seed,round_label,tip_time) values
+     ('00000000-0000-4000-8000-000000000027','elite1','SAT-A','SAT-B','101','102',1,9,'Elite 8','2099-03-28T16:00Z'),
+     ('00000000-0000-4000-8000-000000000027','elite2','SAT-C','SAT-D','103','104',5,13,'Elite 8','2099-03-28T19:00Z'),
+     ('00000000-0000-4000-8000-000000000028','elite3','SUN-A','SUN-B','105','106',2,10,'Elite 8','2099-03-29T16:00Z'),
+     ('00000000-0000-4000-8000-000000000028','elite4','SUN-C','SUN-D','107','108',6,14,'Elite 8','2099-03-29T19:00Z');
+    commit;`)
+   return send(200,{ok:true})
+  }
   if(url.pathname==='/__test/lock'){await db.exec("update public.slates set locks_at=now()-interval '1 second' where is_active;update public.games set tip_time=now()-interval '1 second'");return send(200,{ok:true})}
   const parts=url.pathname.split('/').filter(Boolean),table=parts.at(-1)
   stats.total++;{const label=`${req.method} ${parts.includes('rpc')?'rpc:':''}${table}`;stats.byTable[label]=(stats.byTable[label]??0)+1}

@@ -13,6 +13,7 @@ import {
   type CompetitionMode,
 } from '@/lib/competition'
 import type { Game } from '@/types'
+import EliteEightForm from './EliteEightForm'
 import PickForm, { type GameRow, type SavedPick } from './PickForm'
 import PoolShell from '../components/PoolShell'
 import { elite2027Window } from '@/lib/march2027'
@@ -45,6 +46,7 @@ type PickPageData =
       savedPicks: SavedPick[]
       requiredPicks: number
       sharedRound: boolean
+      eliteEight: boolean
       serverNow: string
       locked: boolean
       teamBrands: TeamBrandDirectory
@@ -172,6 +174,7 @@ async function loadPickData(
       savedPicks,
       requiredPicks: sharedQuota ?? 1,
       sharedRound: sharedQuota != null,
+      eliteEight: elite !== null,
       locked,
       serverNow: now.toISOString(),
       resultPending: !!window.resultPending,
@@ -219,6 +222,11 @@ export default async function PickPage() {
         <p className={s.notice}>You can still follow the pool on the <Link href="/sweat">sweat board</Link> and <Link href="/#standings">standings</Link>.</p>
       </>
     )
+  }
+
+  if (data.eliteEight) {
+    return shell(<EliteEightForm key={data.slateId} gameRows={data.gameRows} savedPicks={data.savedPicks}
+      locked={data.locked} resultPending={data.resultPending} teamBrands={data.teamBrands} />)
   }
 
   return shell(

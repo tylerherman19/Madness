@@ -7,6 +7,7 @@ export function pickWriteError(error: { code?: string; message: string }): { sta
     return { status: 409, message: 'Your pick was saved or changed in another request. Refresh to see the saved pick before trying again.' }
   }
   if (error.code !== 'P0001') return null
+  if (/Both Elite Eight picks must be submitted together/i.test(error.message)) return { status: 409, message: 'Submit both Elite Eight picks together.' }
   if (/Pick period is not open/i.test(error.message)) return { status: 409, message: EARLY_PICK_PENDING }
   if (/Picks are locked|deadline is unavailable/i.test(error.message)) return { status: 409, message: 'The pick deadline has passed or is unavailable. Refresh to see your final pick.' }
   if (/outside the active contest/i.test(error.message)) return { status: 409, message: 'The active contest changed. Refresh before making a pick.' }
