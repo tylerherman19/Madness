@@ -84,6 +84,9 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (insertError) {
+      if (insertError.code === 'P0001' && /registration has closed/i.test(insertError.message)) {
+        return NextResponse.json({ error: 'Tournament registration is closed.' }, { status: 403 })
+      }
       // 23505 = unique violation. Two requests can both pass the email
       // dup-check above before either commits (e.g. a double-tap submit) and
       // then race on the DB's unique email constraint — report that as a

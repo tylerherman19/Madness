@@ -22,6 +22,7 @@ export interface GameSide {
 
 export interface GameRow {
   gameId: string
+  slateId?: string
   kickoff: string
   timeTbd: boolean
   round: string | null
@@ -227,11 +228,15 @@ export default function PickForm({
     grid.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
   }
 
+  function selectedSlate() {
+    return gameRows.find(game => game.home.team === selected || game.away.team === selected)?.slateId ?? slateId
+  }
+
   async function checkReceipt() {
     if(!requestId.current)return
     setUncertain(true)
     try {
-      const check=await fetch(`/api/picks?request_id=${requestId.current}&slate_id=${encodeURIComponent(slateId)}&team=${encodeURIComponent(selected??'')}`,{cache:'no-store'})
+      const check=await fetch(`/api/picks?request_id=${requestId.current}&slate_id=${encodeURIComponent(selectedSlate())}&team=${encodeURIComponent(selected??'')}`,{cache:'no-store'})
       if(!check.ok)throw new Error('Reconciliation unavailable')
       const receipt=await check.json()
       if(receipt.found){
@@ -255,7 +260,7 @@ export default function PickForm({
       const response = await fetch('/api/picks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request_id:requestId.current, slate_id: slateId, team: selected, pick_id: target?.id ?? null, expected_version: target?.updatedAt }),
+        body: JSON.stringify({ request_id:requestId.current, slate_id: selectedSlate(), team: selected, pick_id: target?.id ?? null, expected_version: target?.updatedAt }),
         // USE-05: a stalled connection must not leave "Saving…" on screen forever.
         signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
       })

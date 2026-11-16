@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { slateDeadline, highestSeedChoice, autoAssignTeam, seedForTeam } from './deadline'
 import { getPoolConfig } from './pool'
 import { buildPickPeriods, isFinalDayOfRound, sharedRoundPickQuota } from './competition'
+import { elite2027Window, isMarch2027, ELITE_2027_SUNDAY } from './march2027'
 import { fetchApRankings } from './espn'
 import { withOperation } from './operations'
 import { logAudit } from './audit'
@@ -148,6 +149,7 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
   // Paged and season-scoped: a truncated read here would make players who
   // did pick look like they missed, and hand them a second, automatic pick.
   const allGames = await loadGamesForSlates(supabase, seasonSlateIds)
+  const elite = elite2027Window(pool, slate.slate_date, seasonSlates)
   const gamesData: Game[] = allGames.filter((game) => game.slate_id === slate.id)
 
   if (gamesData.length === 0) {
@@ -168,15 +170,25 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
     pool.pick_frequency,
     activePeriod?.round ?? null
   )
-  const eligibleSlateIds = sharedQuota
+  const eligibleSlateIds = elite?.ids ?? (sharedQuota
     ? new Set(periods.filter((period) => period.round === activePeriod?.round).map((period) => period.id))
-    : new Set([slate.id])
+    : new Set([slate.id]))
 
   // A shared round stays open across its playing days. Missing selections
   // are filled only once its final day locks, so nobody is forced into a
   // first-day team while they still had the second day available — including
   // when that second day hasn't been synced yet.
-  if (sharedQuota && activePeriod && !isFinalDayOfRound(activePeriod, periods)) {
+  if (elite && slate.slate_date === ELITE_2027_SUNDAY) {
+    if (!elite.saturday) throw new Error('Saturday Elite Eight slate is missing')
+    const { data, error } = await supabase.from('slates').select('auto_assign_completed_at').eq('id', elite.saturday.id).single()
+    if (error || !data?.auto_assign_completed_at) throw error ?? new Error('Saturday assignments must finish before Sunday')
+    return { ok: true, message: 'Both Elite Eight picks were due Saturday', done: true }
+  }
+  if (elite) {
+    const { data, error } = await supabase.rpc('march_2027_elite_ready', { p_anchor: slate.id })
+    if (error || data !== true) throw error ?? new Error('Both Elite Eight schedules are required before assignment')
+  }
+  if (!elite && sharedQuota && activePeriod && !isFinalDayOfRound(activePeriod, periods)) {
     return { ok: true, message: 'Round remains open on a later game day', done: true }
   }
 
@@ -220,8 +232,17 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
   const snapshot = (slate as Slate & { assignment_schedule?: Game[] }).assignment_schedule
   if (token && !snapshot?.length) throw new Error('Frozen assignment schedule is unavailable; apply migration 022')
   // A voided game's teams are never handed out: the pick would be excused, a free pass.
-  const voided = new Set(gamesData.filter((game) => game.result === 'void').map((game) => game.id))
-  const assignmentGames = (snapshot?.length ? snapshot : gamesData).filter((game) => !voided.has(game.id))
+  const voided = new Set(allGames.filter((game) => game.result === 'void').map((game) => game.id))
+  let assignmentGames = (snapshot?.length ? snapshot : gamesData).filter(game => !voided.has(game.id))
+  if (elite) {
+    const otherId = [...elite.ids].find(id => id !== slate.id)
+    const { data, error } = await supabase.from('slates').select('assignment_schedule').eq('id', otherId).single()
+    if (error || !data?.assignment_schedule?.length) throw error ?? new Error('Sunday assignment schedule is unavailable')
+    assignmentGames = [...assignmentGames, ...(data.assignment_schedule as Game[]).filter(game => !voided.has(game.id))]
+  }
+  const teamAssignments = new Map(assignmentGames.flatMap(game => [
+    [game.home_team, game.slate_id], [game.away_team, game.slate_id],
+  ]))
   // Tournament ties on a seed line are broken by the AP snapshot saved with
   // the slate. Without one, assignments that need it wait (see below).
   const apRanks = useSeedPriority
@@ -284,7 +305,7 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
     let needsRankings = false
     for (let index = 0; index < missing; index++) {
       const choice = useSeedPriority
-        ? highestSeedChoice(assignmentGames, [...usedTeams], [...usedSeeds], apRanks)
+        ? highestSeedChoice(assignmentGames, [...usedTeams], isMarch2027(pool) ? [] : [...usedSeeds], apRanks)
         : { team: autoAssignTeam(assignmentGames, [...usedTeams]), needsRankings: false }
       if (choice.needsRankings) { needsRankings = true; break }
       if (choice.nameOrderTie) nameOrdered.push(player.full_name)
@@ -307,11 +328,11 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
 
     if (autoTeams.length === missing) {
       const { error: insertError } = token
-        ? await supabase.rpc('apply_assignment', { p_slate_id: slate.id, p_token: token, p_player_id: player.id, p_period_ids: [...eligibleSlateIds], p_expected_count: periodPickCount.get(player.id) ?? 0, p_teams: autoTeams.map(team => ({ team, seed: seedForTeam(team, assignmentGames) })) })
+        ? await supabase.rpc('apply_assignment', { p_slate_id: slate.id, p_token: token, p_player_id: player.id, p_period_ids: [...eligibleSlateIds], p_expected_count: periodPickCount.get(player.id) ?? 0, p_teams: autoTeams.map(team => ({ team, seed: seedForTeam(team, assignmentGames), ...(elite ? { slate_id: teamAssignments.get(team) } : {}) })) })
         : await supabase.from('picks').insert(
         autoTeams.map((autoTeam) => ({
           player_id: player.id,
-          slate_id: slate.id,
+          slate_id: teamAssignments.get(autoTeam) ?? slate.id,
           team: autoTeam,
           seed: seedForTeam(autoTeam, assignmentGames),
           auto_assigned: true,

@@ -145,3 +145,22 @@ test('a lost pick response reconciles the saved receipt without a duplicate subm
  expect(posts).toBe(1);expect(reconciled).toBe(true)
  expect((await (await request.get(`${FIXTURE_DB}/picks`)).json()).length).toBe(1)
 })
+
+test('2027 setup keeps the regular season active and rejects any non-opening date', async ({ page, request }) => {
+  await admin(page)
+  const app = page.request
+  const config = (await (await app.get('/api/admin/pool-config')).json()).pool
+  const id = crypto.randomUUID()
+  const inserted = await request.post(`${FIXTURE_DB}/rest/v1/slates`, {
+    data: { id, slate_number: 2, slate_date: '2027-03-19', season_year: 2027, is_active: false, locks_at: '2027-03-19T16:00:00Z' },
+  })
+  expect(inserted.ok()).toBeTruthy()
+  const response = await app.post('/api/admin/start-tournament', {
+    data: { pool_id: config.id, slate_id: id, confirmation: 'START FRESH', reason: 'browser fixture' },
+  })
+  expect(response.status()).toBe(409)
+  expect((await response.json()).error).toContain('March 18 is the only')
+  const after = (await (await app.get('/api/admin/pool-config')).json()).pool
+  expect(after.id).toBe(config.id)
+  expect(after.competition_mode).toBe('regular-season')
+})

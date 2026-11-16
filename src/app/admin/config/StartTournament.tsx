@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-export default function StartTournament({ poolId, slates }: { poolId: string; slates: { id: string; slate_date: string }[] }) {
+export default function StartTournament({ poolId, slates, march2027 }: { poolId: string; slates: { id: string; slate_date: string }[]; march2027: boolean }) {
   const router = useRouter()
   const [day, setDay] = useState('')
   const [reason, setReason] = useState('')
@@ -26,7 +26,7 @@ export default function StartTournament({ poolId, slates }: { poolId: string; sl
     <label className="block text-sm">Tournament opening day<select className="field block w-full mt-1" value={day} onChange={e => setDay(e.target.value)} disabled={busy}>
       <option value="">Choose a synced tournament day</option>{slates.map(slate => <option key={slate.id} value={slate.id}>{slate.slate_date}</option>)}
     </select></label>
-    {!slates.length && <p className="text-sm text-muted">Sync the future tournament opening day from Admin Schedule first.</p>}
+    {!slates.length && <p className="text-sm text-muted">{march2027 ? 'March 18 is the only 2027 start date. Opening requires all 16 Round of 64 games for that day, with confirmed teams, seeds and tip times.' : 'Sync the future tournament opening day from Admin Schedule first.'}</p>}
     <label className="block text-sm">Reason<input className="field block w-full mt-1" value={reason} onChange={e => setReason(e.target.value)} disabled={busy} /></label>
     <label className="block text-sm">Type START FRESH to archive the current contest<input className="field block w-full mt-1" value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} /></label>
     <button className="btn-primary px-4 py-2" disabled={busy || !day || !reason.trim() || confirmation !== 'START FRESH'} onClick={start}>{busy ? 'Archiving…' : 'Archive and start March Madness'}</button>

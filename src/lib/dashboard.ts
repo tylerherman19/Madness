@@ -17,6 +17,7 @@ import {
   type PickPeriodGame,
   type PoolConfig,
 } from './competition'
+import { isMarch2027, MARCH_2027_DAYS } from './march2027'
 import { compareBySeedTotal, revealedLosingPicks, seedTotalsByPlayer } from './standings'
 import { loadAll, loadGamesForSlates, loadPicksForSlates, seasonYearOf } from './seasonData'
 import { isPickRevealed, slateDeadline } from './deadline'
@@ -84,7 +85,8 @@ interface SlateFacts {
 // The contest season, scoped exactly as before: slates from the pool's start
 // date on, then the season of the active slate (or the newest season).
 function seasonSlatesOf(weeks: Slate[], pool: PoolConfig): Slate[] {
-  const contestWeeks = weeks.filter((w) => !pool.starts_on || String(w.slate_date) >= pool.starts_on)
+  const contestWeeks = weeks.filter(w => (!pool.starts_on || String(w.slate_date) >= pool.starts_on) &&
+    (!isMarch2027(pool) || Boolean(MARCH_2027_DAYS[w.slate_date])))
   const seasonYear = seasonYearOf(contestWeeks)
   return contestWeeks.filter((w) => w.season_year === seasonYear)
 }
@@ -337,7 +339,11 @@ async function buildBoard(key: string, schema: Schema, epoch: string, outline: S
       return [period.id, { key: quota ? period.round! : period.id, quota: quota ?? 1 }]
     }))
     const weeksSurvivedByPlayer = survivedPeriodsByOutcome(seasonPicks, periodScopes)
-    const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks.filter((p) => visibleSlateIds.has(p.slate_id)))
+
+
+    const seedTotalByPlayer = seedTotalsByPlayer(seasonPicks.filter(p => visibleSlateIds.has(p.slate_id) &&
+      (!isMarch2027(pool) || gamesBySlate.get(p.slate_id)?.some(g =>
+        (g.home_team === p.team && g.result === 'home_win') || (g.away_team === p.team && g.result === 'away_win')))))
 
     // The team that knocked each eliminated entry out: their pick on the day
     // they were eliminated. That day is locked and graded, so it is public.

@@ -10,6 +10,7 @@ import { syncSlateFromEspn } from './espnSync'
 import { getPoolConfig } from './pool'
 import { gradeSlatePicks } from './grading'
 import { loadAll, loadGamesForSlates } from './seasonData'
+import { isMarch2027, MARCH_2027_DAYS, ELITE_2027_SATURDAY, ELITE_2027_SUNDAY } from './march2027'
 import type { Slate } from '@/types'
 import { revalidateContest } from './revalidateContest'
 import { resolveRecoveredForWorkload } from './incidents'
@@ -72,7 +73,7 @@ export async function runTournamentJob(
         due.map((s) => s.id),
       )
       progress = []
-      for (const slate of due)
+      for (const slate of due) {
         (progress as unknown[]).push(
           await gradeSlatePicks(
             db,
@@ -83,6 +84,17 @@ export async function runTournamentJob(
             ),
           ),
         )
+        if (isMarch2027(pool) && slate.is_active) {
+          const dayGames = games.filter(g => g.slate_id === slate.id)
+          if (dayGames.length && dayGames.every(g => g.result !== 'pending')) {
+            const finish = await db.rpc('finish_march_2027', { p_slate: slate.id })
+            if (finish.error) throw finish.error
+            const recap = await db.rpc('queue_march_2027_recap', { p_slate: slate.id, p_production: process.env.VERCEL_ENV === 'production' })
+            if (recap.error) throw recap.error
+            if (finish.data) revalidateContest()
+          }
+        }
+      }
     } else if (kind === 'schedule') {
       const pool = await getPoolConfig(db, true),
         today = centralClock(now).date
@@ -91,7 +103,10 @@ export async function runTournamentJob(
       const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000)
         .toISOString().slice(0, 10)
       const responses = []
-      for (const date of [today, tomorrow]) {
+      const dates = new Set([today, tomorrow])
+      if (isMarch2027(pool) && (today === '2027-03-26' || today === ELITE_2027_SATURDAY)) dates.add(ELITE_2027_SUNDAY)
+      for (const date of dates) {
+        if (isMarch2027(pool) && !MARCH_2027_DAYS[date]) continue
         const response = await syncSlateFromEspn(
           db,
           date.replaceAll('-', ''),

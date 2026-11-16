@@ -15,6 +15,7 @@ import {
 import type { Game } from '@/types'
 import PickForm, { type GameRow, type SavedPick } from './PickForm'
 import PoolShell from '../components/PoolShell'
+import { elite2027Window } from '@/lib/march2027'
 import { slateDeadline } from '@/lib/deadline'
 import Link from 'next/link'
 import { brandsFor, type TeamBrandDirectory } from '@/lib/teamBrand'
@@ -73,6 +74,8 @@ async function loadPickData(
     const pastPicks = window.picks
     const allSlates = window.seasonSlates
     const allGames: Game[] = window.games
+    const elite = elite2027Window(pool, slate.slate_date, allSlates)
+    const eliteReady = elite?.saturday && (await supabase.rpc('march_2027_elite_ready', { p_anchor: elite.saturday.id })).data === true
 
     // Teams burned on previous pick periods — this period's pick isn't "used"
     // while it can still be changed. The date a team was spent travels with
@@ -83,16 +86,17 @@ async function loadPickData(
 
     const usedOn: Record<string, string> = {}
     for (const p of pastPicks) {
-      if (p.slate_id === slate.id) continue
+      if (elite ? elite.ids.has(p.slate_id) : p.slate_id === slate.id) continue
       usedOn[p.team] = slateDateById[p.slate_id] ?? ''
     }
     const usedTeams = Object.keys(usedOn)
 
-    const gamesData = allGames.filter((game) => game.slate_id === slate.id)
+    const gamesData = allGames.filter((game) => elite ? elite.ids.has(game.slate_id) : game.slate_id === slate.id)
 
     // Every pick on the slate locks together, at the day's first tip.
-    const lockTime = slateDeadline(slate, gamesData)
-    const locked = lockTime ? now >= lockTime : false
+    const lockSlate = elite ? elite.saturday : slate
+    const lockTime = lockSlate ? slateDeadline(lockSlate, gamesData.filter(g => g.slate_id === lockSlate.id)) : null
+    const locked = elite ? !eliteReady || !lockTime || now >= lockTime : Boolean(lockTime && now >= lockTime)
 
     const usedLabel = (date: string) => (caps.showTournamentRounds ? weekdayShort(date) : formatPeriodDateShort(date))
 
@@ -107,6 +111,7 @@ async function loadPickData(
 
     const gameRows: GameRow[] = gamesData.map((g) => ({
       gameId: g.id,
+      slateId: g.slate_id,
       kickoff: g.tip_time,
       timeTbd: g.time_tbd,
       round: caps.showTournamentRounds ? g.round_label : null,
@@ -143,7 +148,7 @@ async function loadPickData(
         id: pick.id,
         team: pick.team,
         slateId: pick.slate_id,
-        editable: pick.slate_id === slate.id && !locked,
+        editable: (elite ? elite.ids.has(pick.slate_id) : pick.slate_id === slate.id) && !locked,
         autoAssigned: !!pick.auto_assigned,
         updatedAt: pick.updated_at,
       }))
@@ -158,7 +163,7 @@ async function loadPickData(
       playerStatus: player.status,
       periodLabel: period?.label ?? `Slate ${slate.slate_number}`,
       dayLabel: `Day ${dayNumber}`,
-      dateLabel: dayDate(String(slate.slate_date)),
+      dateLabel: elite ? "Mar 27–28" : dayDate(String(slate.slate_date)),
       titleLabel: pickDayTitle(period?.round ?? null, String(slate.slate_date), dayNumber),
       usedTeams,
       usedList,

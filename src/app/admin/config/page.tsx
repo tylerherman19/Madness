@@ -1,3 +1,4 @@
+import { MARCH_2027_START } from '@/lib/march2027'
 import StartTournament from './StartTournament'
 import { getDb, getEffectiveNow } from '@/lib/testMode'
 import { loadAll, loadGamesForSlates } from '@/lib/seasonData'
@@ -21,7 +22,13 @@ export default async function PoolConfigPage() {
   const slates = await loadAll<Slate>(await getDb(), 'slates', '*')
   const futureDays = slates.filter(day => day.locks_at && new Date(day.locks_at) > now)
   const games = await loadGamesForSlates<Game>(await getDb(), futureDays.map(day => day.id))
+  const opening = futureDays.find(day => day.season_year === 2027 && day.slate_date === MARCH_2027_START)
+  const march = opening
+    ? await (await getDb()).rpc('march_2027_opening_ready', { p_slate: opening.id })
+    : null
   const futureSlates = futureDays.filter(day => {
+    if (pool.season_year === 2027 && day.season_year !== 2027) return false
+    if (day.season_year === 2027) return day.id === opening?.id && march?.data === true
     const schedule = games.filter(game => game.slate_id === day.id)
     return schedule.length > 0 && schedule.every(game => normalizeRound(game.round_label) && game.result === 'pending' && game.status_state === 'pre')
   }).sort((a, b) => a.slate_date.localeCompare(b.slate_date))
@@ -59,7 +66,7 @@ export default async function PoolConfigPage() {
         <PoolConfigForm pool={pool} />
       )}
 
-      {pool.id && <StartTournament poolId={pool.id} slates={futureSlates} />}
+      {pool.id && <StartTournament poolId={pool.id} slates={futureSlates} march2027={pool.season_year === 2027} />}
 
       {/* What the current format turns on. Reading the capability table back
           to the administrator is the fastest way to answer "what does this

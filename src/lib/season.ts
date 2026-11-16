@@ -6,6 +6,7 @@ import { getPoolConfig } from './pool'
 import { slateDeadline } from './deadline'
 import { CONTEST_TAG } from './cacheTags'
 import { clientFor, schemaOf, type Schema } from './sharedData'
+import { isMarch2027, MARCH_2027_START } from './march2027'
 import type { Game } from '@/types'
 
 export interface SignupCutoff {
@@ -31,14 +32,18 @@ export async function getSignupCutoff(db?: SupabaseClient): Promise<SignupCutoff
     .maybeSingle()
 
   if (activeError) throw activeError
-  // Nothing active yet — the pool hasn't started, so signups stay open.
-  if (!activeSlate) return null
+  // Preserve the pre-season path when no pool or active slate exists.
+  if (!activeSlate) {
+    const pool = await getPoolConfig(supabase)
+    if (isMarch2027(pool)) return { cutoff: new Date(0), seasonYear: 2027, slateNumber: 1 }
+    return null
+  }
 
   const seasonYear: number = activeSlate.season_year
-
   const pool = await getPoolConfig(supabase, true)
   let query = supabase.from('slates').select('*').eq('season_year', seasonYear)
-  if (pool.starts_on) query = query.gte('slate_date', pool.starts_on)
+  if (isMarch2027(pool)) query = query.eq('slate_date', MARCH_2027_START)
+  else if (pool.starts_on) query = query.gte('slate_date', pool.starts_on)
   const { data: slates, error: slatesError } = await query
   if (slatesError) throw slatesError
   if (!slates?.length) return null
