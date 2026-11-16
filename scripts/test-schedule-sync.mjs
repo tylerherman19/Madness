@@ -1,3 +1,5 @@
+import * as march2027 from '../src/lib/march2027.ts'
+import * as competition from '../src/lib/competition.ts'
 import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -19,6 +21,7 @@ const teams = await loadTs('src/lib/teams.ts', {'./db': paging})
 let feed, hooks
 const { syncSlateFromEspn } = await loadTs('src/lib/espnSync.ts', {
  'server-only': {}, 'node:crypto': {randomUUID}, './db': paging, './teams': teams,
+ './march2027': march2027, './competition': competition,
  './espn': {...espn, fetchDayScoreboard: async () => feed, fetchApRankings: async () => ({})},
  './slates': {
   getOrCreateSlate: async (_db, date) => {hooks.push(['create', date]); return {id: 'new-slate'}},

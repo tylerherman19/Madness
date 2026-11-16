@@ -16,6 +16,8 @@ import {
   isTimeTbd,
   CONFERENCES,
 } from './espn'
+import { normalizeRound } from './competition'
+import { MARCH_2027_DAYS } from './march2027'
 import { getOrCreateSlate, refreshLockTime, renumberSlates } from './slates'
 import { selectAllIn } from './db'
 import { ambiguousAbbreviations } from './teams'
@@ -55,7 +57,11 @@ export async function syncSlateFromEspn(
     new Date(`${requestedDate}T12:00:00Z`).toISOString().slice(0, 10) !== requestedDate) {
     return { ok: false, error: 'Invalid schedule date' }
   }
-  const { events, failedGroups } = await fetchDayScoreboard(yyyymmdd, revalidateSeconds)
+  const { events: scoreboard, failedGroups } = await fetchDayScoreboard(yyyymmdd, revalidateSeconds)
+  const round = seasonYear === 2027 ? MARCH_2027_DAYS[requestedDate] : null
+  // Opening games and other postseason tournaments must never mix into the
+  // official 2027 Round of 64 or its later slates.
+  const events = round ? scoreboard.filter(event => normalizeRound(parseRound(event).roundLabel) === round) : scoreboard
 
   if (failedGroups.length === Object.keys(CONFERENCES).length + 1) {
     return { ok: false, error: 'ESPN unavailable — every conference request failed' }

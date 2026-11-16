@@ -1,4 +1,6 @@
 // Result resolution (migration 033): manual results, void, regrade, contest_state. Runs in public and sandbox.
+import * as march2027 from '../src/lib/march2027.ts'
+import * as competition from '../src/lib/competition.ts'
 import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -26,13 +28,13 @@ async function reset(schema, { mode = 'regular-season', startsOn = null } = {}) 
   await sql(`set search_path to ${schema},pg_catalog;
     truncate players,picks,games,slates,notification_outbox,pick_revisions,pick_requests,incidents,audit_log cascade;
     ${schema === 'sandbox' ? 'update clock set simulated_now=null;' : ''}
-    update pools set season_year=2027,competition_mode='${mode}',pick_frequency='${mode === 'march-madness' ? 'tournament-round' : 'every-game-day'}',
+    update pools set season_year=2099,competition_mode='${mode}',pick_frequency='${mode === 'march-madness' ? 'tournament-round' : 'every-game-day'}',
       starts_on=${startsOn ? `'${startsOn}'` : 'null'},status='open',is_active=true;`)
 }
 const player = (n) => sql(`insert into players(id,full_name,email,pin_hash) values('${P(n)}','Entry ${n}','e${n}@example.test','x')`)
 const slate = (n, { date, active = false, locks = "now()-interval '1 day'" } = {}) =>
   sql(`insert into slates(id,slate_number,slate_date,season_year,is_active,locks_at,auto_assign_completed_at)
-    values('${SL(n)}',${n},${date ?? `current_date+${n}`},2027,${active},${locks},now())`)
+    values('${SL(n)}',${n},${date ?? `current_date+${n}`},2099,${active},${locks},now())`)
 const game = (n, slateN, home, away, { tip = "now()-interval '10 hours'", round = null } = {}) =>
   sql(`insert into games(id,slate_id,espn_event_id,home_team,away_team,tip_time,round_label)
     values('${G(n)}','${SL(slateN)}','ev${n}','${home}','${away}',${tip},${round ? `'${round}'` : 'null'})`)
@@ -314,6 +316,7 @@ async function loadTs(file, dependencies = {}) {
   const { advanceSlate } = await loadTs('src/lib/advanceSlate.ts', {
     'next/server': { NextResponse: { json: (body, init) => ({ body, status: init?.status ?? 200 }) } },
     '@/lib/revalidateContest': { revalidateContest: () => {} },
+    './march2027': march2027,
     '@/lib/espnSync': { syncSlateFromEspn: async () => ({ ok: true }) },
     '@/lib/audit': { logAudit: async () => {} },
     '@/lib/grading': { gradeSlatePicks: async () => ({ eliminated: [], advanced: [] }) },
@@ -346,6 +349,7 @@ async function loadTs(file, dependencies = {}) {
   let feed
   const { syncSlateFromEspn } = await loadTs('src/lib/espnSync.ts', {
     'server-only': {}, 'node:crypto': { randomUUID }, './db': paging, './teams': teams,
+    './march2027': march2027, './competition': competition,
     './espn': { ...espn, fetchDayScoreboard: async () => feed, fetchApRankings: async () => ({}) },
     './slates': { getOrCreateSlate: async () => ({ id: 'slate' }), refreshLockTime: async () => {}, renumberSlates: async () => {} },
   })
@@ -414,7 +418,8 @@ async function loadTs(file, dependencies = {}) {
     const { advanceSlate } = await loadTs('src/lib/advanceSlate.ts', {
       'next/server': { NextResponse: { json: (body, init) => ({ body, status: init?.status ?? 200 }) } },
       '@/lib/revalidateContest': { revalidateContest: () => {} },
-      '@/lib/espnSync': { syncSlateFromEspn: async () => ({ ok: true, slateId: 'next-day', gamesSynced: 3, reviewGames: [] }) },
+      './march2027': march2027,
+    '@/lib/espnSync': { syncSlateFromEspn: async () => ({ ok: true, slateId: 'next-day', gamesSynced: 3, reviewGames: [] }) },
       '@/lib/audit': { logAudit: async () => {} },
       '@/lib/grading': { gradeSlatePicks: async () => ({ eliminated: [], advanced: [] }) },
       '@/lib/autoAssign': { runAutoAssignNow: async () => ({ ok: true, done: true }) },

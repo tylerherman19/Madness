@@ -1,4 +1,5 @@
 import 'server-only'
+import { MARCH_2027_RULES } from './march2027'
 import {unsubscribeFooter,unsubscribeHeaders} from './unsubscribe'
 import {
   createCipheriv,
@@ -95,7 +96,7 @@ export function renderNotification(
     return event.payload.request as EmailRequest | { sealed: string }
   const p = event.payload
   const label =
-    event.kind === 'reminder'
+    event.kind === 'welcome' ? 'Welcome to the 2027 March Madness pool' : event.kind === 'reminder'
       ? 'Your pick deadline is approaching'
       : event.kind === 'elimination'
         ? 'Entry eliminated'
@@ -103,7 +104,7 @@ export function renderNotification(
           ? String(p.subject)
           : 'Saved pick receipt'
   const message =
-    event.kind === 'announcement'
+    event.kind === 'welcome' ? MARCH_2027_RULES.map(rule => rule.title + ': ' + rule.text).join('\n\n') : event.kind === 'announcement'
       ? String(p.message)
       : event.kind === 'reminder'
         ? `Complete your required selections before ${p.deadline}.`

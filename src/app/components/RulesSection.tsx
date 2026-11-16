@@ -1,9 +1,11 @@
 import { capabilitiesFor, type PoolConfig } from '@/lib/competition'
+import { isMarch2027, MARCH_2027_RULES } from '@/lib/march2027'
 import s from './pp.module.css'
 
 // The house rules, phrased from the pool's stored configuration so they always
 // match what the server enforces.
 function rulesFor(pool: PoolConfig): { title: string; text: string }[] {
+  if (isMarch2027(pool)) return MARCH_2027_RULES
   const tournament = capabilitiesFor(pool.competition_mode).showTournamentRounds
   const onePick =
     tournament && pool.pick_frequency === 'tournament-round'
@@ -54,6 +56,10 @@ export default function RulesSection({ pool }: { pool: PoolConfig }) {
     <section id="rules" className={s.rulesSection} aria-labelledby="rules-title">
       <div className={s.sectionHead}><h2 id="rules-title">Rules</h2></div>
       {/* Two columns on a computer, read down: the first half on the left. */}
+      {pool.final_result?.winners?.length ? <p><strong>Winner{pool.final_result.winners.length === 1 ? '' : 's'}:</strong>{' '}
+        {pool.final_result.winners.map(winner => winner.name + ' (' + winner.seed_total + ' seed points)').join(', ')}
+        {pool.final_result.winners.length > 1 ? ' · Split pot' : ' · Full pot'}
+      </p> : null}
       <ol className={s.ruleList} style={{ '--rows': Math.ceil(rules.length / 2) } as React.CSSProperties}>
         {rules.map((rule, index) => (
           <li key={rule.title}>

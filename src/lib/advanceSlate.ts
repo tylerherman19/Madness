@@ -10,6 +10,7 @@ import { serverError } from '@/lib/alerts'
 import { randomUUID } from 'node:crypto'
 import { isAdvanceWindow } from '@/lib/advanceSchedule'
 import { centralClock } from '@/lib/operationPolicy'
+import { isMarch2027, MARCH_2027_DAYS, ELITE_2027_SATURDAY, ELITE_2027_SUNDAY } from './march2027'
 import { getPoolConfig } from '@/lib/pool'
 
 const MAX_LOOKAHEAD_DAYS = 10
@@ -35,6 +36,8 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
       return NextResponse.json({ ok: true, caught_up: true, message: 'Current playing day has not reached its overnight turnover' })
     }
 
+    const pool = await getPoolConfig(supabase, true)
+    const march = isMarch2027(pool)
     const refreshed = await syncSlateFromEspn(supabase, slate.slate_date.replace(/-/g, ''), slate.season_year)
     if (!refreshed.ok || refreshed.partial?.length) throw new Error('Cannot advance while the result feed is incomplete')
     const currentGames: Game[] = await loadGamesForSlates(supabase, [slate.id])
@@ -47,10 +50,9 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
     // pool has nothing to grade or assign, but its calendar keeps moving so the site is never stranded
     // on an old day. Only a positively identified regular-season pool keeps going.
     let nobodyAlive = false
-    if (actor === 'system') {
+    if (actor === 'system' && !march) {
       const { data: contest } = await supabase.rpc('contest_state')
       if ((contest as { stopped?: boolean } | null)?.stopped === true) {
-        const pool = await getPoolConfig(supabase, true)
         if (pool.competition_mode !== 'regular-season') {
           return NextResponse.json({ ok: true, stopped: true, message: 'Stopped: no entries alive' })
         }
@@ -74,7 +76,14 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
     if (!assignment.ok || !assignment.done) return NextResponse.json({ error: 'Assignments are incomplete; advancement deferred' }, { status: 409 })
     await gradeSlatePicks(supabase, slate.id, slate.slate_number, finals)
 
-    if(complete && process.env.TOURNAMENT_RELIABILITY_ENABLED==='true') {
+    if (complete && march) {
+      const { data: result, error } = await supabase.rpc('finish_march_2027', { p_slate: slate.id })
+      if (error) throw error
+      const recap = await supabase.rpc('queue_march_2027_recap', { p_slate: slate.id, p_production: process.env.VERCEL_ENV === 'production' })
+      if (recap.error) throw recap.error
+      if (result) { revalidateContest(); return NextResponse.json({ ok: true, completed: true }) }
+    }
+    if(complete && !march && process.env.TOURNAMENT_RELIABILITY_ENABLED==='true') {
       const {data:completed,error}=await supabase.rpc('complete_tournament',{p_slate:slate.id})
       if(error)throw error
       if(completed){revalidateContest();return NextResponse.json({ok:true,caught_up:true,completed:true})}
@@ -87,7 +96,9 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
     let nextDate: string | null = null
     for (let i = 1; i <= MAX_LOOKAHEAD_DAYS; i++) {
       const day = new Date(from.getTime() + i * 86_400_000)
-      const yyyymmdd = day.toISOString().slice(0, 10).replace(/-/g, '')
+      const date = day.toISOString().slice(0, 10)
+      if (march && !MARCH_2027_DAYS[date]) continue
+      const yyyymmdd = date.replace(/-/g, '')
       const attempt = await syncSlateFromEspn(supabase, yyyymmdd, slate.season_year)
       if (attempt.partial?.length || (!attempt.ok && !attempt.error?.startsWith('No games found'))) throw new Error(attempt.error ?? 'Schedule is incomplete')
       if (attempt.ok && !attempt.partial?.length && attempt.slateId && (attempt.gamesSynced ?? 0) > 0) {
@@ -95,6 +106,7 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
         nextDate = day.toISOString().slice(0, 10)
         break
       }
+      if (march) break // Do not skip a scheduled but missing tournament slate.
     }
 
     if (!result || !result.slateId || !nextDate) {
@@ -104,6 +116,14 @@ export async function advanceSlate(supabase: import('@supabase/supabase-js').Sup
       })
     }
 
+    if (march && nextDate === ELITE_2027_SATURDAY) {
+      const sunday = await syncSlateFromEspn(supabase, ELITE_2027_SUNDAY.replaceAll('-', ''), slate.season_year)
+      const readiness = await supabase.rpc('march_2027_elite_ready', { p_anchor: result.slateId })
+      if (readiness.error) throw readiness.error
+      if (!sunday.ok || sunday.partial?.length || sunday.reviewGames?.length || !readiness.data) {
+        return NextResponse.json({ ok: true, waiting: true, message: 'Waiting for both Elite Eight dates to be confirmed' })
+      }
+    }
     if (result.reviewGames?.length) return NextResponse.json({ ok: true, waiting: true, message: 'The next pick day needs schedule review' })
     if (actor === 'system' && !nobodyAlive && process.env.TOURNAMENT_RELIABILITY_ENABLED === 'true') {
       const {data: next, error} = await supabase.from('slates').select('locks_at').eq('id', result.slateId).single()

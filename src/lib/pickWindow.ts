@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game, Pick as StoredPick, Slate } from '@/types'
+import { isMarch2027, isElite2027Date, MARCH_2027_DAYS, ELITE_2027_SATURDAY } from './march2027'
 import type { PoolConfig } from './competition'
 import { buildPickPeriods, sharedRoundPickQuota } from './competition'
 import { didPickWin, isSlateLocked } from './deadline'
@@ -121,7 +122,7 @@ export async function loadPickWindow(
 }> {
   const { data: activeSlate, error: activeError } = await db.from('slates').select('*').eq('is_active', true).maybeSingle()
   if (activeError) throw activeError
-  if (!activeSlate) return { activeSlate: null, pickSlate: null, seasonSlates: [], games: [], picks: [] }
+  if (!activeSlate || pool.status === 'completed') return { activeSlate: null, pickSlate: null, seasonSlates: [], games: [], picks: [] }
 
   const readPicks=db.from('picks')
   const playerPickQuery=process.env.TOURNAMENT_RELIABILITY_ENABLED==='true'
@@ -135,11 +136,15 @@ export async function loadPickWindow(
   if (picksRes.error) throw picksRes.error
   const slates = slatesRes.data
   const picks = picksRes.data
-  let seasonSlates = ((slates ?? []) as Slate[]).filter(slate => !pool.starts_on || slate.slate_date >= pool.starts_on)
+  let seasonSlates = ((slates ?? []) as Slate[]).filter(slate => (!pool.starts_on || slate.slate_date >= pool.starts_on) && (!isMarch2027(pool) || Boolean(MARCH_2027_DAYS[slate.slate_date])))
   const playerPicks = (picks ?? []) as PlayerPick[]
   let games = await loadGamesForSlates(db, seasonSlates.map((slate) => slate.id))
   const activeGames = games.filter((game) => game.slate_id === activeSlate.id)
 
+  // Saturday is the entry point for both games days. Sunday is for results only.
+  if (isMarch2027(pool) && activeSlate.slate_date === ELITE_2027_SATURDAY) {
+    return { activeSlate, pickSlate: activeSlate, seasonSlates, games, picks: playerPicks }
+  }
   if (!allowEarly || !isSlateLocked(activeSlate, activeGames, now)) {
     return { activeSlate, pickSlate: activeSlate, seasonSlates, games, picks: playerPicks }
   }
@@ -195,26 +200,28 @@ export async function loadPickWindow(
   const activeDate = new Date(`${activeSlate.slate_date}T12:00:00Z`)
   for (let offset = 1; offset <= 10; offset++) {
     const date = new Date(activeDate.getTime() + offset * 86_400_000).toISOString().slice(0, 10)
+    if (isMarch2027(pool) && !MARCH_2027_DAYS[date]) continue
     let next = seasonSlates.find((slate) => slate.slate_date === date)
     let nextGames = next ? games.filter((game) => game.slate_id === next!.id) : []
     if (nextGames.length === 0 && !sandbox) {
       const loaded = storeDate === date
         ? await storeDay(db, date, activeSlate.season_year)
         : await previewDay(date, activeSlate.season_year, Math.max(0, ...seasonSlates.map((slate) => slate.slate_number)) + 1)
-      if (loaded === 'dark') continue
+      if (loaded === 'dark') { if (isMarch2027(pool)) break; continue }
       if (loaded === 'stop') break
       next = loaded.slate
       nextGames = loaded.games
       seasonSlates = [...seasonSlates.filter((slate) => slate.id !== next!.id), next]
       games = [...games.filter((game) => game.slate_id !== next!.id), ...nextGames]
     }
-    if (!next || nextGames.length === 0) continue
+    if (!next || nextGames.length === 0) { if (isMarch2027(pool)) break; continue }
 
     const nextPeriod = buildPickPeriods(pool.competition_mode, seasonSlates, games)
       .find((period) => period.id === next.id)
     if (sharedQuota && nextPeriod?.round !== currentPeriod?.round && currentPicks.length < sharedQuota) {
       break
     }
+    if (isMarch2027(pool) && isElite2027Date(date) && next.id.startsWith('espn:')) break
     if (isSlateLocked(next, nextGames, now)) break
     return { activeSlate, pickSlate: next, seasonSlates, games, picks: playerPicks, resultPending }
   }

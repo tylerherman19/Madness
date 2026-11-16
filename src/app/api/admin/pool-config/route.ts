@@ -5,6 +5,7 @@ import { getDb } from '@/lib/testMode'
 import { requireAdmin, isUuid } from '@/lib/api'
 import { logAudit } from '@/lib/audit'
 import { getPoolConfig, updatePoolConfig, type PoolConfigPatch } from '@/lib/pool'
+import { isMarch2027, MARCH_2027_START } from '@/lib/march2027'
 import { serverError } from '@/lib/alerts'
 import {
   COMPETITION_MODES,
@@ -108,6 +109,10 @@ export async function POST(req: NextRequest) {
     }
 
     const next = { ...current, ...patch }
+    if (isMarch2027(next) && (!isMarch2027(current) || next.starts_on !== MARCH_2027_START ||
+      next.pick_frequency !== 'every-game-day' || next.auto_pick_behavior !== 'highest-seed' || next.tiebreaker !== 'seed-total')) {
+      return NextResponse.json({ error: 'The 2027 tournament starts March 18 with the published rules. To open it, use Archive and start March Madness.' }, { status: 409 })
+    }
     if (next.pick_frequency === 'tournament-round' && next.competition_mode !== 'march-madness') {
       return NextResponse.json({ error: 'Round quotas require tournament mode' }, { status: 400 })
     }

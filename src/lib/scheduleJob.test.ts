@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import * as march2027 from './march2027.ts'
 import { centralClock, reminderWindow } from './operationPolicy.ts'
 
 // The schedule workload must store tomorrow as well as today, so a player
@@ -11,6 +12,7 @@ function runSchedule(failing: string[] = []) {
   const recovered: string[] = []
   const dependencies: Record<string, unknown> = {
     'server-only': {}, './syncResults': {}, './autoAssign': {}, './advanceSlate': {}, './reminders': {}, './notificationWorker': {},
+    './march2027': march2027,
     './operationPolicy': { centralClock, reminderWindow },
     './espnSync': { syncSlateFromEspn: async (_db: unknown, date: string) => {
       synced.push(date)

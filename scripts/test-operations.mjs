@@ -88,12 +88,13 @@ async function loadTs(file,dependencies={}) {
 const operations=await loadTs('src/lib/operations.ts',{'server-only':{}})
 const deadline=await loadTs('src/lib/deadline.ts')
 const competition=await loadTs('src/lib/competition.ts')
+const march2027=await loadTs('src/lib/march2027.ts')
 // Match PostgREST's JSON date/timestamp representation rather than Date objects.
 const rows=async table=>(await db.query(`select to_jsonb(r) as data from ${table} r`)).rows.map(row=>row.data)
 const {runAutoAssignNow}=await loadTs('src/lib/autoAssign.ts',{
  'server-only':{},'node:crypto':{randomUUID},'./revalidateContest':{revalidateContest(){}},'./deadline':deadline,
  './pool':{getPoolConfig:async()=>(await rows('pools')).find(row=>row.is_active)},
- './competition':competition,'./espn':{fetchApRankings:async()=>({})},'./operations':operations,
+ './competition':competition,'./march2027':march2027,'./espn':{fetchApRankings:async()=>({})},'./operations':operations,
  './audit':{logAudit:async()=>{}},'./alerts':{reportFailure:async()=>{}},
  './db':{selectAllIn:async() => rows('picks')},
  './seasonData':{
@@ -268,7 +269,7 @@ await db.close()
  const {runAutoAssignNow:assign}=await loadTs('src/lib/autoAssign.ts',{
   'server-only':{},'node:crypto':{randomUUID},'./revalidateContest':{revalidateContest(){}},'./deadline':deadline,
   './pool':{getPoolConfig:async()=>(await tableRows('pools')).find(row=>row.is_active)},
-  './competition':competition,'./espn':{fetchApRankings:async()=>{rankReads++;return liveRanks}},'./operations':operations,
+  './competition':competition,'./march2027':march2027,'./espn':{fetchApRankings:async()=>{rankReads++;return liveRanks}},'./operations':operations,
   './audit':{logAudit:async()=>{}},'./alerts':{reportFailure:async(_db,report)=>{failures.push(report)}},
   './db':{selectAllIn:async()=>tableRows('picks')},
   './seasonData':{

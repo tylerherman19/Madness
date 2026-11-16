@@ -11,6 +11,7 @@ import { buildPickPeriods, sharedRoundPickQuota } from '@/lib/competition'
 import { randomUUID } from 'node:crypto'
 import { adminSessionId } from '@/lib/session'
 import { pickWriteError, EARLY_PICK_PENDING } from '@/lib/pickErrors'
+import { elite2027Window } from '@/lib/march2027'
 import type { Game } from '@/types'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { serverError } from '@/lib/alerts'
@@ -94,10 +95,12 @@ export async function POST(req: NextRequest) {
     const retry = !request_id && window.picks.find(pick=>pick.slate_id===slate_id&&pick.team===team&&(!pick_id||pick.id===pick_id))
     if(retry) return NextResponse.json({ok:true,pick:retry,version:retry.version??1,acceptedAt:retry.updated_at,periodId:retry.slate_id,deadline:slateDeadline(window.seasonSlates.find(s=>s.id===retry.slate_id)??null,window.games.filter(g=>g.slate_id===retry.slate_id))})
     const slate = window.seasonSlates.find((row) => row.id === slate_id)
-    if (!isAdmin && window.resultPending && slate_id === window.pickSlate?.id && slate_id !== window.activeSlate?.id) {
+    const elite = slate && elite2027Window(pool, slate.slate_date, window.seasonSlates)
+    const eliteOpen = Boolean(elite && window.pickSlate && elite.ids.has(window.pickSlate.id))
+    if (!isAdmin && window.resultPending && (eliteOpen || slate_id === window.pickSlate?.id) && window.pickSlate?.id !== window.activeSlate?.id) {
       return NextResponse.json({ error: EARLY_PICK_PENDING, resultPending: true }, { status: 409 })
     }
-    if (!slate || (isAdmin ? !slate.is_active : window.pickSlate?.id !== slate_id)) {
+    if (!slate || (!eliteOpen && (isAdmin ? !slate.is_active : window.pickSlate?.id !== slate_id))) {
       return NextResponse.json(
         { error: 'This game day is not open for you yet. Your previous pick must finish with a win first.' },
         { status: 400 }
@@ -126,7 +129,8 @@ export async function POST(req: NextRequest) {
       // Refresh the clock after ESPN and database reads. A request that began
       // just before first tip cannot save after the deadline passed.
       const submissionNow = await getEffectiveNow()
-      if (isSlateLocked(slate, gamesData, submissionNow)) {
+      const lockSlate = elite ? elite.saturday : slate
+      if (!lockSlate || isSlateLocked(lockSlate, allGames.filter(g => g.slate_id === lockSlate.id), submissionNow)) {
         return NextResponse.json(
           { error: 'Picks for today are locked — the first game has tipped off' },
           { status: 400 }
@@ -148,7 +152,7 @@ export async function POST(req: NextRequest) {
     const quota = sharedQuota ?? 1
 
     let existingPick = pick_id
-      ? (playerPicks ?? []).find((pick) => pick.id === pick_id && pick.slate_id === slate_id)
+      ? (playerPicks ?? []).find((pick) => pick.id === pick_id && (pick.slate_id === slate_id || elite?.ids.has(pick.slate_id)))
       : undefined
 
     // Daily pools retain the familiar replace-in-place behavior. Shared-round

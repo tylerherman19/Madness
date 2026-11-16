@@ -48,6 +48,7 @@ export interface PoolConfig {
   starts_on: string | null
   is_active: boolean
   created_at?: string
+  final_result?: { decided_on: string; reason: string; winners: { name: string; seed_total: number }[] } | null
   updated_at?: string
 }
 
