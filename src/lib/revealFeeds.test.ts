@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import * as deadline from './deadline.ts'
+import * as march2027 from './march2027.ts'
 import * as competition from './competition.ts'
 import * as livePolling from './livePolling.ts'
 import * as operationPolicy from './operationPolicy.ts'
@@ -291,7 +292,7 @@ function pickWindowHarness(events: Record<string, unknown[]>, { failedNext = fal
   }
   const pickWindow = load('./pickWindow.ts', {
     'server-only': {},
-    './competition': competition,
+    './competition': competition, './march2027': march2027,
     './deadline': deadline,
     './espn': { ...espnModule, fetchDayScoreboard: async (date: string) => ({ events: events[date] ?? [], failedGroups: date === '20990320' && failedNext ? ['SEC'] : [] }) },
     './espnSync': { syncSlateFromEspn: async (_db: unknown, date: string) => {
