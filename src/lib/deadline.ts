@@ -131,9 +131,18 @@ export function highestSeedChoice(
   games: Game[],
   usedTeams: string[],
   usedSeeds: number[],
-  apRanks: Record<string, number> | null
+  apRanks: Record<string, number> | null,
+  // Multi-pick periods (the 2027 Elite Eight pair): `avoid` holds the
+  // opponents of teams already chosen for this entry, so an automatic pair
+  // never takes both sides of one game (one of them would be certain to
+  // lose). `slots` is how many picks are still to be chosen: when every
+  // team on the best seed line will be taken anyway, their order does not
+  // matter and no AP ranking is needed.
+  options: { avoid?: string[]; slots?: number } = {}
 ): { team: string | null; needsRankings: boolean; nameOrderTie?: boolean } {
   const usedTeamSet = new Set(usedTeams)
+  const avoid = new Set(options.avoid ?? [])
+  const slots = Math.max(1, Math.trunc(options.slots ?? 1))
   const usedSeedSet = new Set(usedSeeds.filter((seed) => Number.isInteger(seed) && seed >= 1 && seed <= 16))
   const candidates: SeedCandidate[] = []
 
@@ -148,12 +157,19 @@ export function highestSeedChoice(
     }
   }
 
-  const fresh = candidates.filter((candidate) => !usedSeedSet.has(candidate.seed))
-  const pool = fresh.length ? fresh : candidates
+  const open = candidates.filter((candidate) => !avoid.has(candidate.team))
+  const eligible = open.length ? open : candidates
+  const fresh = eligible.filter((candidate) => !usedSeedSet.has(candidate.seed))
+  const pool = fresh.length ? fresh : eligible
   if (!pool.length) return { team: null, needsRankings: false }
   const bestSeed = Math.min(...pool.map((candidate) => candidate.seed))
   const line = pool.filter((candidate) => candidate.seed === bestSeed)
-  if (line.length > 1 && apRanks === null) return { team: null, needsRankings: true }
+  if (line.length > 1 && apRanks === null) {
+    if (line.length > slots) return { team: null, needsRankings: true }
+    // Every team on this line is taken within the remaining picks.
+    line.sort((a, b) => a.team.localeCompare(b.team))
+    return { team: line[0].team, needsRankings: false }
+  }
   // With a snapshot, an unranked team sorts after every ranked one. Two
   // teams the snapshot cannot separate (both unranked) keep the existing
   // name order, but the caller is told so it can surface it to the organizer.

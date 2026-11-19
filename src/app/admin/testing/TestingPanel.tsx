@@ -229,6 +229,22 @@ export default function TestingPanel({
               </button>
               <button
                 onClick={async () => {
+                  if (!confirm('Replace ALL sandbox data with a 2027 Elite Eight weekend (two picks, both must win)? Production is untouched.')) return
+                  const data = await callTestMode('seed_elite_eight', { users: Math.max(seedUsers, 1) })
+                  if (data) {
+                    setMessage(
+                      `Elite Eight rehearsal ready: ${data.entries} test entries (test.elite1@nflsurvivor.internal …, password ${data.password}). Saturday is open and both picks lock at its first tip; the sandbox clock is two hours before it.`
+                    )
+                    router.refresh()
+                  }
+                }}
+                disabled={busy !== null}
+                className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-sunken transition-colors disabled:opacity-50"
+              >
+                {busy === 'seed_elite_eight' ? 'Seeding…' : 'Seed Elite Eight Rehearsal'}
+              </button>
+              <button
+                onClick={async () => {
                   if (!confirm('Delete ALL sandbox data (players, slates, games, picks)? Production is untouched.')) return
                   const data = await callTestMode('reset')
                   if (data) {

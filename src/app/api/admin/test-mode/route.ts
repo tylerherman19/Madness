@@ -7,6 +7,7 @@ import { sandboxSupabase } from '@/lib/supabase'
 import { hashPassword } from '@/lib/password'
 import { gradeSlatePicks } from '@/lib/grading'
 import type { Game } from '@/types'
+import { leaveEliteRehearsal, seedEliteEightRehearsal } from '@/lib/eliteRehearsal'
 
 const CHICAGO_TZ = 'America/Chicago'
 
@@ -148,6 +149,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'reset') {
+      try {
+        await leaveEliteRehearsal(sandboxSupabase)
+      } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not leave the Elite Eight rehearsal' }, { status: 500 })
+      }
       // Order matters only for clarity — FKs cascade from slates/players.
       const tables = ['picks', 'games', 'slates', 'players'] as const
       for (const table of tables) {
@@ -159,7 +165,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    if (action === 'seed_elite_eight') {
+      const requested = Number(body?.users)
+      try {
+        const seeded = await seedEliteEightRehearsal(
+          sandboxSupabase,
+          Number.isFinite(requested) ? requested : 4,
+          await hashPassword(TEST_USER_PASSWORD),
+        )
+        return NextResponse.json({ ok: true, ...seeded, password: TEST_USER_PASSWORD })
+      } catch (error) {
+        // Sandbox-only setup for an admin: the failing step is the useful part.
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Elite Eight rehearsal setup failed' }, { status: 500 })
+      }
+    }
+
     if (action === 'seed') {
+      try {
+        await leaveEliteRehearsal(sandboxSupabase)
+      } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not leave the Elite Eight rehearsal' }, { status: 500 })
+      }
       const requested = Number(body?.users)
       const userCount = Number.isFinite(requested) ? Math.min(Math.max(Math.trunc(requested), 0), 30) : 8
 

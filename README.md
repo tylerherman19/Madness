@@ -71,7 +71,9 @@ npm run dev
 | `EMAILS_ENABLED` | Must be exactly `true` to send mail. Anything else = silence |
 | `PASSWORD_RESET_EMAILS_ENABLED` | Also must be exactly `true` to deliver password reset links. Defaults to off. |
 | `CRON_SECRET` | Authenticates Vercel cron requests |
-| `ALERT_SMS_TO` | Where failure texts and the daily summary go, e.g. `5551234567@tmomail.net` (T-Mobile email-to-SMS). Comma-separate for several. Sent as email, so nothing goes out until `EMAILS_ENABLED=true` |
+| `ALERT_SMS_TO` | Where failure texts and the daily summary go, e.g. `5551234567@tmomail.net` (T-Mobile email-to-SMS). Comma-separate for several. Sent directly in production (see Audit log and failure alerts) |
+| `OPERATIONAL_ALERTS_ENABLED` | `false` stops alert texts in production; `true` allows them outside production |
+| `ODDS_API_KEY` | Optional. The Odds API key for spreads and totals on the schedule; without it the schedule shows no odds |
 | `NEXT_PUBLIC_APP_URL` | Base URL used in links |
 
 ## Database
@@ -168,8 +170,16 @@ transactional activation. Reminder and elimination delivery also requires
 - Repeats of the same failure within 10 minutes collapse into one row.
 - At most one text per failure type per 30 minutes.
 - Test-mode (sandbox) failures go to the sandbox trail and never text.
-- Texts ride the normal email path, so they stay off until email is enabled.
-  The audit page's **Send test text** button reports why a text didn't go out.
+- In Vercel Production, texts go straight to the email provider (`src/lib/alertDelivery.ts`)
+  and do not wait for `EMAILS_ENABLED`, `OUTBOX_DELIVERY_ENABLED` or the admin delivery mode,
+  which only govern player mail. They need `ALERT_SMS_TO` and `RESEND_API_KEY`, and go only to
+  `ALERT_SMS_TO`. `OPERATIONAL_ALERTS_ENABLED=false` turns them off; previews and local runs
+  only record them unless it is `true`. The audit page's **Send test text** button reports
+  whether the provider accepted it.
+- `.github/workflows/uptime.yml` checks `/api/health` and `/api/operations/health` every 10
+  minutes from GitHub, independently of the database and of email. GitHub notifies whoever
+  last edited the workflow's schedule about a failed run (per their notification settings);
+  scheduled runs are best-effort and GitHub pauses them after 60 days without repository activity.
 
 Cron routes accept `GET` with the `CRON_SECRET` bearer token only. The admin
 buttons call the same routes with `POST` and the admin session, so a link

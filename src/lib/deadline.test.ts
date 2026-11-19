@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { FALLBACK_TIME_ZONE, autoAssignHighestSeed, didPickWin, formatClock, isSlateLocked, resolveTimeZone } from './deadline.ts'
+import { FALLBACK_TIME_ZONE, autoAssignHighestSeed, didPickWin, highestSeedChoice, formatClock, isSlateLocked, resolveTimeZone } from './deadline.ts'
 import type { Game } from '../types/index.ts'
 
 function game(
@@ -147,4 +147,55 @@ test('the zone label can be left off and a missing or invalid time reads TBD', (
 test('midnight and noon use the 12-hour clock without a leading zero hour', () => {
   assert.equal(formatClock('2026-01-15T06:00:00Z', 'America/Chicago'), '12:00 AM CST')
   assert.equal(formatClock('2026-01-15T18:00:00Z', 'America/Chicago'), '12:00 PM CST')
+})
+
+// The 2027 Elite Eight pair: two automatic picks for an entry that missed the deadline.
+function eliteGames(): Game[] {
+  return [
+    game('sat1', 'CONN', 1, 'HOU', 2, 'Elite 8'),
+    game('sat2', 'ARIZ', 3, 'GONZ', 4, 'Elite 8'),
+    game('sun1', 'DUKE', 5, 'KU', 6, 'Elite 8'),
+    game('sun2', 'PUR', 7, 'AUB', 8, 'Elite 8'),
+  ]
+}
+function pickPair(games: Game[], ranks: Record<string, number> | null) {
+  const chosen: string[] = []
+  for (let index = 0; index < 2; index++) {
+    const opponents = games.flatMap((g) => chosen.includes(g.home_team) ? [g.away_team] : chosen.includes(g.away_team) ? [g.home_team] : [])
+    const choice = highestSeedChoice(games, chosen, [], ranks, { avoid: opponents, slots: 2 - index })
+    if (choice.needsRankings) return 'needs rankings'
+    if (choice.team) chosen.push(choice.team)
+  }
+  return chosen
+}
+
+test('an automatic Elite Eight pair never takes both sides of one game', () => {
+  // The two best seeds (1 and 2) play each other; the pair is the 1 and the next best elsewhere.
+  assert.deepEqual(pickPair(eliteGames(), {}), ['CONN', 'ARIZ'])
+})
+
+test('an automatic Elite Eight pair needs no AP ranking when both teams on a seed line are taken', () => {
+  const games = [
+    game('sat1', 'CONN', 1, 'HOU', 3, 'Elite 8'),
+    game('sat2', 'ARIZ', 2, 'GONZ', 4, 'Elite 8'),
+    game('sun1', 'DUKE', 1, 'KU', 6, 'Elite 8'),
+    game('sun2', 'PUR', 2, 'AUB', 5, 'Elite 8'),
+  ]
+  assert.deepEqual(pickPair(games, null), ['CONN', 'DUKE'])
+})
+
+test('three teams on a seed line for two picks still wait for the AP ranking', () => {
+  const games = [
+    game('sat1', 'CONN', 1, 'HOU', 3, 'Elite 8'),
+    game('sat2', 'ARIZ', 1, 'GONZ', 4, 'Elite 8'),
+    game('sun1', 'DUKE', 1, 'KU', 6, 'Elite 8'),
+    game('sun2', 'PUR', 2, 'AUB', 5, 'Elite 8'),
+  ]
+  assert.equal(pickPair(games, null), 'needs rankings')
+  assert.deepEqual(pickPair(games, { DUKE: 1, ARIZ: 4, CONN: 9 }), ['DUKE', 'ARIZ'])
+})
+
+test('a single pick with tied seeds still waits for the AP ranking', () => {
+  const games = [game('a', 'CONN', 1, 'HOU', 3, 'Elite 8'), game('b', 'DUKE', 1, 'KU', 6, 'Elite 8')]
+  assert.equal(highestSeedChoice(games, [], [], null).needsRankings, true)
 })
