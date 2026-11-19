@@ -38,9 +38,9 @@ export function alertLane(env: AlertEnv): AlertLane {
 
 export type AlertSendOutcome = { recipient: string; ok: boolean; status?: number; providerId?: string }
 
-// One request per recipient. The idempotency key makes a retried request for
-// the same alert a no-op at the provider; nothing is retried here, because
-// the caller's 30-minute text window already decides how often we try.
+// One request per recipient, keyed per alert and recipient so the provider
+// drops an accidental duplicate of the same request. Nothing is retried here:
+// the caller's 30-minute text window decides how often an alert type is tried.
 export async function sendAlertsDirect(
   lane: Extract<AlertLane, { direct: true }>,
   message: { from: string; subject: string; text: string; key: string },

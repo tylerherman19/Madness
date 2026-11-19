@@ -35,6 +35,22 @@ function must<T>(result: { data: T; error: { message: string } | null }, step: s
   return result.data
 }
 
+// Back to ordinary Test Mode after a rehearsal: the 2027 rehearsal pool is
+// switched off and the newest other sandbox pool becomes active again, so
+// "Seed Test Slate + Users" is not refused by the 2027 registration rule.
+export async function leaveEliteRehearsal(db: SupabaseClient) {
+  const { data: active, error } = await db.from('pools').select('id').eq('is_active', true).maybeSingle()
+  if (error) throw new Error(`Read sandbox pool: ${error.message}`)
+  if (active?.id !== ELITE_REHEARSAL_POOL) return false
+  must(await db.from('slates').update({ is_active: false }).eq('is_active', true), 'Deactivate sandbox day')
+  must(await db.from('pools').update({ is_active: false }).eq('id', ELITE_REHEARSAL_POOL), 'Leave rehearsal pool')
+  const { data: previous, error: previousError } = await db.from('pools').select('id')
+    .neq('id', ELITE_REHEARSAL_POOL).order('created_at', { ascending: false }).limit(1)
+  if (previousError) throw new Error(`Find previous sandbox pool: ${previousError.message}`)
+  if (previous?.[0]) must(await db.from('pools').update({ is_active: true }).eq('id', previous[0].id), 'Restore previous sandbox pool')
+  return true
+}
+
 export async function seedEliteEightRehearsal(db: SupabaseClient, players: number, passwordHash: string) {
   const count = Math.min(Math.max(Math.trunc(players), 1), 30)
 

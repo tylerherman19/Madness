@@ -1,7 +1,7 @@
 name: Uptime monitor
 # Independent of the database scheduler and of email: if the site or its job
-# freshness check fails, this workflow fails and GitHub emails the repository
-# owner. Kept separate from "Operations monitor" (which carries the fallback
+# freshness check fails, this workflow fails and GitHub notifies whoever last
+# edited this schedule (per their notification settings). Kept separate from "Operations monitor" (which carries the fallback
 # workers and stays disabled while pg_cron runs them) so it can always be on.
 on:
   schedule:

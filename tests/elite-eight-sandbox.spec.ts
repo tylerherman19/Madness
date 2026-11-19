@@ -78,15 +78,27 @@ test('Test Mode Elite Eight weekend: two picks, one deadline, both must win', as
     data: { request_id: crypto.randomUUID(), picks: [{ slate_id: SATURDAY, team: 'ARIZ' }] },
   })).status()).toBe(400)
   const single = await p2.request.post('/api/picks', { data: { slate_id: SATURDAY, team: 'ARIZ', request_id: crypto.randomUUID() } })
-  expect(single.ok()).toBeFalsy()
-  expect((await pair(p2, [[SATURDAY, 'ARIZ'], [SATURDAY, 'ARIZ']])).ok()).toBeFalsy()
+  expect(single.status()).toBe(409)
+  expect((await single.json()).error).toBe('Submit both Elite Eight picks together.')
+  const duplicate = await pair(p2, [[SATURDAY, 'ARIZ'], [SATURDAY, 'ARIZ']])
+  expect(duplicate.status()).toBe(409)
+  expect((await duplicate.json()).error).toMatch(/two different/)
   expect(await picksOf(2)).toEqual([])
 
   // --- Both on Saturday is allowed. Player 2: CONN + ARIZ.
   expect((await pair(p2, [[SATURDAY, 'CONN'], [SATURDAY, 'ARIZ']])).ok()).toBeTruthy()
-  // Player 3: HOU (Sat) + KU (Sun). Player 5: CONN (Sat) + PUR (Sun).
+  // Player 3: HOU (Sat) + AUB (Sun). Player 5: CONN (Sat) + PUR (Sun).
   const p3 = await playerBrowser(browser, admin, 'test.elite3@nflsurvivor.internal')
   expect((await pair(p3, [[SATURDAY, 'HOU'], [SUNDAY, 'KU']])).ok()).toBeTruthy()
+  // Changing a pair before the lock: Player 3 swaps KU for AUB, keeping HOU.
+  const [hou, ku] = (await rows(admin.request, 'picks', `?player_id=eq.${id(3)}&order=team.asc`)) as { id: string; team: string; slate_id: string; updated_at: string }[]
+  expect([hou.team, ku.team]).toEqual(['HOU', 'KU'])
+  const change = await p3.request.post('/api/picks/elite-eight', { data: { request_id: crypto.randomUUID(), picks: [
+    { slate_id: SATURDAY, team: 'HOU', pick_id: hou.id, expected: hou.updated_at },
+    { slate_id: SUNDAY, team: 'AUB', pick_id: ku.id, expected: ku.updated_at },
+  ] } })
+  expect(change.ok(), await change.text()).toBeTruthy()
+  expect(await picksOf(3)).toEqual([[SATURDAY, 'HOU', false], [SUNDAY, 'AUB', false]])
   const p5 = await playerBrowser(browser, admin, 'test.elite5@nflsurvivor.internal')
   expect((await pair(p5, [[SATURDAY, 'CONN'], [SUNDAY, 'PUR']])).ok()).toBeTruthy()
   // Player 4 makes no picks.
@@ -95,7 +107,8 @@ test('Test Mode Elite Eight weekend: two picks, one deadline, both must win', as
   await testMode(adminPage, 'set_clock', { iso: seeded.lock })
   const late = await playerBrowser(browser, admin, 'test.elite4@nflsurvivor.internal')
   const latePair = await pair(late, [[SUNDAY, 'DUKE'], [SUNDAY, 'PUR']])
-  expect(latePair.ok()).toBeFalsy()
+  expect(latePair.status()).toBe(409)
+  expect((await latePair.json()).error).toMatch(/locked/)
   expect(await picksOf(4)).toEqual([])
 
   // --- The missed entry gets two auto-assigned picks: the best seeds left.
@@ -127,10 +140,17 @@ test('Test Mode Elite Eight weekend: two picks, one deadline, both must win', as
   expect(await statusOf(5)).toBe('eliminated') // won Saturday, lost Sunday: both must be right
   expect(await statusOf(1)).toBe('alive') // both right
   expect(await statusOf(4)).toBe('alive') // both auto-assigned picks right
+  expect(await statusOf(2)).toBe('eliminated')
+  expect(await statusOf(3)).toBe('eliminated') // lost Saturday; the Sunday win does not bring it back
 
   // --- Production was never touched.
   const production = (await (await fetch(`${fixture}/picks`)).json()) as Row[]
   expect(production.filter((p) => [SATURDAY, SUNDAY].includes(String(p.slate_id)))).toEqual([])
+
+  // --- After the rehearsal, ordinary Test Mode works again.
+  await testMode(adminPage, 'reset')
+  const ordinary = await testMode(adminPage, 'seed', { users: 2 })
+  expect(ordinary.created_users).toBe(2)
 
   await testMode(adminPage, 'disable')
   for (const context of [admin, p1, p2, p3, p5, late]) await context.close()

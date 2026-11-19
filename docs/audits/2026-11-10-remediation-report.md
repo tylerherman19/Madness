@@ -7,7 +7,7 @@ All results below are from local tests. They do not prove production readiness.
 ## What was fixed
 
 Participant-facing
-- Picks no longer leak before the lock on the Today page; one reveal rule (the earlier of the stored lock and the first announced tip) is used by every page, feed, export and the mobile API (migration 034).
+- Picks no longer leak before the lock on the Today page; one reveal rule (the earlier of the stored lock and the first announced tip) is used by every page, feed and export.
 - A surviving entry can pick for the next day early.
 - A result that flips A→B→A leaves only the entries that lost under the final result eliminated.
 - Neutral-site games show the right teams; games with other than two competitors are not stored.

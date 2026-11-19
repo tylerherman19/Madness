@@ -305,10 +305,10 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
     let needsRankings = false
     for (let index = 0; index < missing; index++) {
       const choice = useSeedPriority
-        ? highestSeedChoice(assignmentGames, [...usedTeams], isMarch2027(pool) ? [] : [...usedSeeds], apRanks, {
-            avoid: opponentsOf(autoTeams, assignmentGames),
-            slots: missing - index,
-          })
+        // The opponent and seed-line rules are for the 2027 Elite Eight pair only;
+        // other shared-quota rounds keep their used-seed rule unchanged.
+        ? highestSeedChoice(assignmentGames, [...usedTeams], isMarch2027(pool) ? [] : [...usedSeeds], apRanks,
+            isMarch2027(pool) ? { avoid: opponentsOf(autoTeams, assignmentGames), slots: missing - index } : {})
         : { team: autoAssignTeam(assignmentGames, [...usedTeams]), needsRankings: false }
       if (choice.needsRankings) { needsRankings = true; break }
       if (choice.nameOrderTie) nameOrdered.push(player.full_name)

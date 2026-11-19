@@ -177,8 +177,9 @@ transactional activation. Reminder and elimination delivery also requires
   only record them unless it is `true`. The audit page's **Send test text** button reports
   whether the provider accepted it.
 - `.github/workflows/uptime.yml` checks `/api/health` and `/api/operations/health` every 10
-  minutes from GitHub, independently of the database and of email; a failed run emails the
-  repository owner.
+  minutes from GitHub, independently of the database and of email. GitHub notifies whoever
+  last edited the workflow's schedule about a failed run (per their notification settings);
+  scheduled runs are best-effort and GitHub pauses them after 60 days without repository activity.
 
 Cron routes accept `GET` with the `CRON_SECRET` bearer token only. The admin
 buttons call the same routes with `POST` and the admin session, so a link
