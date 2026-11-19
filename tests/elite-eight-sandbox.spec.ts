@@ -155,3 +155,57 @@ test('Test Mode Elite Eight weekend: two picks, one deadline, both must win', as
   await testMode(adminPage, 'disable')
   for (const context of [admin, p1, p2, p3, p5, late]) await context.close()
 })
+
+// The pair is assigned after Saturday's first tip. If that run is late and a
+// Saturday team has already lost, the entry must still get both picks (and be
+// graded out), not stay alive with no picks and block Sunday.
+test('Test Mode Elite Eight: a late auto-assignment after a Saturday loss still writes the pair', async ({ browser }) => {
+  test.setTimeout(120_000)
+  expect((await (await fetch(`${fixture}/__test/reset`, { method: 'POST' })).ok)).toBeTruthy()
+  const admin = await browser.newContext()
+  await admin.addCookies([await adminCookie()])
+  const adminPage = await admin.newPage()
+  await testMode(adminPage, 'enable')
+  await testMode(adminPage, 'seed_elite_eight', { users: 2 })
+  const players = await rows(admin.request, 'players', '?order=full_name.asc')
+  const id = (n: number) => String(players[n - 1].id)
+  const picksOf = async (n: number) =>
+    (await rows(admin.request, 'picks', `?player_id=eq.${id(n)}`)).map((p) => [p.slate_id, p.team, p.auto_assigned]).sort()
+  const statusOf = async (n: number) => (await rows(admin.request, 'players', `?id=eq.${id(n)}`))[0].status
+
+  // Player 1 picks HOU + KU. Player 2 misses the deadline.
+  const p1 = await playerBrowser(browser, admin, 'test.elite1@nflsurvivor.internal')
+  expect((await pair(p1, [[SATURDAY, 'HOU'], [SUNDAY, 'KU']])).ok()).toBeTruthy()
+
+  // The assignment run is late: Saturday evening, CONN has already lost to HOU.
+  await testMode(adminPage, 'set_clock', { iso: '2027-03-28T02:30:00Z' })
+  const games = await rows(admin.request, 'games')
+  const game = (team: string) => String(games.find((g) => g.home_team === team || g.away_team === team)!.id)
+  const final = async (team: string, winner: 'home' | 'away') => {
+    await testMode(adminPage, 'set_score', { game_id: game(team), home_score: winner === 'home' ? 80 : 70, away_score: winner === 'away' ? 80 : 70 })
+    await testMode(adminPage, 'finalize_game', { game_id: game(team) })
+  }
+  await final('CONN', 'home') // HOU beats CONN
+
+  const assign = await adminPage.request.post('/api/cron/auto-assign')
+  expect(assign.ok(), await assign.text()).toBeTruthy()
+  // Same choice as an on-time run: results are never consulted.
+  expect(await picksOf(2)).toEqual([[SATURDAY, 'CONN', true], [SUNDAY, 'DUKE', true]])
+
+  // Saturday's other final regrades the day: the late pair's CONN loss counts.
+  await final('ARIZ', 'home')
+  expect(await statusOf(2)).toBe('eliminated')
+  expect(await statusOf(1)).toBe('alive')
+
+  // Sunday is not blocked by Saturday's assignment.
+  await adminPage.request.post('/api/admin/set-active-week', { data: { slate_id: SUNDAY, reason: 'Elite Eight rehearsal: Sunday', override: true } })
+  const sunday = await adminPage.request.post('/api/cron/auto-assign')
+  expect(sunday.ok(), await sunday.text()).toBeTruthy()
+  await final('DUKE', 'home') // KU beats DUKE
+  expect(await statusOf(1)).toBe('alive')
+  expect(await statusOf(2)).toBe('eliminated')
+
+  await testMode(adminPage, 'reset')
+  await testMode(adminPage, 'disable')
+  for (const context of [admin, p1]) await context.close()
+})

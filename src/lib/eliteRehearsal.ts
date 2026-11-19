@@ -17,6 +17,8 @@ import { ELITE_2027_SATURDAY, ELITE_2027_SUNDAY, MARCH_2027_START } from './marc
 export const ELITE_REHEARSAL_POOL = '7e57e118-0000-4000-8000-000000002027'
 const SATURDAY = '7e57e118-0000-4000-8000-000000000327'
 const SUNDAY = '7e57e118-0000-4000-8000-000000000328'
+// Shared by both day ids above.
+const REHEARSAL_DAY_PREFIX = '7e57e118-0000-4000-8000-00000000032'
 
 // Seeds are the bracket's 1–16 lines. Tip times are Central-date correct:
 // 00:49Z on 3/28 is still Saturday evening in Chicago.
@@ -62,6 +64,14 @@ export async function seedEliteEightRehearsal(db: SupabaseClient, players: numbe
     must(await db.from(table).delete().not('id', 'is', null), `Clear sandbox ${table}`)
   }
   must(await db.from('clock').update({ simulated_now: null }).eq('id', true), 'Reset sandbox clock')
+  // The rehearsal reuses the same day ids, so a previous run's finished
+  // operations (the durable auto-assign claim for Saturday, reminders) would
+  // make the next rehearsal skip them. Clear only this weekend's keys.
+  const stale = await db.from('operation_runs').delete().ilike('key', `%${REHEARSAL_DAY_PREFIX}%`)
+  // A database without the operations migration has no such table.
+  if (stale.error && !['PGRST205', '42P01'].includes(stale.error.code ?? '')) {
+    throw new Error(`Clear sandbox operations: ${stale.error.message}`)
+  }
 
   // 2. Test entries.
   const entries = Array.from({ length: count }, (_, i) => ({
