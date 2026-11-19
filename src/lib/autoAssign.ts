@@ -305,7 +305,10 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
     let needsRankings = false
     for (let index = 0; index < missing; index++) {
       const choice = useSeedPriority
-        ? highestSeedChoice(assignmentGames, [...usedTeams], isMarch2027(pool) ? [] : [...usedSeeds], apRanks)
+        ? highestSeedChoice(assignmentGames, [...usedTeams], isMarch2027(pool) ? [] : [...usedSeeds], apRanks, {
+            avoid: opponentsOf(autoTeams, assignmentGames),
+            slots: missing - index,
+          })
         : { team: autoAssignTeam(assignmentGames, [...usedTeams]), needsRankings: false }
       if (choice.needsRankings) { needsRankings = true; break }
       if (choice.nameOrderTie) nameOrdered.push(player.full_name)
@@ -401,6 +404,14 @@ async function runAutoAssign(supabase: SupabaseClient, now: Date, token?: string
   }
   if (results.length) revalidateContest()
   return { ok: skipped.length === 0, results, done }
+}
+
+// The teams playing against any of `teams`.
+function opponentsOf(teams: string[], games: Game[]): string[] {
+  const chosen = new Set(teams)
+  return games.flatMap((game) =>
+    chosen.has(game.home_team) ? [game.away_team] : chosen.has(game.away_team) ? [game.home_team] : []
+  )
 }
 
 // The AP snapshot for a tournament slate. It is saved before lock by the

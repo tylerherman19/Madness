@@ -57,13 +57,12 @@ The owner has accepted this and may address it with backend capacity. **1,000 si
 
 - The published rules still say the final survivor "wins" and that tied entries "share the win". The app no longer declares a winner. The rules text was not changed.
 - The Vercel project could not be accessed: the feature flags (`TOURNAMENT_RELIABILITY_ENABLED`, `AUTOMATION_V2_ENABLED`) and the strength of `SESSION_SECRET` in production are unchecked. A weak secret only produces a warning.
-- The mobile app's pick functions are not in this repository. Migration 034 changes the two helper functions found in production; that the mobile pick and reveal functions all go through those helpers was not confirmed from source.
 - Backups are unchanged from before (encrypted artifacts, publicly reachable).
 - Two-day rounds decide their final day from the weekday of the game date (existing behaviour, unchanged).
 
 ## Deployment steps (need the owner's approval)
 
 1. Back up the database.
-2. Apply migrations `032`, `033`, `034` in order, **before** deploying the code. They are additive and safe under the current code. If the code is deployed first, ESPN sync fails until `033` is applied.
+2. Apply migrations `032` and `033` in order, **before** deploying the code. They are additive and safe under the current code. If the code is deployed first, ESPN sync fails until `033` is applied.
 3. Deploy the branch.
 4. Check `/api/health` and `/admin/operations`, then grade and pick once in the sandbox.

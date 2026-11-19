@@ -7,6 +7,7 @@ import { sandboxSupabase } from '@/lib/supabase'
 import { hashPassword } from '@/lib/password'
 import { gradeSlatePicks } from '@/lib/grading'
 import type { Game } from '@/types'
+import { seedEliteEightRehearsal } from '@/lib/eliteRehearsal'
 
 const CHICAGO_TZ = 'America/Chicago'
 
@@ -157,6 +158,21 @@ export async function POST(req: NextRequest) {
       // Back to real time for the next test run.
       await sandboxSupabase.from('clock').update({ simulated_now: null }).eq('id', true)
       return NextResponse.json({ ok: true })
+    }
+
+    if (action === 'seed_elite_eight') {
+      const requested = Number(body?.users)
+      try {
+        const seeded = await seedEliteEightRehearsal(
+          sandboxSupabase,
+          Number.isFinite(requested) ? requested : 4,
+          await hashPassword(TEST_USER_PASSWORD),
+        )
+        return NextResponse.json({ ok: true, ...seeded, password: TEST_USER_PASSWORD })
+      } catch (error) {
+        // Sandbox-only setup for an admin: the failing step is the useful part.
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Elite Eight rehearsal setup failed' }, { status: 500 })
+      }
     }
 
     if (action === 'seed') {

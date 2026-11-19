@@ -1,11 +1,11 @@
 -- INT-06: a pick's seed is a tournament seed or nothing.
--- save_pick (025) and the mobile submit_pick copy games.home_seed/away_seed
+-- save_pick (025) copies games.home_seed/away_seed
 -- unconditionally; outside the tournament ESPN fills those with AP ranks, so
 -- regular-season picks stored ranks as "seeds". The published rules count
 -- seeds only in the tournament (src/app/components/RulesSection.tsx), and the
 -- application's legacy path already stores none outside it (deadline.ts
 -- seedForTeam). One BEFORE trigger now applies that rule to every write path
--- (website, auto-assign, admin, mobile) without redefining save_pick.
+-- (website, auto-assign, admin) without redefining save_pick.
 -- Existing rows are left unchanged; no participant record is rewritten.
 --
 -- SEC-08: audit_log is append-only. Rows can be inserted, never updated or
