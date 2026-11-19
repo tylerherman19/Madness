@@ -1,0 +1,32 @@
+name: Uptime monitor
+# Independent of the database scheduler and of email: if the site or its job
+# freshness check fails, this workflow fails and GitHub emails the repository
+# owner. Kept separate from "Operations monitor" (which carries the fallback
+# workers and stays disabled while pg_cron runs them) so it can always be on.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: madness-uptime
+  cancel-in-progress: false
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      BASE_URL: ${{ vars.MADNESS_BASE_URL || 'https://madness-cyan.vercel.app' }}
+    steps:
+      - name: Check public application and database availability
+        run: curl --fail --silent --show-error --retry 2 --retry-delay 10 --max-time 15 "$BASE_URL/api/health"
+      - name: Check job freshness independently of player email
+        env:
+          MONITOR_SECRET: ${{ secrets.MONITOR_SECRET }}
+        run: |
+          if [ -z "$MONITOR_SECRET" ]; then
+            echo '::warning::Job-freshness monitor is not configured. Set MONITOR_SECRET in GitHub and Vercel.'
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error --retry 2 --retry-delay 10 --max-time 20 -H "Authorization: Bearer $MONITOR_SECRET" "$BASE_URL/api/operations/health"

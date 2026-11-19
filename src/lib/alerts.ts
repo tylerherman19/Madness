@@ -8,14 +8,16 @@ import { supabase as productionDb } from './supabase'
 import { getDb } from './testMode'
 import type { FailureEventType } from './auditEvents'
 import { redactLog } from './logRedaction'
+import { alertLane, sendAlertsDirect } from './alertDelivery'
 
 // Failure reporting. Every failure lands in the audit log (so /admin/audit
 // shows what broke next to what people did) and, for production, texts the
 // organizer through an email-to-SMS gateway such as 5551234567@tmomail.net.
 //
-// Texts are ordinary email: they go through getResend(), so they stay silent
-// until EMAILS_ENABLED=true like every other send, and also need ALERT_SMS_TO.
-// Sandbox (test mode) failures are logged to the sandbox trail but never text.
+// Texts are email to ALERT_SMS_TO, sent straight to the provider in
+// production (src/lib/alertDelivery.ts), independent of the player-mail
+// switches. Sandbox (test mode) failures are logged to the sandbox trail but
+// never text.
 
 // A repeat of the same failure inside this window is not logged again — a
 // broken endpoint polled by every open browser would otherwise write a row
@@ -105,11 +107,24 @@ export type AlertSendResult = { sent: true } | { sent: false; reason: string }
 
 // Plain text, short subject: the gateway shows "subject / body" as one SMS.
 export async function sendAlertText(body: string,db:SupabaseClient=productionDb): Promise<AlertSendResult> {
- const to=process.env.ALERT_SMS_TO
- if(!to)return {sent:false,reason:'ALERT_SMS_TO is not configured'}
- const text=body.length>SMS_MAX_CHARS?`${body.slice(0,SMS_MAX_CHARS-1)}…`:body
- try{
-  for(const recipient of to.split(',').map(s=>s.trim()).filter(Boolean))await recordEmail(db,{from:FROM_EMAIL,to:recipient,subject:'Pick and Pray',text},'operational')
-  return {sent:false,reason:'Notification recorded; delivery follows configured email mode'}
- }catch{return {sent:false,reason:'Could not record operational notification'}}
+  const { ALERT_SMS_TO, RESEND_API_KEY, OPERATIONAL_ALERTS_ENABLED, VERCEL_ENV } = process.env
+  const lane = alertLane({ ALERT_SMS_TO, RESEND_API_KEY, OPERATIONAL_ALERTS_ENABLED, VERCEL_ENV })
+  if (!lane.direct && !lane.recipients.length) return { sent: false, reason: lane.reason }
+  const text = body.length > SMS_MAX_CHARS ? `${body.slice(0, SMS_MAX_CHARS - 1)}…` : body
+  if (lane.direct) {
+    const outcomes = await sendAlertsDirect(lane, { from: FROM_EMAIL, subject: 'Pick and Pray', text, key: randomUUID() })
+    const failed = outcomes.filter((outcome) => !outcome.ok)
+    if (failed.length === 0) return { sent: true }
+    // Never log addresses or provider bodies; the status code is enough to act on.
+    console.error('operational alert not accepted', failed.map((outcome) => outcome.status ?? 'network'))
+    return { sent: false, reason: `The email provider did not accept ${failed.length} of ${outcomes.length} alert${outcomes.length === 1 ? '' : 's'} (status ${failed.map((outcome) => outcome.status ?? 'network').join(', ')})` }
+  }
+  // Outside production (or with the lane switched off) keep the old behavior:
+  // the text is only recorded in the outbox and follows the player-mail switches.
+  try {
+    for (const recipient of lane.recipients) await recordEmail(db, { from: FROM_EMAIL, to: recipient, subject: 'Pick and Pray', text }, 'operational')
+    return { sent: false, reason: `${lane.reason}. Notification recorded only.` }
+  } catch {
+    return { sent: false, reason: 'Could not record operational notification' }
+  }
 }
