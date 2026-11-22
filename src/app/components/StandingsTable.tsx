@@ -54,6 +54,8 @@ export default function StandingsTable({
   compact?: boolean
 }) {
   const [sort, setSort] = useState<SortMode>('alphabetical')
+  // Seed total lists the highest total first; choosing it again flips the order.
+  const [seedLowFirst, setSeedLowFirst] = useState(false)
   const [query, setQuery] = useState('')
   const name = (team: string) => teamBrands[team]?.shortName ?? team
   // Rows arrive packed (lib/standingsWire.ts); search, sort and the window all
@@ -67,14 +69,14 @@ export default function StandingsTable({
 
   // Order once per sort mode, then search the whole ordered list per keystroke;
   // only the rendered slice is windowed (below), never the data searched.
-  const sortedAlive = useMemo(() => sortAlive(alive, sort), [alive, sort])
-  const sortedOut = useMemo(() => sortOut(out, sort), [out, sort])
+  const sortedAlive = useMemo(() => sortAlive(alive, sort, seedLowFirst), [alive, sort, seedLowFirst])
+  const sortedOut = useMemo(() => sortOut(out, sort, seedLowFirst), [out, sort, seedLowFirst])
   const aliveRows = useMemo(() => filterByName(sortedAlive, query), [sortedAlive, query])
   const outRows = useMemo(() => filterByName(sortedOut, query), [sortedOut, query])
 
   // How many entries each list shows. A new search or sort starts over at the
   // first page, derived from the key so no effect has to reset it.
-  const limitKey = `${sort}\u0000${query.trim().toLowerCase()}`
+  const limitKey = `${sort}${sort === 'seeds' && seedLowFirst ? '-low' : ''}\u0000${query.trim().toLowerCase()}`
   const [limits, setLimits] = useState({ key: limitKey, alive: INITIAL_ROWS, out: INITIAL_ROWS })
   // Any sort or search change starts over at the first page (stored, so a
   // later return to an earlier search does not bring back an enlarged window).
@@ -129,6 +131,11 @@ export default function StandingsTable({
         : row.me ? { text: 'Not submitted', tone: s.amber } : { text: 'No pick yet', tone: s.gray }
 
   const sorts: [SortMode, string][] = [['alphabetical', 'Alphabetical'], ['team', 'By team'], ...(showSeedTotal && !compact ? [['seeds', 'Seed total'] as [SortMode, string]] : [])]
+
+  function chooseSort(key: SortMode) {
+    if (key === 'seeds') setSeedLowFirst(sort === 'seeds' ? !seedLowFirst : false)
+    setSort(key)
+  }
 
   // Each rendered row carries its position in the FULL list (aria-rowindex), so
   // assistive tech reports "row 412 of 1,000" even though only a slice is in the DOM.
@@ -227,19 +234,28 @@ export default function StandingsTable({
   // aria-sort only claims an order that is strictly true: your own entry is
   // pinned first among the alive entries, which makes that list "other".
   const aliveHasMe = aliveRows.some((row) => row.me)
+  const seedOrder = seedLowFirst ? 'ascending' : 'descending'
   const aliveSortAttr = (column: 'entry' | 'seed') =>
     column === 'entry' && sort === 'alphabetical' ? (aliveHasMe ? 'other' : 'ascending')
-      : column === 'seed' && sort === 'seeds' ? (aliveWindow.pinned ? 'other' : 'descending') : undefined
+      : column === 'seed' && sort === 'seeds' ? (aliveWindow.pinned ? 'other' : seedOrder) : undefined
   const outSortAttr = (column: 'entry' | 'seed') =>
     column === 'entry' && sort === 'alphabetical' ? (outWindow.pinned ? 'other' : 'ascending')
-      : column === 'seed' && sort === 'seeds' ? (outWindow.pinned ? 'other' : 'descending') : undefined
+      : column === 'seed' && sort === 'seeds' ? (outWindow.pinned ? 'other' : seedOrder) : undefined
 
   return (
     <div className={compact ? s.stCompact : undefined}>
       <div className={s.toolbar}>
         <div className={s.tabs} role="tablist" aria-label="Sort">
           {sorts.map(([key, label]) => (
-            <button key={key} type="button" role="tab" aria-selected={sort === key} onClick={() => setSort(key)}>{label}</button>
+            <button key={key} type="button" role="tab" aria-selected={sort === key} onClick={() => chooseSort(key)}>
+              {label}
+              {key === 'seeds' && sort === 'seeds' && (
+                <>
+                  <span aria-hidden="true"> {seedLowFirst ? '↑' : '↓'}</span>
+                  <span className="sr-only">, {seedLowFirst ? 'lowest' : 'highest'} first. Select again to reverse.</span>
+                </>
+              )}
+            </button>
           ))}
         </div>
         {!compact && (

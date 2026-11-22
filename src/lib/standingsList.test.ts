@@ -32,6 +32,16 @@ test('seed-total order puts the highest total first and breaks ties by name (tie
   assert.deepEqual(sortOut([out('B', 5), out('A', 5), out('C', 9)], 'seeds').map((r) => r.name), ['C', 'A', 'B'])
 })
 
+test('seed-total order can be flipped to lowest first, with ties still A to Z and zero totals leading', () => {
+  const rows = [alive('B', 5), alive('A', 5), alive('C', 9), alive('D', 1, true), alive('E')]
+  const before = rows.map((r) => r.name)
+  assert.deepEqual(sortAlive(rows, 'seeds', true).map((r) => r.name), ['E', 'D', 'A', 'B', 'C'])
+  assert.deepEqual(sortOut([out('B', 5), out('A', 5), out('C', 9), out('D', 2)], 'seeds', true).map((r) => r.name), ['D', 'A', 'B', 'C'])
+  assert.deepEqual(rows.map((r) => r.name), before)
+  // The direction only applies to the seed-total order.
+  assert.deepEqual(sortAlive(rows, 'alphabetical', true).map((r) => r.name), ['D', 'A', 'B', 'C', 'E'])
+})
+
 test('search covers the full list, ignores case and surrounding spaces, and keeps order', () => {
   const rows = sortAlive(many(5000), 'alphabetical')
   const found = filterByName(rows, '  entry 4999 ')
