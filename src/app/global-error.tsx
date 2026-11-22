@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { supportEmail } from '@/lib/site'
 
 export default function GlobalError({ unstable_retry }: { unstable_retry: () => void }) {
   return <html lang="en"><body style={{ margin: 0, padding: '48px 24px', background: '#F6F7F9', color: '#1E2227', fontFamily: "'Source Sans 3', system-ui, sans-serif" }}>
@@ -9,6 +10,6 @@ export default function GlobalError({ unstable_retry }: { unstable_retry: () => 
     <p role="alert">Something went wrong on our end. Try again in a moment.</p>
     <button style={{ padding: '12px 20px', fontSize: 16, fontWeight: 600, color: '#FFFFFF', background: '#1A66D2', border: 0, borderRadius: 6, cursor: 'pointer' }} onClick={() => unstable_retry()}>Try again</button>
     <p><Link href="/" style={{ color: '#1A66D2' }}>Back to the pool</Link></p>
-    <p><Link href="/contact" style={{ color: '#1A66D2' }}>Contact the organizer</Link></p>
+    <p><a href={`mailto:${supportEmail}`} style={{ color: '#1A66D2' }}>Contact the organizer</a></p>
   </body></html>
 }

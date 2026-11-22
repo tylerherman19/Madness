@@ -199,7 +199,7 @@ npm test         # node --test over src/lib/*.test.ts
 
 ## Launch and operations
 
-Legal/contact pages, social metadata, crawler files, and branded fallback screens ship with the app. See [deployment checks](docs/operations.md) for the primary domain, support contact, Vercel analytics enablement, read-only health monitoring, and data export/backup guidance.
+Social metadata, crawler files, and branded fallback screens ship with the app. See [deployment checks](docs/operations.md) for the primary domain, support contact, Vercel analytics enablement, read-only health monitoring, and data export/backup guidance.
 
 ## Operational reliability
 
