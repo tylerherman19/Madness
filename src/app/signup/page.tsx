@@ -10,7 +10,7 @@ import SignupForm from './SignupForm'
 // page's lifetime.
 export const revalidate = 60
 
-export const metadata = pageMetadata('Join the Pool', 'Create a Pick and Pray account. Read the entry fee, terms, and privacy information before joining.', '/signup', false)
+export const metadata = pageMetadata('Join the Pool', 'Create a Pick and Pray account. The entry fee is $25, paid separately through Venmo.', '/signup', false)
 
 export default async function SignupPage() {
   const signupsClosed = await haveSignupsClosed()

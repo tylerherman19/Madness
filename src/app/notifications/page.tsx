@@ -7,7 +7,7 @@ import PoolShell from '@/app/components/PoolShell'
 import s from '@/app/components/pp.module.css'
 import Preferences from './Preferences'
 
-// Linked from the privacy policy and pool emails, not the menu. Signed-out
+// Linked from pool emails, not the menu. Signed-out
 // visitors log in and come straight back here.
 export const metadata = pageMetadata('Email preferences', 'Choose which Pick and Pray emails you receive.', '/notifications', false)
 

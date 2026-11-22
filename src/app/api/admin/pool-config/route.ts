@@ -145,9 +145,9 @@ export async function POST(req: NextRequest) {
     })
 
     // The mode reaches the cached marketing-side pages, so bust them all,
-    // along with the cached season data and the pre-built info pages.
+    // along with the cached season data.
     invalidateContestData()
-    for (const path of ['/', '/grid', '/schedule', '/sweat', '/pick', '/login', '/privacy', '/terms', '/contact']) {
+    for (const path of ['/', '/grid', '/schedule', '/sweat', '/pick', '/login']) {
       revalidatePath(path)
     }
 

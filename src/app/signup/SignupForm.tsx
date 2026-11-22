@@ -95,7 +95,6 @@ export default function SignupForm() {
                     <input id="signup-confirm-password" name="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required minLength={8} maxLength={72} autoComplete="new-password" className="field w-full px-3 py-2.5" />
                   </div>
 
-                  <p>By creating an account, you agree to the <Link className="underline" href="/terms">Terms of Use</Link> and acknowledge the <Link className="underline" href="/privacy">Privacy Policy</Link>, including the $25 entry fee and payment arrangements.</p>
                   <p>Questions before joining? <a className="underline" href={`mailto:${supportEmail}`}>{supportEmail}</a>.</p>
                   {error && <p id="signup-error" role="alert" className={s.authError}>{error}</p>}
 

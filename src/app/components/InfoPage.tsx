@@ -6,7 +6,7 @@ import TrustFooter from './TrustFooter'
 import { usePoolMode, useRememberedMode } from './PoolMode'
 import s from './pp.module.css'
 
-// Privacy, terms, contact and error pages: plain reading pages in the pool's
+// Error and not-found pages: plain reading pages in the pool's
 // theme. Inside a PoolThemeScope the live mode is known; error pages fall back
 // to the last mode the visitor saw.
 export default function InfoPage({ title, children }: { title: string; children: React.ReactNode }) {

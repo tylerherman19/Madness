@@ -7,9 +7,6 @@ export default function TrustFooter() {
       <p><strong>Pick and Pray</strong><br />College Basketball Survivor</p>
       <nav aria-label="Footer">
         <Link href="/#rules">Pool rules</Link>
-        <Link href="/privacy">Privacy</Link>
-        <Link href="/terms">Terms</Link>
-        <Link href="/contact">Contact</Link>
         <Link href="/admin">Admin</Link>
       </nav>
       <a href={`mailto:${supportEmail}`}>{supportEmail}</a>

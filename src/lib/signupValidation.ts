@@ -1,5 +1,3 @@
-export const TERMS_VERSION = '2026-10-04'
-
 // Entries on this domain are the site's own test accounts: every public page,
 // count and export hides them (src/lib/dashboard.ts, email.ts, migration 033).
 // A public signup must never be able to create one (INT-03). Fixture code

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/testMode'
 import { hashPassword } from '@/lib/password'
-import { signupValidationError, TERMS_VERSION, type SignupInput } from '@/lib/signupValidation'
+import { signupValidationError, type SignupInput } from '@/lib/signupValidation'
 import { checkRateLimit, getIP } from '@/lib/rateLimit'
 import { escapeIlike } from '@/lib/api'
 import { haveSignupsClosed } from '@/lib/season'
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
       player_id: inserted.id,
       player_name: name,
       message: `${name} signed up`,
-      details: { email: emailLower, terms_version: TERMS_VERSION, acceptance_method: 'account-creation' },
+      details: { email: emailLower },
     })
 
     return NextResponse.json({ ok: true })
