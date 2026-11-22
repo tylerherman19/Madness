@@ -166,7 +166,7 @@
 /* Today: schedule */
 .gameRow { display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr) 110px; gap: 16px; align-items: center; min-height: 52px; padding: 6px 0; border-bottom: 1px solid var(--pp-line); }
 .gameTime { font-size: var(--pp-text-sm); }
-.gameTime span { display: block; font-size: var(--pp-text-sm); color: var(--pp-ink-2); }
+.gameTime span:not(.clockLive) { display: block; font-size: var(--pp-text-sm); color: var(--pp-ink-2); }
 .sides { display: contents; }
 .side { min-width: 0; font-size: var(--pp-text-lg); font-weight: var(--pp-regular); }
 .side[data-note=used] { color: var(--pp-ink-2); }
@@ -436,7 +436,7 @@
   .sweatCols .longLabel { display: none; }
   .sgameGrid { grid-template-rows: 30px 30px; }
   .sgameMeta { padding-top: 6px; font-size: var(--pp-text-xs); }
-  .sgameMeta > span { display: none; }
+  .sgameMeta > span:not(.clockLive) { display: none; }
   .clockLive { padding: 1px 4px; }
   .sTeam > span:first-child { display: none; }
   .sTeam > span:last-child { font-size: var(--pp-text-md); }
