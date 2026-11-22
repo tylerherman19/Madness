@@ -13,16 +13,20 @@ export const ROWS_STEP = 100
 const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
 export const compareNames = (a: { name: string }, b: { name: string }) => collator.compare(a.name, b.name)
 
-// Your own entry first, then A to Z; or highest seed total first.
-export function sortAlive(rows: readonly AliveRow[], mode: SortMode): AliveRow[] {
+// Your own entry first, then A to Z; or by seed total, highest first unless
+// `lowestFirst` is set. Equal totals stay A to Z in both directions.
+const compareSeeds = (lowestFirst: boolean) => (a: { name: string; seedTotal: number }, b: { name: string; seedTotal: number }) =>
+  (lowestFirst ? a.seedTotal - b.seedTotal : b.seedTotal - a.seedTotal) || compareNames(a, b)
+
+export function sortAlive(rows: readonly AliveRow[], mode: SortMode, lowestFirst = false): AliveRow[] {
   const copy = rows.slice()
-  if (mode === 'seeds') return copy.sort((a, b) => b.seedTotal - a.seedTotal || compareNames(a, b))
+  if (mode === 'seeds') return copy.sort(compareSeeds(lowestFirst))
   return copy.sort((a, b) => Number(b.me) - Number(a.me) || compareNames(a, b))
 }
 
-export function sortOut(rows: readonly OutRow[], mode: SortMode): OutRow[] {
+export function sortOut(rows: readonly OutRow[], mode: SortMode, lowestFirst = false): OutRow[] {
   const copy = rows.slice()
-  return copy.sort(mode === 'seeds' ? (a, b) => b.seedTotal - a.seedTotal || compareNames(a, b) : compareNames)
+  return copy.sort(mode === 'seeds' ? compareSeeds(lowestFirst) : compareNames)
 }
 
 // Case-insensitive substring match on the entry name; keeps the incoming order.
