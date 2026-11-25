@@ -146,14 +146,20 @@ export interface ScoreboardFetch {
   failedGroups: string[]
 }
 
-// Fetch one day across every tracked conference plus the tournament, unioned and
-// deduped by event id. Dedupe is load-bearing: a non-conference matchup (say
-// Big Ten vs SEC) is returned by both of those calls, and the tournament
-// group overlaps every conference once March arrives.
+const PACIFIC_SCOREBOARD_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
+})
+
+// ESPN's calendar is Pacific. A Central slate can start while ESPN is still
+// serving the previous day's scoreboard, so read both dates for each group.
 export async function fetchDayScoreboard(
   yyyymmdd: string,
   revalidateSeconds = 0
 ): Promise<ScoreboardFetch> {
+  const requestedDate = `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
+  const previousDay = new Date(`${requestedDate}T12:00:00Z`)
+  previousDay.setUTCDate(previousDay.getUTCDate() - 1)
+  const previousDate = previousDay.toISOString().slice(0, 10)
   const groups: Array<[string, number]> = [
     ...Object.entries(CONFERENCES),
     ['Tournament', TOURNAMENT_GROUP],
@@ -162,28 +168,39 @@ export async function fetchDayScoreboard(
   // One retry for a group whose request failed: a single slow or dropped
   // ESPN response otherwise marks the whole day's feed incomplete.
   const results = await Promise.all(
-    groups.map(async ([name, group]) => ({
-      name,
-      events: (await fetchGroup(group, yyyymmdd, revalidateSeconds)) ?? (await fetchGroup(group, yyyymmdd, revalidateSeconds)),
-    }))
+    [requestedDate, previousDate].flatMap(sourceDate => {
+      const queryDate = sourceDate.replaceAll('-', '')
+      return groups.map(async ([name, group]) => ({
+        name,
+        sourceDate,
+        events: (await fetchGroup(group, queryDate, revalidateSeconds)) ?? (await fetchGroup(group, queryDate, revalidateSeconds)),
+      }))
+    })
   )
 
-  const byId = new Map<string, EspnEvent>()
-  const failedGroups: string[] = []
-  for (const { name, events } of results) {
+  const byId = new Map<string, { event: EspnEvent; sourceDate: string }>()
+  const failedGroups = new Set<string>()
+  for (const { name, sourceDate, events } of results) {
     if (events === null) {
-      failedGroups.push(name)
+      failedGroups.add(name)
       continue
     }
     for (const event of events) {
-      // First writer wins; the payload is identical across groups, and
-      // overwriting would only churn.
-      if (!byId.has(event.id)) byId.set(event.id, event)
+      // Matchups overlap across conferences. If both dates returned an event,
+      // prefer the requested day's copy before applying the date filter.
+      if (!byId.has(event.id)) byId.set(event.id, { event, sourceDate })
     }
   }
 
-  const events = [...byId.values()].sort((a, b) => a.date.localeCompare(b.date))
-  return { events, failedGroups }
+  const events = [...byId.values()].filter(({ event, sourceDate }) => {
+    if (!Number.isFinite(Date.parse(event.date))) return true
+    const playingDate = isTimeTbd(event) ? easternDateOf(event.date) : centralDateOf(event.date)
+    if (playingDate === requestedDate) return true
+    // Discard expected neighboring games. Keep unexpected dates in the
+    // response so schedule writes still reject a bad feed.
+    return playingDate !== sourceDate && PACIFIC_SCOREBOARD_DATE.format(new Date(event.date)) !== sourceDate
+  }).map(({ event }) => event).sort((a, b) => a.date.localeCompare(b.date))
+  return { events, failedGroups: [...failedGroups] }
 }
 
 export function eventCompetitors(
@@ -333,8 +350,7 @@ export function isTimeTbd(event: EspnEvent): boolean {
   return event.competitions?.[0]?.timeValid === false
 }
 
-// YYYYMMDD in Central time — the parameter ESPN's `dates` expects, and the
-// key the app groups a slate by.
+// YYYYMMDD in Central time, the key the app groups a slate by.
 export function toEspnDate(date: Date): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Chicago',
@@ -345,10 +361,7 @@ export function toEspnDate(date: Date): string {
   return parts.replace(/-/g, '')
 }
 
-// The ISO date (YYYY-MM-DD) of a timestamp in Central time. ESPN's `dates`
-// parameter is not a strict calendar filter — asking for 20260326 also
-// returns games that tip after midnight ET on the 27th — so a game's slate is
-// decided by its own tip time, not by which query returned it.
+// The ISO date (YYYY-MM-DD) of a tip timestamp in Central time.
 export function centralDateOf(utcIso: string): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Chicago',
